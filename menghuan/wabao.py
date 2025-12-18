@@ -1,6 +1,6 @@
 from menghuan.common_util import find_window
 from pic_and_color_util import *
-from menghuan.config import init
+from menghuan.log_config import init
 import config
 
 '''
@@ -10,7 +10,7 @@ import config
 config.DEBUG = True
 
 def click_use(hwnd):
-    return bg_find_pic_and_click(hwnd, "images/use.bmp", similarity=0.5)
+    return bg_find_pic_and_click(hwnd, "images/use.bmp", similarity=0.7)
 
 
 def click_team_close(hwnd):

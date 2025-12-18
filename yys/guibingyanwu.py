@@ -3,6 +3,10 @@ from loguru import logger
 
 from yys.common_util import get_max_battle_count
 
+"""
+鬼兵演武
+"""
+
 hwnd = find_window()
 # 配置loguru日志
 logger.add(

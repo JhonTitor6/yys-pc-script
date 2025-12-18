@@ -74,7 +74,7 @@ def bg_left_click(hwnd, *point):
     return True
 
 
-def bg_left_click_with_range(hwnd, point, x_range=10, y_range=10):
+def bg_left_click_with_range(hwnd, point, x_range=20, y_range=20):
     """
     在指定点周围随机范围内左键点击
 

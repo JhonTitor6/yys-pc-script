@@ -1,9 +1,13 @@
+import time
+
 from common_util import *
 from my_mouse import *
 from pic_and_color_util import *
+import config as config
 """
 天命之弈
 """
+config.DEBUG = True
 hwnd = find_window()
 
 
@@ -16,7 +20,9 @@ def click_quit():
 
 
 def main():
-    pass
+    while True:
+        click_ready()
+        time.sleep(1)
 
 
 if __name__ == '__main__':

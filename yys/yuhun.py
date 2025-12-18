@@ -1,11 +1,9 @@
 from common_util import *
 from loguru import logger
 
-
 """
 御魂挂机
 """
-
 
 hwnd = find_window()
 # 配置loguru日志
@@ -18,6 +16,7 @@ logger.add(
     format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {message}"
 )
 
+
 def click_tiaozhan():
     point = bg_find_pic(hwnd, "images/yuhun_tiaozhan.bmp")
     return bg_left_click_with_range(hwnd, point, x_range=20, y_range=20)
@@ -28,10 +27,11 @@ def main():
     cur_battle_count = 0
     while cur_battle_count < max_battle_count:
         click_tiaozhan()
-        if try_handle_battle_end(hwnd):
+        click_lock_accept_invitation(hwnd)
+        if try_handle_battle_end(hwnd)[0]:
             cur_battle_count += 1
             logger.success(f"通关次数：{cur_battle_count}")
-        random_sleep(1, 3)
+        random_sleep(0.5, 0.5)
     do_script_end()
 
 

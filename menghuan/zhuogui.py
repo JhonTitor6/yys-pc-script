@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 
 from menghuan.common_util import find_window
-from menghuan.config import init
+from menghuan.log_config import init
 from my_mouse import *
 from pic_and_color_util import *
 import config as config
@@ -20,7 +20,7 @@ def click_confirm(hwnd):
 
 def click_receive_ghost_hunt_task(hwnd):
     """点击捉鬼任务"""
-    return bg_find_pic_and_click(hwnd, "images/ghost_hunt_task.bmp", 1232, 300, 1484, 500, 0.7)
+    return bg_find_pic_and_click(hwnd, "images/ghost_hunt_task.bmp", 1200, 300, 1484, 500, 0.7)
 
 
 def click_auto(hwnd):
@@ -30,7 +30,7 @@ def click_auto(hwnd):
 
 def click_battle_triangle(hwnd):
     """点击战斗中的三角按钮"""
-    return bg_find_pic_and_click(hwnd, "images/battle_triangle.bmp", 14, 27, 46, 61, 0.85)
+    return bg_find_pic_and_click(hwnd, "images/battle_triangle.bmp", 10, 20, 50, 70, 0.85)
 
 
 def click_team(hwnd):
@@ -172,7 +172,7 @@ def go_to_zhuo_gui_task(hwnd):
 
 def ghost_hunting(hwnd, max_rounds):
     """捉鬼任务主循环"""
-    logger.info(f"开始捉鬼任务，目标轮数: {max_rounds}")
+    logger.info(f"开始捉鬼任务，目标轮数（不包括正在进行中的）: {max_rounds}")
     ghost_hunting_round_count = 0
 
     while ghost_hunting_round_count < max_rounds:

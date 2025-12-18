@@ -1,6 +1,7 @@
 import unittest
 
 import config
+from menghuan.common_util import find_window
 from pic_and_color_util import *
 from win_util import *
 import menghuan.zhuogui

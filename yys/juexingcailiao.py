@@ -1,6 +1,10 @@
 from yys.common_util import *
 from loguru import logger
 
+"""
+觉醒材料
+"""
+
 hwnd = find_window()
 # 配置loguru日志
 logger.add(

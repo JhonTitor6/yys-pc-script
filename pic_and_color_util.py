@@ -15,7 +15,8 @@ from PIL import ImageGrab
 from rgb_hex import *
 import my_mouse
 from loguru import logger
-import config as config
+import config
+from typing import List
 
 m = mss.mss()
 # 创建调试目录
@@ -73,7 +74,7 @@ def bg_get_pixel_color(hwnd, x, y):
     """
     try:
         # 获取窗口区域图像（只捕获目标像素点周围 1x1 的区域）
-        img, offset_x, offset_y = _capture_window_region(hwnd, x, y, x + 1, y + 1)
+        img, offset_x, offset_y = capture_window_region(hwnd, x, y, x + 1, y + 1)
 
         # 获取像素颜色（OpenCV 默认 BGR 格式）
         b, g, r = img[0, 0][:3]  # 只取前3个通道（BGR）
@@ -169,6 +170,16 @@ def find_pic(x0, y0, x1, y1, small_picture_path, similarity=0.8):
     return res["result"] if res else (-1, -1)
 
 
+def bg_find_pic_with_timeout(hwnd, small_picture_path, timeout=5, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8):
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        point = bg_find_pic(hwnd, small_picture_path, x0, y0, x1, y1, similarity)
+        if point is not None and point[0] != -1 and point[1] != -1:
+            return point
+        time.sleep(0.2)
+    return (-1, -1)
+
+
 def bg_find_pic(hwnd, small_picture_path, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8):
     """
     在指定窗口的客户区范围内查找小图片（增强调试功能）
@@ -188,7 +199,7 @@ def bg_find_pic(hwnd, small_picture_path, x0=0, y0=0, x1=99999, y1=99999, simila
         raise FileNotFoundError(f"模板图片不存在: {small_picture_path}")
 
     # 获取窗口区域图像
-    search_img = _capture_window_region(hwnd, x0, y0, x1, y1)
+    search_img = capture_window_region(hwnd, x0, y0, x1, y1)
 
     # 读取模板图片
     template = cv2.imread(small_picture_path)
@@ -211,69 +222,151 @@ def bg_find_pic(hwnd, small_picture_path, x0=0, y0=0, x1=99999, y1=99999, simila
     debug_val_threshold = 0.6
     # 调试模式处理
     if config.DEBUG and max_val >= debug_val_threshold:
-        template_dir = debug_img_base_dir / template_name
-        template_dir.mkdir(parents=True, exist_ok=True)
-        debug_img = search_img.copy()
-
-        border_size = 0
-        # 如果图片太小则扩大画布（上下左右各加50像素）
-        if debug_img.shape[0] < 100 or debug_img.shape[1] < 100:
-            border_size = 50
-            debug_img = cv2.copyMakeBorder(
-                debug_img,
-                top=border_size,
-                bottom=border_size,
-                left=border_size,
-                right=100,  # 右侧多留空间显示文字
-                borderType=cv2.BORDER_CONSTANT,
-                value=(0, 0, 0))  # 黑色背景
-
-        # 绘制匹配矩形
-        cv2.rectangle(
-            debug_img,
-            (max_loc[0] + border_size, max_loc[1] + border_size),
-            (max_loc[0] + border_size + w, max_loc[1] + border_size + h),
-            (0, 255, 0),
-            1
-        )
-
-        # 添加匹配信息
-        match_text = f"{max_val:.2f}/{similarity}@({center_x},{center_y})"
-        cv2.putText(
-            debug_img,
-            match_text,
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (0, 255, 255),
-            1
-        )
-
-        # 保存调试图像
-        # timestamp = time.time()
-        result_img_prefix = match
-        cv2.imwrite(str(template_dir / f"{result_img_prefix}_result.png"), debug_img)
+        write_debug_img(center_x, center_y, h, match, max_loc, max_val, search_img, similarity, template_name, w)
 
     # 返回结果
     if match:
-        logger.debug(
-            f"匹配成功: {template_name} | 位置: ({center_x}, {center_y}) | 相似度: {max_val:.4f} | 阈值: {similarity}")
-        return (center_x, center_y)
+        if config.DEBUG:
+            logger.debug(
+            f"[{hwnd}]匹配成功: {template_name} | 位置: ({center_x}, {center_y}) | 相似度: {max_val:.4f} | 阈值: {similarity}")
+        return center_x, center_y
 
     if max_val >= debug_val_threshold:
-        logger.debug(
-            f"匹配失败: {template_name} | 位置: ({center_x}, {center_y}) | 相似度: {max_val:.4f} | 阈值: {similarity}")
+        if config.DEBUG:
+            logger.debug(
+                f"[{hwnd}]匹配失败: {template_name} | 位置: ({center_x}, {center_y}) | 相似度: {max_val:.4f} | 阈值: {similarity}")
     return -1, -1
+
+
+def write_debug_img(center_x, center_y, h, match, max_loc, max_val, search_img, similarity, template_name, w):
+    template_dir = debug_img_base_dir / template_name
+    template_dir.mkdir(parents=True, exist_ok=True)
+    debug_img = search_img.copy()
+    border_size = 0
+    # 如果图片太小则扩大画布（上下左右各加50像素）
+    if debug_img.shape[0] < 100 or debug_img.shape[1] < 100:
+        border_size = 50
+        debug_img = cv2.copyMakeBorder(
+            debug_img,
+            top=border_size,
+            bottom=border_size,
+            left=border_size,
+            right=100,  # 右侧多留空间显示文字
+            borderType=cv2.BORDER_CONSTANT,
+            value=(0, 0, 0))  # 黑色背景
+    # 绘制匹配矩形
+    cv2.rectangle(
+        debug_img,
+        (max_loc[0] + border_size, max_loc[1] + border_size),
+        (max_loc[0] + border_size + w, max_loc[1] + border_size + h),
+        (0, 255, 0),
+        1
+    )
+    # 添加匹配信息
+    match_text = f"{max_val:.2f}/{similarity}@({center_x},{center_y})"
+    cv2.putText(
+        debug_img,
+        match_text,
+        (10, 30),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.5,
+        (0, 255, 255),
+        1
+    )
+    # 保存调试图像
+    # time_str = time.strftime("%Y%m%d_%H%M%S")
+    result_img_prefix = match
+    cv2.imwrite(str(template_dir / f"{result_img_prefix}_result.png"), debug_img)
 
 
 def bg_find_pic_and_click(hwnd, small_picture_path, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8):
     point = bg_find_pic(hwnd, small_picture_path, x0, y0, x1, y1, similarity)
     if config.DEBUG and point is not None and point != (-1, -1):
-        logger.success(f"点击{small_picture_path}，坐标{point}")
+        logger.success(f"[{hwnd}]点击{small_picture_path}，坐标{point}")
     return my_mouse.bg_left_click(hwnd, point)
 
 
-def _capture_window_region(hwnd, x0=0, y0=0, x1=99999, y1=99999):
+class ImageMatchConfig:
+    def __init__(self, target_image_path_list: List[str] | str, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8):
+        self.target_image_path_list = (
+            [target_image_path_list] if isinstance(target_image_path_list, str)
+            else target_image_path_list
+        )
+        self.x0 = x0
+        self.y0 = y0
+        self.x1 = x1
+        self.y1 = y1
+        self.similarity = similarity
+
+    def __hash__(self):
+        return hash(tuple(self.target_image_path_list))
+
+    def __eq__(self, other):
+        return self.target_image_path_list == other.target_image_path_list
+
+    def __str__(self):
+        return f"{self.target_image_path_list} {self.x0} {self.y0} {self.x1} {self.y1} {self.similarity}"
+
+
+def bg_find_pic_by_config(screenshot, image_match_config: ImageMatchConfig):
+    for target_image_path in image_match_config.target_image_path_list:
+        point = bg_find_pic_in_screenshot(screenshot, target_image_path,
+                                          image_match_config.x0, image_match_config.y0,
+                                          image_match_config.x1, image_match_config.y1,
+                                          image_match_config.similarity)
+        if point is not None and point[0] != -1 and point[1] != -1:
+            return point, target_image_path
+    return (-1, -1), None
+
+
+def bg_find_pic_in_screenshot(screenshot, small_picture_path, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8):
+    """
+    在缓存的截图中查找图片
+    """
+    if screenshot is None:
+        return -1, -1
+
+    if not os.path.exists(small_picture_path):
+        raise FileNotFoundError(f"模板图片不存在: {small_picture_path}")
+
+    # 裁剪搜索区域
+    search_img = screenshot
+    if x0 > 0 or y0 > 0 or x1 < 99999 or y1 < 99999:
+        h, w = search_img.shape[:2]
+        x1 = min(x1, w)
+        y1 = min(y1, h)
+        search_img = search_img[y0:y1, x0:x1]
+
+    # 读取模板图片
+    template = cv2.imread(small_picture_path)
+    if template is None:
+        raise ValueError(f"无法读取模板图片: {small_picture_path}")
+
+    # 模板匹配
+    result = cv2.matchTemplate(search_img, template, cv2.TM_CCOEFF_NORMED)
+    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+
+    # 计算中心坐标
+    h, w = template.shape[:2]
+    center_x = x0 + max_loc[0] + w // 2
+    center_y = y0 + max_loc[1] + h // 2
+
+    template_name = Path(small_picture_path).stem
+    match = max_val >= similarity
+    # 调试模式处理
+    if config.DEBUG and max_val >= 0.6:
+        write_debug_img(center_x, center_y, h, match, max_loc, max_val, search_img, similarity, template_name, w)
+
+    if match:
+        if config.DEBUG:
+            logger.debug(
+                f"在截图中找到图片: {small_picture_path} | 位置: ({center_x}, {center_y}) | 相似度: {max_val:.4f}")
+        return center_x, center_y
+
+    return -1, -1
+
+
+def capture_window_region(hwnd, x0=0, y0=0, x1=99999, y1=99999):
     """
     内部函数：捕获窗口指定区域的图像
 
@@ -293,8 +386,8 @@ def _capture_window_region(hwnd, x0=0, y0=0, x1=99999, y1=99999):
     # 调整搜索区域不超过客户区范围，用于二次截图
     x0 = max(x0, client_rect[0]) + 8
     y0 = max(y0, client_rect[1]) + 31
-    x1 = min(x1, client_width)
-    y1 = min(y1, client_height)
+    x1 = min(x1 + 8, client_width)
+    y1 = min(y1 + 31, client_height)
 
     if x0 >= x1 or y0 >= y1:
         raise ValueError(f"无效区域: ({x0}, {y0}) - ({x1}, {y1})")

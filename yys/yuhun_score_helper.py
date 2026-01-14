@@ -1,8 +1,11 @@
+from pic_and_color_util import capture_window_region
 from win_util.ocr import *
 from common_util import find_window, bg_find_pic_in_screenshot
 import time
 import config
 from loguru import logger
+
+from yys.util.yys_ocr import YysOCR
 
 config.DEBUG = False
 
@@ -27,7 +30,7 @@ if __name__ == '__main__':
     hwnd = find_window()
 
     logger.info("初始化ocr")
-    yysOcr = YysOCR(hwnd)
+    yysOcr = YysOCR()
     logger.info("初始化ocr完成")
 
     yysOcr.set_attr_rule_4(['暴击伤害'])
@@ -47,7 +50,7 @@ if __name__ == '__main__':
             last_ocr_time = now
 
             # 用上一次的识别结果计算分数
-            if last_result is not None and last_img is not None:
+            if last_img is not None:
                 result_img, results, total_score = yysOcr.calc_score(last_result, last_img)
                 win_name = "Yuhun Score"
                 cv2.namedWindow(win_name, cv2.WINDOW_GUI_NORMAL | cv2.WINDOW_NORMAL)

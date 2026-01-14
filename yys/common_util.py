@@ -47,7 +47,7 @@ def try_handle_battle_end(hwnd):
 
 
 def _click_battle_success_end(hwnd):
-    point = bg_find_pic(hwnd, "images/battle_end.bmp", similarity=0.7)
+    point = bg_find_pic(hwnd, "images/battle_end.bmp", similarity=0.8)
     first_click = bg_left_click_with_range(hwnd, point, x_range=200, y_range=50)
     if first_click:
         random_sleep(1.5, 2)
@@ -55,7 +55,7 @@ def _click_battle_success_end(hwnd):
 
 
 def _click_battle_end_loss(hwnd):
-    point = bg_find_pic(hwnd, "images/battle_end_loss.bmp", similarity=0.7)
+    point = bg_find_pic(hwnd, "images/battle_end_loss.bmp", similarity=0.8)
     first_click = bg_left_click_with_range(hwnd, point, x_range=200, y_range=50)
     if first_click:
         random_sleep(0.1, 0.3)

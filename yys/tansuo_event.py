@@ -1,23 +1,15 @@
 from auto_event_script_base import *
 from common_util import *
-from event_component.event import Event
 from my_mouse import *
-
-tan_suo_xiao_guai = Event("tan_suo_xiao_guai")
-tan_suo_boss = Event("tan_suo_boss")
-tan_suo = Event("tan_suo")
-tansuo_boss_success_reward = Event("tansuo_boss_success_reward")
-tansuo_bao_xiang = Event("tansuo_bao_xiang")
-tansuo_28 = Event("tansuo_28")
-tansuo = Event("tansuo_she_zhi")
-tansuo_kunnan = Event("tansuo_kunnan")
-tansuo_tansuo = Event("tansuo_tansuo")
+from util.yys_ocr import YysOCR
 
 
 class AutoTanSuoEventScript(YYSAutoEventScript):
     def __init__(self):
         super().__init__("探索")
+        logger.info("初始化探索脚本")
 
+        self.ocr = YysOCR()
         # 没找到怪次数
         self._on_tansuo_count = 0
 
@@ -34,11 +26,13 @@ class AutoTanSuoEventScript(YYSAutoEventScript):
         self._register_image_match_event(ImageMatchConfig("images/tansuo_kunnan.bmp"),
                                          self._on_event_bg_left_click)
         self._register_image_match_event(ImageMatchConfig("images/tansuo_tansuo.bmp"),
-                                         self._on_event_bg_left_click)
+                                         self._on_tansuo_entering)
         self._register_image_match_event(ImageMatchConfig("images/tansuo_28.bmp"),
                                          self._on_event_bg_left_click)
         self._register_image_match_event(ImageMatchConfig("images/tansuo_she_zhi.bmp"),
-                                         self._on_tansuo)
+                                         self._on_tansuo_idle)
+
+        logger.info("探索脚本初始化完成")
 
     def _on_zhan_dou_wan_cheng(self, point):
         super()._on_zhan_dou_wan_cheng(point)
@@ -59,7 +53,14 @@ class AutoTanSuoEventScript(YYSAutoEventScript):
         random_sleep(1, 1.6)
         bg_left_click_with_range(self.hwnd, point)
 
-    def _on_tansuo(self, point):
+    def _on_tansuo_entering(self, point):
+        self._on_event_bg_left_click(point)
+        time.sleep(0.5)
+        self._update_screenshot_cache()
+        if self.ocr.get_common_ocr().contains_text(self.screenshot_cache, "己达本日上限"):
+            self.running = False
+
+    def _on_tansuo_idle(self, point):
         self._on_tansuo_count += 1
         if self._on_tansuo_count >= 3:
             self.on_tansuo_count = 0

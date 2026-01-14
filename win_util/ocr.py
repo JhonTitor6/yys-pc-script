@@ -1,50 +1,28 @@
-import re
-import math
 import cv2
-from pic_and_color_util import capture_window_region
 import easyocr
+from loguru import logger
 
+class CommonOcr:
+    def __init__(self, lang_list=['ch_sim', 'en'], gpu=True, **kwargs):
+        """
+        初始化OCR阅读器
 
-def _clean_attr_name(name: str) -> str:
-    """
-    清洗属性名（去掉多余字符）
-    """
-    return name.replace('^', '').replace(' ', '').strip()
-
-
-def _extract_number(value: str) -> float:
-    """
-    提取属性值中的数字，失败返回0.0
-    """
-    try:
-        num_str = re.findall(r"[-+]?\d*\.?\d+", value)
-        if num_str:
-            return float(num_str[0])
-        return 0.0
-    except Exception:
-        return 0.0
-
-
-class YysOCR:
-
-    def __init__(self, hwnd):
-        self.hwnd = hwnd
-        self.reader = easyocr.Reader(['ch_sim', 'en'])
-        # 每3计1分的有效属性
-        self.attr_rule_3 = ['攻击加成', '速度', '暴击']
-        # 每4计1分的有效属性
-        self.attr_rule_4 = ['暴击伤害', '效果命中']
-
-    def set_attr_rule_3(self, attr_rule_3):
-        self.attr_rule_3 = attr_rule_3
-
-    def set_attr_rule_4(self, attr_rule_4):
-        self.attr_rule_4 = attr_rule_4
+        Args:
+            lang_list: 语言列表，默认为['ch_sim', 'en']
+            gpu: 是否使用GPU，默认True
+            **kwargs: 其他传递给easyocr.Reader的参数
+        """
+        self.reader: easyocr.Reader = easyocr.Reader(lang_list, gpu=gpu, **kwargs)
 
     def ocr(self, img):
         """
-        OCR识别：在放大图像上识别后，把坐标映射回原图坐标系并返回。
-        返回格式和 easyocr 一样：[(box, text, conf), ...]，但 box 的点为原图坐标。
+        识别图像中的文本，返回原生结果
+
+        Args:
+            img: 输入图像
+
+        Returns:
+            OCR结果列表，格式与easyocr一致：[(box, text, conf), ...]
         """
         if img is None:
             return []
@@ -52,7 +30,7 @@ class YysOCR:
         h, w = img.shape[:2]
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        # 放大用于ocr
+        # 放大用于OCR
         fx, fy = 2.0, 2.0
         gray_resized = cv2.resize(gray, None, fx=fx, fy=fy, interpolation=cv2.INTER_CUBIC)
         _, thresh = cv2.threshold(gray_resized, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
@@ -77,89 +55,78 @@ class YysOCR:
 
         return scaled_results
 
-    def calc_score(self, ocr_result, img):
+    def contains_text(self, img, target_text, case_sensitive=False):
         """
-        根据OCR结果计算分数并在图像上标注
+        根据OCR结果判断目标文本是否出现在图像中
+
+        Args:
+            img: 输入图像
+            target_text: 目标文本，支持字符串或字符串列表
+            case_sensitive: 是否区分大小写，默认False
+
+        Returns:
+            bool: 如果目标文本出现在图像中则返回True，否则返回False
         """
-        total_score = 0
-        results = []
+        ocr_results = self.ocr(img)
 
-        if not ocr_result or img is None:
-            return img, results, total_score
+        # 获取OCR识别的所有文本
+        detected_texts = [text for _, text, _ in ocr_results]
 
-        i = 0
-        while i < len(ocr_result) - 1:
-            attr_name_raw = ocr_result[i][1]
-            attr_value_raw = ocr_result[i + 1][1]
+        logger.debug(f"检测到的文本：{detected_texts}")
 
-            attr_name = _clean_attr_name(attr_name_raw)
-            val = _extract_number(attr_value_raw)
-
-            # 判断是否是已知属性，否则跳过
-            if attr_name in self.attr_rule_3:
-                score = math.ceil(val / 3)
-            elif attr_name in self.attr_rule_4:
-                score = math.ceil(val / 4)
+        # 统一处理大小写
+        if not case_sensitive:
+            detected_texts = [text.lower() for text in detected_texts]
+            if isinstance(target_text, str):
+                target_text = target_text.lower()
             else:
-                score = 0
+                target_text = [t.lower() for t in target_text]
 
-            if score > 0:
-                total_score += score
+        # 判断目标文本是否存在于检测到的文本中
+        if isinstance(target_text, str):
+            # 单个文本查找
+            for text in detected_texts:
+                if target_text in text:
+                    return True
+        else:
+            # 多个文本查找，只要有一个匹配就返回True
+            for target in target_text:
+                for text in detected_texts:
+                    if target in text:
+                        return True
 
-                # 取框位置
-                try:
-                    box = ocr_result[i][0]
-                    x, y = int(box[0][0]), int(box[0][1])
-                except Exception:
-                    x, y = 0, 0
+        return False
 
-                results.append((attr_name, val, score, (x, y)))
+    def find_text_position(self, img, target_text, case_sensitive=False):
+        """
+        查找目标文本在图像中的位置
 
-                # 在图上画分数
-                if img is not None:
-                    cv2.putText(img, f"{score}", (max(0, x + 100), max(15, y + 15)),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (85, 26, 139), 2)
+        Args:
+            img: 输入图像
+            target_text: 目标文本
+            case_sensitive: 是否区分大小写，默认False
 
-            i += 2  # 每次跳过一对
+        Returns:
+            list: 包含目标文本的位置信息列表，格式为 [(box, text, conf), ...]
+        """
+        ocr_results = self.ocr(img)
 
-        # 总分写在左下角
-        if img is not None:
-            img = draw_total_score_outside(img, total_score, pad_color=(156, 181, 203))
+        found_positions = []
 
-        return img, results, total_score
+        for box, text, conf in ocr_results:
+            compare_text = text if case_sensitive else text.lower()
+            compare_target = target_text if case_sensitive else target_text.lower()
 
+            if compare_target in compare_text:
+                found_positions.append((box, text, conf))
 
-def draw_total_score_outside(img, total_score, pad_bottom=40, pad_color=(255, 255, 255)):
-    """
-    在图像下方增加区域，在区域上画total_score
-    :param img: 原始图像
-    :param total_score: 总分
-    :param pad_bottom: 下方扩展的高度（像素）
-    :param pad_color: 扩展区域颜色 (B, G, R)
-    :return: 新图像
-    """
-    h, w = img.shape[:2]
+        return found_positions
 
-    # 扩展画布：在下方加 pad_bottom 高度的空白
-    new_img = cv2.copyMakeBorder(
-        img,
-        top=0,
-        bottom=pad_bottom,
-        left=0,
-        right=0,
-        borderType=cv2.BORDER_CONSTANT,
-        value=pad_color  # 白色底
-    )
+    def set_reader(self, reader: easyocr.Reader):
+        self.reader = reader
 
-    # 在新区域画文字
-    cv2.putText(
-        new_img,
-        f"total: {total_score}",
-        (10, h + int(pad_bottom * 0.7)),  # 新区域位置
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.7,
-        (0, 0, 255),
-        2
-    )
-
-    return new_img
+    def get_reader(self) -> easyocr.Reader:
+        """
+        返回原生的easyocr.Reader对象，供外部直接调用原生方法
+        """
+        return self.reader

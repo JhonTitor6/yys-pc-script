@@ -26,6 +26,8 @@ class YYSAutoEventScript(AutoImageEventScript):
         logger.info(f"初始化{self.script_name}脚本")
         self.script_start_time_mills = int(time.time() * 1000)
 
+        self.running = True
+
         self._cur_battle_count = 0
         self._cur_battle_victory_count = 0
         self._max_battle_count = 0
@@ -60,9 +62,11 @@ class YYSAutoEventScript(AutoImageEventScript):
         self._max_battle_count = get_max_battle_count()
         logger.info(f"开始执行{self.script_name}，计划完成{self._max_battle_count}次战斗")
         while True:
-            if self._cur_battle_count >= self._max_battle_count:
+            if not self.running:
                 self._event_manager.trigger_event(end_script)
                 break
             self._update_screenshot_cache()
             self._handle_event_from_screenshot_cache()
             random_sleep(0.2, 0.5)
+            if self._cur_battle_count >= self._max_battle_count:
+                self.running = False

@@ -46,9 +46,16 @@ class JieJieTuPo(YYSAutoScript):
             bg_press_key(self.hwnd, 'ESC')
             random_sleep(0.05, 0.2)
             bg_press_key(self.hwnd, 'ENTER')
-            time.sleep(3)
-            try_bg_click_pic(self.hwnd, "images/jiejietupo_zai_ci_tiao_zhan.bmp")
-            random_sleep(3, 3.5)
+            random_sleep(2, 3)
+            try_bg_click_pic_with_timeout(self.hwnd, "images/jiejietupo_zai_ci_tiao_zhan.bmp", timeout=5)
+            time.sleep(0.5)
+            silence_point = bg_find_pic(self.hwnd, "images/jiejietupo_zai_ci_tiao_zhan_silence.bmp")
+            if silence_point is not None and silence_point != (-1, -1):
+                random_sleep(1, 2)
+                bg_left_click_with_range(self.hwnd, (494, 317), x_range=10, y_range=10)
+                random_sleep(0.2, 0.6)
+                bg_left_click_with_range(self.hwnd, (672, 379), y_range=10)
+            random_sleep(2.5, 3)
 
 
     def on_script_end(self):

@@ -1,6 +1,6 @@
-from pic_and_color_util import capture_window_region
+from win_util.image import ImageFinder
 from win_util.ocr import *
-from common_util import find_window, bg_find_pic_in_screenshot
+from common_util import find_window
 import time
 import config
 from loguru import logger
@@ -11,15 +11,16 @@ config.DEBUG = False
 
 
 def capture_yuhun_detail_img(hwnd):
+    from pic_and_color_util import capture_window_region  # 保持原来的capture_window_region函数
     img = capture_window_region(hwnd)
 
     x1 = 99999
-    point_share = bg_find_pic_in_screenshot(img, "images/yuhun_detail_share.bmp", similarity=0.95)
-    point_qiang_hua = bg_find_pic_in_screenshot(img, "images/yuhun_qiang_hua.bmp", similarity=0.95)
+    point_share = ImageFinder.bg_find_pic_in_screenshot(img, "images/yuhun_detail_share.bmp", 0, 0, 99999, 99999, 0.95)
+    point_qiang_hua = ImageFinder.bg_find_pic_in_screenshot(img, "images/yuhun_qiang_hua.bmp", 0, 0, 99999, 99999, 0.95)
     if (point_share is not None and point_share != (-1, -1)) or (point_qiang_hua is not None and point_qiang_hua != (-1, -1)):
         x1 = 1020
 
-    point2 = bg_find_pic_in_screenshot(img, "images/yuhun_detail.bmp", x1=x1, similarity=0.95)
+    point2 = ImageFinder.bg_find_pic_in_screenshot(img, "images/yuhun_detail.bmp", 0, 0, x1, 99999, 0.95)
     if point2 is not None and point2 != (-1, -1):
         return img[point2[1] + 110:point2[1] + 236, point2[0] - 130:point2[0] + 130]
     return None

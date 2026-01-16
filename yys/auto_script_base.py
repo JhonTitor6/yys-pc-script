@@ -40,7 +40,7 @@ class YYSAutoScript:
 
     def run(self):
         """运行脚本的主循环"""
-        self.max_battle_count = get_max_battle_count()
+        self.max_battle_count = input_max_battle_count()
 
         logger.info(f"开始执行{self.script_name}，计划完成{self.max_battle_count}次战斗")
 

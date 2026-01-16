@@ -1,7 +1,7 @@
 from yys.common_util import *
 from loguru import logger
 
-from yys.common_util import get_max_battle_count
+from yys.common_util import input_max_battle_count
 
 """
 鬼兵演武
@@ -25,7 +25,7 @@ def click_tiaozhan():
 
 
 def main():
-    max_battle_count = get_max_battle_count()
+    max_battle_count = input_max_battle_count()
     cur_battle_count = 0
     next_sleep_counter = 0
     next_sleep_threshold = random.randint(40, 60)

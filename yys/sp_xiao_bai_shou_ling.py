@@ -11,10 +11,10 @@ class SpXiaoBaiShouLing(YYSAutoEventScript):
     def __init__(self):
         super().__init__(script_name="sp小白首领")
         self._register_image_match_event(ImageMatchConfig("images/xiao_bai_shou_ling_zhan.bmp"), self.on_zhan)
-        self._register_image_match_event(ImageMatchConfig("images/xiao_bai_shou_ling_battle_end_close.bmp"), self._on_event_bg_left_click)
+        self._register_image_match_event(ImageMatchConfig("images/xiao_bai_shou_ling_battle_end_close.bmp"), self.bg_left_click)
 
     def on_zhan(self, point):
-        super()._on_event_bg_left_click(point, x_range=5, y_range=5)
+        super().bg_left_click(point, x_range=5, y_range=5)
         random_sleep(20, 22)
         click_count = random.randint(8, 11)
         for i in range(click_count):

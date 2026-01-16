@@ -6,7 +6,7 @@ class PingJiangMen(YYSAutoEventScript):
 
     def __init__(self):
         super().__init__("pingjiangmen")
-        super()._register_image_match_event(ImageMatchConfig("images/invite_jieshou.bmp"), self._on_event_bg_left_click)
+        super()._register_image_match_event(ImageMatchConfig("images/invite_jieshou.bmp"), self.bg_left_click)
 
 
     def _on_zhan_dou_wan_cheng(self, point):

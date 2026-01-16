@@ -5,7 +5,15 @@ import win32gui
 from loguru import logger
 
 from my_mouse import bg_left_click_with_range
-from pic_and_color_util import bg_find_pic, bg_find_pic_with_timeout, bg_find_pic_in_screenshot
+from win_util.image import ImageFinder
+
+def bg_find_pic(hwnd, small_picture_path, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8):
+    finder = ImageFinder(hwnd)
+    return finder.bg_find_pic(small_picture_path, x0, y0, x1, y1, similarity)
+
+def bg_find_pic_with_timeout(hwnd, small_picture_path, timeout=5, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8):
+    finder = ImageFinder(hwnd)
+    return finder.bg_find_pic_with_timeout(small_picture_path, timeout, x0, y0, x1, y1, similarity)
 
 
 def find_window(title_part="阴阳师-网易游戏"):
@@ -40,6 +48,8 @@ def try_handle_battle_end(hwnd):
     :return: handle_res, is_battle_victory
     """
     success_res = _click_battle_success_end(hwnd)
+    if success_res:
+        time.sleep(1)
     loss_res = _click_battle_end_loss(hwnd)
     _click_suipian(hwnd)
     reward_res = _click_battle_end_1(hwnd) or _click_battle_end_2(hwnd)
@@ -50,8 +60,10 @@ def _click_battle_success_end(hwnd):
     point = bg_find_pic(hwnd, "images/battle_end.bmp", similarity=0.8)
     first_click = bg_left_click_with_range(hwnd, point, x_range=200, y_range=50)
     if first_click:
-        random_sleep(1.5, 2)
-    return first_click
+        return first_click
+    point = bg_find_pic(hwnd, "images/battle_end_success.bmp", similarity=0.8)
+    second_click = bg_left_click_with_range(hwnd, point, x_range=200, y_range=50)
+    return second_click
 
 
 def _click_battle_end_loss(hwnd):
@@ -82,19 +94,14 @@ def _click_battle_end_1(hwnd):
 
 def _click_battle_end_2(hwnd):
     point = bg_find_pic(hwnd, "images/battle_end_2.bmp", similarity=0.7)
-    first_click = bg_left_click_with_range(hwnd, point, x_range=300, y_range=50)
-    if first_click:
-        random_sleep(0.1, 0.2)
-    second_click = bg_left_click_with_range(hwnd, point, x_range=300, y_range=50)
-    return first_click or second_click
-
-
-def click_change_to_auto(hwnd):
-    return try_bg_click_pic_with_timeout(hwnd, "images/change_to_auto_battle.bmp", x_range=20, y_range=20)
+    if point is None or point == (-1, -1):
+        return False
+    click_res = bg_left_click_with_range(hwnd, point, x_range=300, y_range=50)
+    return click_res
 
 
 def try_bg_click_pic_by_screenshot(screenshot, template_image_path, similarity=0.8, x_range=20, y_range=20):
-    point = bg_find_pic_in_screenshot(screenshot, template_image_path, similarity=similarity)
+    point = ImageFinder.bg_find_pic_in_screenshot(screenshot, template_image_path, similarity=similarity)
     return bg_left_click_with_range(hwnd, point, x_range=x_range, y_range=y_range)
 
 
@@ -143,12 +150,7 @@ def close_jia_cheng(hwnd):
     return True
 
 
-def click_lock_accept_invitation(hwnd):
-    point = bg_find_pic(hwnd, "images/lock_accept_invitation.bmp")
-    return bg_left_click_with_range(hwnd, point, x_range=15, y_range=15)
-
-
-def get_max_battle_count():
+def input_max_battle_count():
     """获取用户输入的轮数"""
     while True:
         try:

@@ -10,13 +10,14 @@ class AutoTanSuoEventScript(YYSAutoEventScript):
         logger.info("初始化探索脚本")
 
         self.ocr = YysOCR()
+        self.image_finder = ImageFinder(self.hwnd)
         # 没找到怪次数
         self._on_tansuo_count = 0
 
         self._register_image_match_event(ImageMatchConfig("images/tansuo_boss_tiaozhan.bmp"),
-                                         self._on_event_bg_left_click)
+                                         self.bg_left_click)
         self._register_image_match_event(ImageMatchConfig("images/tansuo_tiaozhan.bmp"),
-                                         self._on_event_bg_left_click)
+                                         self.bg_left_click)
         self._register_image_match_event(ImageMatchConfig("images/tansuo_boss_success_reward.bmp"),
                                          self._on_tansuo_boss_success_reward)
         self._register_image_match_event(ImageMatchConfig("images/tansuo_bao_xiang.bmp"),
@@ -24,11 +25,11 @@ class AutoTanSuoEventScript(YYSAutoEventScript):
         self._register_image_match_event(ImageMatchConfig("images/tansuo_bao_xiang_2.bmp"),
                                          self._on_tansuo_bao_xiang)
         self._register_image_match_event(ImageMatchConfig("images/tansuo_kunnan.bmp"),
-                                         self._on_event_bg_left_click)
+                                         self.bg_left_click)
         self._register_image_match_event(ImageMatchConfig("images/tansuo_tansuo.bmp"),
                                          self._on_tansuo_entering)
         self._register_image_match_event(ImageMatchConfig("images/tansuo_28.bmp"),
-                                         self._on_event_bg_left_click)
+                                         self.bg_left_click)
         self._register_image_match_event(ImageMatchConfig("images/tansuo_she_zhi.bmp"),
                                          self._on_tansuo_idle)
 
@@ -54,7 +55,7 @@ class AutoTanSuoEventScript(YYSAutoEventScript):
         bg_left_click_with_range(self.hwnd, point)
 
     def _on_tansuo_entering(self, point):
-        self._on_event_bg_left_click(point)
+        self.bg_left_click(point)
         time.sleep(0.5)
         self._update_screenshot_cache()
         if self.ocr.get_common_ocr().contains_text(self.screenshot_cache, "己达本日上限"):

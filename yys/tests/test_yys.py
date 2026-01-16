@@ -15,11 +15,13 @@ class TestYYS(unittest.TestCase):
     def test_ocr(self):
         start = int(time.time() * 1000)
         while True:
-            img = capture_window_region(self.hwnd, 260, 119, 858, 285)
+            # img = capture_window_region(self.hwnd, 260, 119, 858, 285)
+            img = cv2.imread("images/debug/source/test.bmp")
             result = self.yys_ocr.ocr(img)
             print(int(time.time() * 1000) - start)
             print(result)
             time.sleep(1)
+            break
 
     def test_yuhun(self):
         while True:

@@ -18,6 +18,9 @@ from loguru import logger
 import config
 from typing import List
 
+# 导入win_util.image以使用新实现
+from win_util.image import ImageFinder
+
 m = mss.mss()
 # 创建调试目录
 debug_img_base_dir = Path("images/debug")
@@ -171,18 +174,13 @@ def find_pic(x0, y0, x1, y1, small_picture_path, similarity=0.8):
 
 
 def bg_find_pic_with_timeout(hwnd, small_picture_path, timeout=5, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        point = bg_find_pic(hwnd, small_picture_path, x0, y0, x1, y1, similarity)
-        if point is not None and point[0] != -1 and point[1] != -1:
-            return point
-        time.sleep(0.2)
-    return (-1, -1)
+    finder = ImageFinder(hwnd)
+    return finder.bg_find_pic_with_timeout(small_picture_path, timeout, x0, y0, x1, y1, similarity)
 
 
 def bg_find_pic(hwnd, small_picture_path, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8):
     """
-    在指定窗口的客户区范围内查找小图片（增强调试功能）
+    在指定窗口的客户区范围内查找小图片（增强调试功能，基于灰度和颜色特征）
 
     参数:
         hwnd: 目标窗口句柄
@@ -195,47 +193,9 @@ def bg_find_pic(hwnd, small_picture_path, x0=0, y0=0, x1=99999, y1=99999, simila
         成功时返回 (匹配中心x, 匹配中心y)
         失败时返回 (-1, -1)
     """
-    if not os.path.exists(small_picture_path):
-        raise FileNotFoundError(f"模板图片不存在: {small_picture_path}")
-
-    # 获取窗口区域图像
-    search_img = capture_window_region(hwnd, x0, y0, x1, y1)
-
-    # 读取模板图片
-    template = cv2.imread(small_picture_path)
-    if template is None:
-        raise ValueError(f"无法读取模板图片: {small_picture_path}")
-
-    # 模板匹配
-    result = cv2.matchTemplate(search_img, template, cv2.TM_CCOEFF_NORMED)
-    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-
-    # 计算中心坐标（相对于客户区）
-    h, w = template.shape[:2]
-    center_x = x0 + max_loc[0] + w // 2
-    center_y = y0 + max_loc[1] + h // 2
-
-    match = max_val >= similarity
-
-    template_name = Path(small_picture_path).stem
-
-    debug_val_threshold = 0.6
-    # 调试模式处理
-    if config.DEBUG and max_val >= debug_val_threshold:
-        write_debug_img(center_x, center_y, h, match, max_loc, max_val, search_img, similarity, template_name, w)
-
-    # 返回结果
-    if match:
-        if config.DEBUG:
-            logger.debug(
-            f"[{hwnd}]匹配成功: {template_name} | 位置: ({center_x}, {center_y}) | 相似度: {max_val:.4f} | 阈值: {similarity}")
-        return center_x, center_y
-
-    if max_val >= debug_val_threshold:
-        if config.DEBUG:
-            logger.debug(
-                f"[{hwnd}]匹配失败: {template_name} | 位置: ({center_x}, {center_y}) | 相似度: {max_val:.4f} | 阈值: {similarity}")
-    return -1, -1
+    # 使用新的ImageFinder实现
+    finder = ImageFinder(hwnd)
+    return finder.bg_find_pic(small_picture_path, x0, y0, x1, y1, similarity)
 
 
 def write_debug_img(center_x, center_y, h, match, max_loc, max_val, search_img, similarity, template_name, w):
@@ -319,51 +279,60 @@ def bg_find_pic_by_config(screenshot, image_match_config: ImageMatchConfig):
     return (-1, -1), None
 
 
-def bg_find_pic_in_screenshot(screenshot, small_picture_path, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8):
-    """
-    在缓存的截图中查找图片
-    """
+def bg_find_pic_in_screenshot(
+    screenshot,
+    small_picture_path,
+    x0=0, y0=0, x1=99999, y1=99999,
+    similarity=0.8
+):
     if screenshot is None:
         return -1, -1
 
-    if not os.path.exists(small_picture_path):
-        raise FileNotFoundError(f"模板图片不存在: {small_picture_path}")
-
-    # 裁剪搜索区域
-    search_img = screenshot
-    if x0 > 0 or y0 > 0 or x1 < 99999 or y1 < 99999:
-        h, w = search_img.shape[:2]
-        x1 = min(x1, w)
-        y1 = min(y1, h)
-        search_img = search_img[y0:y1, x0:x1]
-
-    # 读取模板图片
     template = cv2.imread(small_picture_path)
     if template is None:
-        raise ValueError(f"无法读取模板图片: {small_picture_path}")
+        return -1, -1
 
-    # 模板匹配
-    result = cv2.matchTemplate(search_img, template, cv2.TM_CCOEFF_NORMED)
-    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+    search_img = screenshot
+    if x0 or y0 or x1 < 99999 or y1 < 99999:
+        h_img, w_img = search_img.shape[:2]
+        x1 = min(x1, w_img)
+        y1 = min(y1, h_img)
+        search_img = search_img[y0:y1, x0:x1]
 
-    # 计算中心坐标
+    # ---------- 灰度结构匹配 ----------
+    search_gray = cv2.cvtColor(search_img, cv2.COLOR_BGR2GRAY)
+    template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+
+    result = cv2.matchTemplate(
+        search_gray,
+        template_gray,
+        cv2.TM_CCOEFF_NORMED
+    )
+    _, gray_score, _, max_loc = cv2.minMaxLoc(result)
+
     h, w = template.shape[:2]
-    center_x = x0 + max_loc[0] + w // 2
-    center_y = y0 + max_loc[1] + h // 2
+    x = x0 + max_loc[0]
+    y = y0 + max_loc[1]
+    roi = screenshot[y:y+h, x:x+w]
+    if roi.size == 0:
+        return -1, -1
 
-    template_name = Path(small_picture_path).stem
-    match = max_val >= similarity
-    # 调试模式处理
-    if config.DEBUG and max_val >= 0.6:
-        write_debug_img(center_x, center_y, h, match, max_loc, max_val, search_img, similarity, template_name, w)
+    # ---------- 颜色相似度 ----------
+    tpl_hsv = cv2.cvtColor(template, cv2.COLOR_BGR2HSV)
+    roi_hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
 
-    if match:
-        if config.DEBUG:
-            logger.debug(
-                f"在截图中找到图片: {small_picture_path} | 位置: ({center_x}, {center_y}) | 相似度: {max_val:.4f}")
-        return center_x, center_y
+    color_diff = np.linalg.norm(
+        tpl_hsv.mean(axis=(0, 1)) - roi_hsv.mean(axis=(0, 1))
+    )
+    color_score = max(0.0, 1.0 - color_diff / 180.0)
 
-    return -1, -1
+    # ---------- 合成相似度 ----------
+    final_score = 0.7 * gray_score + 0.3 * color_score
+
+    if final_score < similarity:
+        return -1, -1
+
+    return x + w // 2, y + h // 2
 
 
 def capture_window_region(hwnd, x0=0, y0=0, x1=99999, y1=99999):

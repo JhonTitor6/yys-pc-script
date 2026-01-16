@@ -10,6 +10,8 @@ end_script = Event("end_script")
 """
 事件驱动
 """
+
+
 class YYSAutoEventScript(AutoImageEventScript):
     def __init__(self, script_name):
         super().__init__()
@@ -33,17 +35,18 @@ class YYSAutoEventScript(AutoImageEventScript):
         self._max_battle_count = 0
 
         self._register_image_match_event(ImageMatchConfig("images/battle_end.bmp"), self._on_zhan_dou_wan_cheng_victory)
-        self._register_image_match_event(ImageMatchConfig("images/battle_end_1.bmp"), self._on_zhan_dou_wan_cheng)
-        self._register_image_match_event(ImageMatchConfig("images/xuanshangfengyin_accept.bmp"), self._on_event_bg_left_click)
+        self._register_image_match_event(ImageMatchConfig(["images/battle_end_loss.bmp"]), self._on_zhan_dou_wan_cheng)
+        self._register_image_match_event(ImageMatchConfig(["images/battle_end_1.bmp", "images/battle_end_2.bmp"]),
+                                         self._on_zhan_dou_wan_cheng)
+        self._register_image_match_event(ImageMatchConfig("images/xuanshangfengyin_accept.bmp"), self.bg_left_click)
+        # 注册ocr事件
+        self._register_ocr_match_event("点击屏幕继续", self._on_ocr_click_screen_continue)
 
-    def find_window(self) -> str:
+    def _find_window(self) -> str:
         return find_window()
 
-    def _on_event_bg_left_click(self, point, x_range=20, y_range=20):
-        bg_left_click_with_range(self.hwnd, point, x_range=x_range, y_range=y_range)
-
     def _on_zhan_dou_wan_cheng_victory(self, point):
-        self._on_event_bg_left_click(point)
+        self.bg_left_click(point)
         self._cur_battle_victory_count += 1
 
     def _on_zhan_dou_wan_cheng(self, point):
@@ -58,15 +61,19 @@ class YYSAutoEventScript(AutoImageEventScript):
         logger.success(
             f"战斗完成，已战斗{self._cur_battle_count}/{self._max_battle_count}次，胜利{self._cur_battle_victory_count}次")
 
+    def _on_ocr_click_screen_continue(self, ocr_result):
+        logger.debug(ocr_result)
+        self.bg_left_click((567, 460))
+
     def run(self):
-        self._max_battle_count = get_max_battle_count()
+        self._max_battle_count = input_max_battle_count()
         logger.info(f"开始执行{self.script_name}，计划完成{self._max_battle_count}次战斗")
         while True:
             if not self.running:
                 self._event_manager.trigger_event(end_script)
                 break
             self._update_screenshot_cache()
-            self._handle_event_from_screenshot_cache()
+            self._trigger_event_from_screenshot_cache()
             random_sleep(0.2, 0.5)
             if self._cur_battle_count >= self._max_battle_count:
                 self.running = False

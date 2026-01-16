@@ -23,7 +23,7 @@ def click_tancha():
 
 
 def main():
-    max_battle_count = get_max_battle_count()
+    max_battle_count = input_max_battle_count()
     cur_battle_count = 0
     while cur_battle_count < max_battle_count:
         click_tancha()

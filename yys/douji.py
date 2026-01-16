@@ -17,8 +17,8 @@ class DouJi(YYSAutoEventScript):
         self._has_clicked_tianzhao = False
 
         self._register_image_match_event(ImageMatchConfig("images/douji_zhan.bmp"), self._on_douji_zhan)
-        self._register_image_match_event(ImageMatchConfig("images/change_to_auto_battle.bmp"), self._on_event_bg_left_click)
-        self._register_image_match_event(ImageMatchConfig("images/douji_selection_auto_up.bmp", similarity=0.7), self._on_event_bg_left_click)
+        self._register_image_match_event(ImageMatchConfig("images/change_to_auto_battle.bmp"), self.bg_left_click)
+        self._register_image_match_event(ImageMatchConfig("images/douji_selection_auto_up.bmp", similarity=0.7), self.bg_left_click)
         self._register_image_match_event(ImageMatchConfig(["images/battle_tianzhao.bmp", "images/battle_tianzhao2.bmp", "images/battle_tianzhao3.bmp"], y0=262, similarity=0.75), self._on_battle_tianzhao)
         self._register_image_match_event(ImageMatchConfig("images/douji_battle_end.bmp"), self._on_zhan_dou_wan_cheng)
         self._register_image_match_event(ImageMatchConfig("images/battle_end_loss.bmp"), self._on_battle_end_loss)
@@ -37,13 +37,13 @@ class DouJi(YYSAutoEventScript):
 
 
     def _on_battle_end_loss(self, point):
-        super()._on_event_bg_left_click(point)
+        super().bg_left_click(point)
         self._cur_battle_count += 1
         super().log_battle_count()
 
 
     def _on_douji_zhan(self, point):
-        super()._on_event_bg_left_click(point)
+        super().bg_left_click(point)
         self._has_clicked_tianzhao = False
 
     def _on_battle_tianzhao(self, point):
@@ -51,7 +51,7 @@ class DouJi(YYSAutoEventScript):
         if not self._has_clicked_tianzhao:
             time.sleep(2)
             logger.info("点击标记天照")
-            super()._on_event_bg_left_click(point, x_range=2, y_range=2)
+            super().bg_left_click(point, x_range=2, y_range=2)
             self._has_clicked_tianzhao = True
 
 

@@ -10,7 +10,7 @@ class Auto999(YYSAutoEventScript):
         super().__init__("999")
         self.next_need_sleep_count = random.randint(50, 80)
 
-        self._register_image_match_event(ImageMatchConfig("images/999_tiaozhan.bmp"), self._on_event_bg_left_click)
+        self._register_image_match_event(ImageMatchConfig("images/999_tiaozhan.bmp"), self.bg_left_click)
         self._register_image_match_event(ImageMatchConfig(["images/battle_end.bmp", "images/999_battle_end.bmp"]), self._on_zhan_dou_wan_cheng)
 
     def _on_zhan_dou_wan_cheng(self, point):

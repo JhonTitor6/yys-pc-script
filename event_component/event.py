@@ -101,8 +101,8 @@ class AutoImageEventScript(ABC):
                 self._event_manager.trigger_event(image_path, point)
                 return
         # ocr
+        ocr_result = self.yys_ocr.ocr(self.screenshot_cache)
         for keyword in self._ocr_event_keywords:
-            ocr_result = self.yys_ocr.ocr(self.screenshot_cache)
             if keyword in ocr_result:
                 self._event_manager.trigger_event(keyword, ocr_result)
                 return

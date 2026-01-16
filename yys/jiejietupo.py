@@ -43,10 +43,10 @@ class JieJieTuPo(YYSAutoEventScript):
         if self.quit_3_times_flag and self._cur_battle_count % 9 == 0:
             # 点击进攻后，稍等片刻再执行退出逻辑
             self.bg_left_click(point, x_range=20, y_range=20)
-            time.sleep(10)  # 等待战斗开始
             self.quit_3_times()
         else:
             self.bg_left_click(point, x_range=20, y_range=20)
+            time.sleep(10)  # 等待战斗开始
 
     def _on_zhan_dou_wan_cheng(self, point):
         super()._on_zhan_dou_wan_cheng(point)

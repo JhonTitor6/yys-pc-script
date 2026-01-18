@@ -1,8 +1,8 @@
 import time
 
 from my_mouse import bg_left_click_with_range
-from win_util.image import ImageMatchConfig
 from win_util.image import ImageFinder
+from win_util.image import ImageMatchConfig
 from win_util.keyboard import bg_press_key
 from yys.common_util import logger, bg_find_pic, random_sleep, try_handle_battle_end, try_bg_click_pic_with_timeout
 from yys.event_script_base import YYSBaseScript
@@ -10,6 +10,8 @@ from yys.event_script_base import YYSBaseScript
 """
 结界突破脚本，使用事件驱动模式
 """
+
+
 class JieJieTuPoScript(YYSBaseScript):
     def __init__(self):
         super(JieJieTuPoScript, self).__init__(
@@ -18,35 +20,69 @@ class JieJieTuPoScript(YYSBaseScript):
 
         # TODO: 加个config类
         self.quit_3_times_config = True
-        self.image_finder = ImageFinder(self.hwnd)
+        self.image_finder: ImageFinder = ImageFinder(self.hwnd)
+        self.jiejie_list = []
 
         # 注册借借突破特定的图像匹配事件
-        self._register_image_match_event(ImageMatchConfig("images/jiejietupo_not_enough.bmp", similarity=0.9), self._on_jiejietupo_not_enough)
+        self._register_image_match_event(ImageMatchConfig("images/jiejietupo_not_enough.bmp", similarity=0.9),
+                                         self._on_jiejietupo_not_enough)
         # 注册挑战相关的事件
         self._register_image_match_event(ImageMatchConfig("images/jiejietupo_jingong.bmp"), self._on_jiejietupo_jingong)
-        self._register_image_match_event(ImageMatchConfig("images/jiejietupo_user_jiejie.bmp"), self._on_jiejietupo_user_jiejie)
+        self._register_image_match_event(ImageMatchConfig("images/jiejietupo_user_jiejie.bmp"),
+                                         self._on_jiejietupo_user_jiejie)
+        # 检测是不是没有可以挑战的了
+        self._register_image_match_event(ImageMatchConfig("images/scene/barrier_breakthrough.bmp"),
+                                         self.on_scene_barrier_breakthrough)
 
     def _on_jiejietupo_not_enough(self, point):
         """处理借借突破券不足事件"""
         self._max_battle_count = self._cur_battle_count
         logger.info(f"没突破券了")
-        # 停止脚本运行
-        self.running = False
 
     def _on_jiejietupo_user_jiejie(self, point):
         """处理借借突破用户头像点击"""
+        self.jiejie_list = self.get_all_attackable_barrier()
         self.bg_left_click(point, x_range=5, y_range=5)
         random_sleep(1, 1.3)
 
+    def get_all_attackable_barrier(self):
+        """获取所有可以打的结界"""
+        POSITION_1 = 125, 120, 425, 245
+
+        x0_1, y0_1, x1_1, y1_1 = POSITION_1
+
+        col_offset_x = 300
+        row_offset_y = 120
+
+        all_jiejie = []
+        for row in range(3):
+            for col in range(3):
+                x0 = x0_1 + col * col_offset_x
+                y0 = y0_1 + row * row_offset_y
+                x1 = x1_1 + col * col_offset_x
+                y1 = y1_1 + row * row_offset_y
+
+                point = self.image_finder.bg_find_pic_by_cache(
+                    "images/jiejietupo_user_jiejie.bmp",
+                    x0=x0, y0=y0, x1=x1, y1=y1
+                )
+                logger.debug(f"第{row + 1}行第{col + 1}列的结界: ({x0}, {y0}, {x1}, {y1}) 坐标: {point}")
+                if point is not None and point != (-1, -1):
+                    all_jiejie.append(point)
+
+        logger.info(f"找到{len(all_jiejie)}个结界")
+        return all_jiejie
+
     def _on_jiejietupo_jingong(self, point):
         """处理进攻按钮点击"""
-        if self.quit_3_times_config and self._cur_battle_count % 9 == 0:
-            # 点击进攻后，稍等片刻再执行退出逻辑
-            self.bg_left_click(point, x_range=20, y_range=20)
-            self.quit_3_times()
-        else:
+        if not self.quit_3_times_config:
             self.bg_left_click(point, x_range=20, y_range=20)
             time.sleep(10)  # 等待战斗开始
+        # 点击进攻后，稍等片刻再执行退出逻辑
+        self.bg_left_click(point, x_range=20, y_range=20)
+        # 打第一个结界时先退 3 次
+        if len(self.jiejie_list) == 9:
+            self.quit_3_times()
 
     def _on_zhan_dou_wan_cheng(self, point):
         super()._on_zhan_dou_wan_cheng(point)
@@ -75,10 +111,39 @@ class JieJieTuPoScript(YYSBaseScript):
             random_sleep(2.5, 3)
         logger.info("完成退3次")
 
+    def on_scene_barrier_breakthrough(self, point):
+        self.refresh_if_no_attackable_barrier()
+
+    def refresh_if_no_attackable_barrier(self):
+        """检查是否有未打的结界"""
+        jiejie_list = self.image_finder.bg_find_pic_all_by_cache("images/jiejietupo_user_jiejie.bmp")
+        if len(jiejie_list) > 0:
+            return
+
+        logger.info("没有可以打的结界了，准备刷新")
+        refresh_button_pos = self.ocr.find_text_position(self.image_finder.screenshot_cache, "刷新")
+        if not refresh_button_pos:
+            logger.warning("未找到刷新按钮")
+            return
+
+        logger.info(f"找到刷新按钮位置: {refresh_button_pos}")
+        self.bg_left_click(refresh_button_pos, x_range=10, y_range=10)
+        random_sleep(1, 1.5)
+
+        self.image_finder.update_screenshot_cache()
+        confirm_button_pos = self.ocr.find_text_position(self.image_finder.screenshot_cache, "确定")
+        if not confirm_button_pos:
+            logger.warning("未找到确定按钮")
+            return
+
+        logger.info(f"找到确定按钮位置: {confirm_button_pos}")
+        self.bg_left_click(confirm_button_pos, x_range=10, y_range=10)
+        random_sleep(1, 1.5)
+        logger.info("刷新完成")
+
     def on_run(self):
         super().on_run()
         self.scene_manager.goto_scene("barrier_breakthrough")
-
 
 
 if __name__ == '__main__':

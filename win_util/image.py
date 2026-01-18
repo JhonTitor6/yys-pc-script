@@ -163,18 +163,21 @@ class ImageFinder:
         """直接截图匹配图片"""
         return self.bg_find_pic(self.screenshot_cache, small_picture_path, x0, y0, x1, y1, similarity)
 
-    # TODO: 增加返回所有匹配结果的方法
-    def bg_find_pic(self, screenshot: Optional[Any], small_img_path, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8) -> Tuple[int, int]:
+    def bg_find_pic_all_by_cache(self, small_picture_path, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8) -> List[Tuple[int, int, float]]:
+        """直接截图匹配图片，返回所有匹配结果"""
+        return self.bg_find_pic_all(self.screenshot_cache, small_picture_path, x0, y0, x1, y1, similarity)
+
+    def bg_find_pic_all(self, screenshot: Optional[Any], small_img_path, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8) -> List[Tuple[int, int, float]]:
         """
-        在给定截图中匹配图片（增强版，支持灰度和颜色特征）
-        :return (x, y)
+        在给定截图中匹配图片，返回所有大于相似度阈值的结果（按相似度降序排序）
+        :return List[Tuple[x, y, similarity]]
         """
         if screenshot is None:
-            return -1, -1
+            return []
 
         small_img = cv2.imread(small_img_path)
         if small_img is None:
-            return -1, -1
+            return []
 
         big_img = screenshot
         if x0 or y0 or x1 < 99999 or y1 < 99999:
@@ -192,48 +195,78 @@ class ImageFinder:
             small_gray,
             cv2.TM_CCOEFF_NORMED
         )
-        _, gray_score, _, max_loc = cv2.minMaxLoc(result)
 
         h, w = small_img.shape[:2]
-        x = x0 + max_loc[0]
-        y = y0 + max_loc[1]
-        roi = screenshot[y:y+h, x:x+w]
-        if roi.size == 0:
+        matches = []
+
+        # 找到所有大于阈值的匹配位置
+        loc = np.where(result >= similarity)
+        for pt in zip(*loc[::-1]):
+            x = x0 + pt[0]
+            y = y0 + pt[1]
+            roi = screenshot[y:y+h, x:x+w]
+            if roi.size == 0:
+                continue
+
+            # ---------- 颜色相似度 ----------
+            tpl_hsv = cv2.cvtColor(small_img, cv2.COLOR_BGR2HSV)
+            roi_hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+
+            color_diff = np.linalg.norm(
+                tpl_hsv.mean(axis=(0, 1)) - roi_hsv.mean(axis=(0, 1))
+            )
+            color_score = max(0.0, 1.0 - color_diff / 180.0)
+
+            # ---------- 合成相似度 ----------
+            gray_score = result[pt[1], pt[0]]
+            final_score = 0.7 * gray_score + 0.3 * color_score
+
+            if final_score >= similarity:
+                center_x = x + w // 2
+                center_y = y + h // 2
+                matches.append((center_x, center_y, final_score))
+
+        # 按相似度降序排序
+        matches.sort(key=lambda m: m[2], reverse=True)
+
+        return matches
+
+    def bg_find_pic(self, screenshot: Optional[Any], small_img_path, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8) -> Tuple[int, int]:
+        """
+        在给定截图中匹配图片（增强版，支持灰度和颜色特征）
+        :return (x, y)
+        """
+        matches = self.bg_find_pic_all(screenshot, small_img_path, x0, y0, x1, y1, similarity)
+        
+        if not matches:
             return -1, -1
-
-        # ---------- 颜色相似度 ----------
-        tpl_hsv = cv2.cvtColor(small_img, cv2.COLOR_BGR2HSV)
-        roi_hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-
-        color_diff = np.linalg.norm(
-            tpl_hsv.mean(axis=(0, 1)) - roi_hsv.mean(axis=(0, 1))
-        )
-        color_score = max(0.0, 1.0 - color_diff / 180.0)
-
-        # ---------- 合成相似度 ----------
-        final_score = 0.7 * gray_score + 0.3 * color_score
-
-        if final_score < similarity:
-            return -1, -1
-
-        center_x = x + w // 2
-        center_y = y + h // 2
-
+        
+        center_x, center_y, final_score = matches[0]
+        
         # 调试模式保存图片
         if self.screenshot_capture.save_source_img and final_score >= 0.6:
-            small_img_name = Path(small_img_path).stem
-            small_img_dir = debug_img_base_dir / small_img_name
-            small_img_dir.mkdir(parents=True, exist_ok=True)
-            debug_img = big_img.copy()
-            cv2.rectangle(debug_img, max_loc, (max_loc[0] + w, max_loc[1] + h), (0, 255, 0), 1)
-            match_text = f"{final_score:.2f}/{similarity}@({center_x},{center_y})"
-            cv2.putText(debug_img, match_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
-            cv2.imwrite(str(small_img_dir / f"{final_score >= similarity}_result.png"), debug_img)
-
-        if final_score >= similarity:
-            logger.debug(f"匹配成功: {Path(small_img_path).stem} | 位置: ({center_x},{center_y}) | 相似度: {final_score:.4f}")
-            return center_x, center_y
-        return -1, -1
+            small_img = cv2.imread(small_img_path)
+            if small_img is not None:
+                h, w = small_img.shape[:2]
+                big_img = screenshot
+                if x0 or y0 or x1 < 99999 or y1 < 99999:
+                    h_img, w_img = big_img.shape[:2]
+                    x1 = min(x1, w_img)
+                    y1 = min(y1, h_img)
+                    big_img = big_img[y0:y1, x0:x1]
+                
+                small_img_name = Path(small_img_path).stem
+                small_img_dir = debug_img_base_dir / small_img_name
+                small_img_dir.mkdir(parents=True, exist_ok=True)
+                debug_img = big_img.copy()
+                cv2.rectangle(debug_img, (center_x - w//2 - x0, center_y - h//2 - y0), 
+                             (center_x - w//2 - x0 + w, center_y - h//2 - y0 + h), (0, 255, 0), 1)
+                match_text = f"{final_score:.2f}/{similarity}@({center_x},{center_y})"
+                cv2.putText(debug_img, match_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+                cv2.imwrite(str(small_img_dir / f"{final_score >= similarity}_result.png"), debug_img)
+        
+        logger.debug(f"匹配成功: {Path(small_img_path).stem} | 位置: ({center_x},{center_y}) | 相似度: {final_score:.4f}")
+        return center_x, center_y
 
     def bg_find_pic_with_timeout(self, small_picture_path, timeout=5, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8):
         """带超时的图片查找"""
@@ -246,8 +279,6 @@ class ImageFinder:
         return (-1, -1)
 
     def bg_find_pic_by_config(self, image_match_config: ImageMatchConfig) -> tuple:
-        # 由于ImageFinder构造函数需要hwnd，我们创建一个临时实例并调用静态方法
-        # 但这里我们直接使用静态方法
         for target_image_path in image_match_config.target_image_path_list:
             point = self.bg_find_pic_by_cache(target_image_path, image_match_config.x0,
                                      image_match_config.y0,

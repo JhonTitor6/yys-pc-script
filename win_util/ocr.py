@@ -97,7 +97,7 @@ class CommonOcr:
 
         return False
 
-    def find_text_position(self, img, target_text, case_sensitive=False):
+    def find_text_boxes(self, img, target_text, similarity_threshold=0.8, case_sensitive=False):
         """
         查找目标文本在图像中的位置
 
@@ -107,20 +107,68 @@ class CommonOcr:
             case_sensitive: 是否区分大小写，默认False
 
         Returns:
-            list: 包含目标文本的位置信息列表，格式为 [(box, text, conf), ...]
+            list: 包含目标文本的位置信息列表，格式为 [(box, text, similarity), ...]
         """
         ocr_results = self.ocr(img)
 
         found_positions = []
 
-        for box, text, conf in ocr_results:
+        compare_target = target_text if case_sensitive else target_text.lower()
+        for box, text, similarity in ocr_results:
             compare_text = text if case_sensitive else text.lower()
-            compare_target = target_text if case_sensitive else target_text.lower()
 
-            if compare_target in compare_text:
-                found_positions.append((box, text, conf))
+            if compare_target in compare_text and similarity >= similarity_threshold:
+                found_positions.append((box, text, similarity))
 
         return found_positions
+
+    def find_text_positions(self, img, target_text, similarity_threshold=0.8, case_sensitive=False):
+        """
+        查找目标文本在图像中的位置，返回所有匹配的文本位置
+
+        Args:
+            img: 输入图像
+            target_text: 目标文本
+            similarity_threshold: 相似度阈值，默认0.8
+            case_sensitive: 是否区分大小写，默认False
+
+        Returns:
+            list: 匹配的文本位置列表，格式为 [(x, y, similarity), ...]
+        """
+        text_boxes = self.find_text_boxes(img, target_text, similarity_threshold, case_sensitive)
+        positions = []
+        for box, text, similarity in text_boxes:
+            # 计算box的中心坐标
+            center_x = int((box[0][0] + box[2][0]) / 2)
+            center_y = int((box[0][1] + box[2][1]) / 2)
+            positions.append((center_x, center_y, similarity))
+        return positions
+
+    def find_text_position(self, img, target_text, similarity_threshold=0.8, case_sensitive=False):
+        """
+        查找目标文本在图像中的位置，返回第一个匹配的文本位置
+
+        Args:
+            img: 输入图像
+            target_text: 目标文本
+            case_sensitive: 是否区分大小写，默认False
+
+        Returns:
+            tuple: 目标文本的位置信息，格式为 (x, y)
+        """
+        text_boxes = self.find_text_boxes(img, target_text, similarity_threshold, case_sensitive)
+        if not text_boxes:
+            return None
+
+        # 找到匹配度最高的结果
+        best_match = max(text_boxes, key=lambda x: x[2])  # 根据相似度排序
+        best_box, best_text, best_similarity = best_match
+
+        # 计算box的中心坐标
+        center_x = int((best_box[0][0] + best_box[2][0]) / 2)
+        center_y = int((best_box[0][1] + best_box[2][1]) / 2)
+
+        return (center_x, center_y, best_similarity)
 
     def set_reader(self, reader: easyocr.Reader):
         self.reader = reader

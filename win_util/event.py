@@ -4,9 +4,9 @@ from abc import abstractmethod, ABC
 
 from loguru import logger
 
-from my_mouse import bg_left_click_with_range
 from win_util.image import ImageFinder, ImageMatchConfig
 from win_util.ocr import CommonOcr
+from .mouse import bg_left_click_with_range
 
 
 class Event:

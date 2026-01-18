@@ -3,10 +3,11 @@ import os
 import sys
 import time
 
-from my_mouse import bg_left_click_with_range
 from win_util.event import EventBaseScript, Event
 from win_util.image import ImageFinder
 from win_util.image import ImageMatchConfig
+from win_util.keyboard import KeyboardController
+from win_util.mouse import bg_left_click_with_range, MouseController
 from yys.common_util import find_window, random_sleep
 from .scene_manager import SceneManager, SceneDetectionResult
 
@@ -50,6 +51,8 @@ class YYSBaseScript(EventBaseScript):
         self._cur_battle_victory_count = 0
         self._max_battle_count = 203
 
+        self.mouse = MouseController(self.hwnd)
+        self.keyboard = KeyboardController(self.hwnd)
         self.logger.info("初始化图片匹配中...")
         self.image_finder: ImageFinder = ImageFinder(self.hwnd)
         self.logger.info("初始化图片匹配完成")

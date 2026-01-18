@@ -1,9 +1,8 @@
 import time
 
-from my_mouse import bg_left_click_with_range
 from win_util.image import ImageFinder
 from win_util.image import ImageMatchConfig
-from win_util.keyboard import bg_press_key
+from win_util.mouse import bg_left_click_with_range
 from yys.common_util import logger, bg_find_pic, random_sleep, try_handle_battle_end, try_bg_click_pic_with_timeout
 from yys.event_script_base import YYSBaseScript
 
@@ -70,7 +69,7 @@ class JieJieTuPoScript(YYSBaseScript):
                 if point is not None and point != (-1, -1):
                     all_jiejie.append(point)
 
-        logger.info(f"找到{len(all_jiejie)}个结界")
+        logger.debug(f"找到{len(all_jiejie)}个结界")
         return all_jiejie
 
     def _on_jiejietupo_jingong(self, point):
@@ -94,9 +93,9 @@ class JieJieTuPoScript(YYSBaseScript):
         time.sleep(3)
         for i in range(0, 3):
             logger.info(f"退出第{i + 1}次")
-            bg_press_key(self.hwnd, 'ESC')
+            self.keyboard.bg_press_key('ESC')
             random_sleep(0.05, 0.2)
-            bg_press_key(self.hwnd, 'ENTER')
+            self.keyboard.bg_press_key('ENTER')
             random_sleep(2, 3)
             logger.info(f"准备点击【再次挑战】")
             try_bg_click_pic_with_timeout(self.hwnd, "images/jiejietupo_zai_ci_tiao_zhan.bmp", timeout=5)

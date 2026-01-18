@@ -4,8 +4,8 @@ import time
 import win32gui
 from loguru import logger
 
-from my_mouse import bg_left_click_with_range
 from win_util.image import ImageFinder
+from win_util.mouse import bg_left_click_with_range
 
 
 # TODO: 重构并删除common_util

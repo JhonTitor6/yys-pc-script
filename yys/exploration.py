@@ -1,7 +1,7 @@
 import random
 import time
 
-from my_mouse import bg_left_click, bg_left_click_with_range
+from win_util.mouse import bg_left_click, bg_left_click_with_range
 from yys.common_util import logger, random_sleep
 from yys.event_script_base import YYSBaseScript, ImageMatchConfig
 
@@ -56,7 +56,7 @@ class ExplorationScript(YYSBaseScript):
         bg_left_click_with_range(self.hwnd, point)
 
     def _on_tansuo_entering(self, point):
-        self.bg_left_click(point)
+        self.mouse.bg_left_click(point)
         time.sleep(0.5)
         self.image_finder.update_screenshot_cache()
         if self.ocr.contains_text(self.screenshot_cache, "己达本日上限"):
@@ -67,7 +67,7 @@ class ExplorationScript(YYSBaseScript):
         if self.idle_count >= 3:
             self.idle_count = 0
             # 向右移动
-            bg_left_click(self.hwnd, random.randint(960, 1030), random.randint(450, 510))
+            self.mouse.bg_left_click(random.randint(960, 1030), random.randint(450, 510))
             logger.debug("没有找到挑战按钮，往右移动...")
             random_sleep(1, 3)
 

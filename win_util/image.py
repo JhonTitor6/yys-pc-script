@@ -10,8 +10,6 @@ import win32ui
 from PIL import ImageGrab
 from loguru import logger
 
-from rgb_hex import rgb2hex, hex2rgb
-
 debug_img_base_dir = Path("images/debug")
 
 
@@ -86,11 +84,11 @@ class ColorDetector:
         r = pixel & 0x0000ff
         g = (pixel & 0x00ff00) >> 8
         b = pixel >> 16
-        return rgb2hex((r, g, b)).upper()
+        return ColorDetector.rgb2hex((r, g, b)).upper()
 
     @staticmethod
     def find_color(x0: int, y0: int, x1: int, y1: int, color_hex: str) -> Tuple[int, int]:
-        color = hex2rgb(color_hex)
+        color = ColorDetector.hex2rgb(color_hex)
         img = np.array(ImageGrab.grab((x0, y0, x1, y1)))
         for i in range(img.shape[0]):
             for j in range(img.shape[1]):
@@ -114,12 +112,31 @@ class ColorDetector:
         actual_color = ColorDetector.bg_get_pixel_color(hwnd, x, y)
         if not actual_color:
             return False
-        expected_bgr = hex2rgb(expected_color_bgr)
-        actual_bgr = hex2rgb(actual_color)
+        expected_bgr = ColorDetector.hex2rgb(expected_color_bgr)
+        actual_bgr = ColorDetector.hex2rgb(actual_color)
         diff = sum((e - a) ** 2 for e, a in zip(expected_bgr, actual_bgr)) ** 0.5
         max_diff = (3 * (255 ** 2)) ** 0.5
         actual_similarity = 1 - (diff / max_diff)
         return actual_similarity >= similarity
+
+    @staticmethod
+    def rgb2hex(rgb_tuple):
+        """
+        将RGB元组转换为十六进制颜色字符串
+        :param rgb_tuple: (r, g, b)格式的元组
+        :return: 十六进制颜色字符串(不带#)
+        """
+        return '{:02X}{:02X}{:02X}'.format(*rgb_tuple)
+
+    @staticmethod
+    def hex2rgb(hex_str):
+        """
+        将十六进制颜色字符串转换为RGB元组
+        :param hex_str: 十六进制颜色字符串(带或不带#) BBGGRR
+        :return: (b, g, r)格式的元组
+        """
+        hex_str = hex_str.lstrip('#')
+        return tuple(int(hex_str[i:i + 2], 16) for i in (0, 2, 4))
 
 
 class ImageMatchConfig:

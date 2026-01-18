@@ -277,7 +277,7 @@ class SceneManager:
                 return False
             
             # 点击跳转按钮
-            from my_mouse import bg_left_click_with_range
+            from .mouse import bg_left_click_with_range
             bg_left_click_with_range(self.hwnd, button_pos, x_range=5, y_range=5)
             
             # 等待场景切换完成（可适当延时等待动画）

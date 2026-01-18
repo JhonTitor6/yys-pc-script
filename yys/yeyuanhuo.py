@@ -1,20 +1,18 @@
-from yys.common_util import *
+import random
+import time
+
 from loguru import logger
+
+from yys.common_util import find_window, bg_find_pic, bg_left_click_with_range, try_handle_battle_end
+from yys.log_manager import get_logger
 
 """
 业原火
 """
 
 hwnd = find_window()
-# 配置loguru日志
-logger.add(
-    "logs/yeyuanhuo/{time:YYYY-MM-DD}.log",  # 按日期分割日志文件
-    rotation="00:00",  # 每天午夜创建新日志
-    retention="7 days",  # 保留7天日志
-    encoding="utf-8",
-    level="DEBUG",
-    format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {message}"
-)
+# 获取日志记录器
+logger = get_logger("yeyuanhuo")
 
 
 def click_tiaozhan():
@@ -23,7 +21,7 @@ def click_tiaozhan():
 
 
 def main():
-    max_battle_count = input_max_battle_count()
+    max_battle_count = 100
     cur_battle_count = 0
     while cur_battle_count < max_battle_count:
         click_tiaozhan()
@@ -31,8 +29,6 @@ def main():
             cur_battle_count += 1
             logger.success(f"通关次数：{cur_battle_count}")
         time.sleep(random.randint(1, 3))
-
-    do_script_end()
 
 
 if __name__ == '__main__':

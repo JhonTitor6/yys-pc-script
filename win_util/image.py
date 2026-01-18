@@ -1,8 +1,7 @@
-import os
 import time
-from pathlib import Path
 from ctypes import windll
-from typing import List, Tuple, Union
+from pathlib import Path
+from typing import List, Tuple, Union, Any, Optional
 
 import cv2
 import numpy as np
@@ -11,8 +10,6 @@ import win32ui
 from PIL import ImageGrab
 from loguru import logger
 
-import my_mouse
-import config as config
 from rgb_hex import rgb2hex, hex2rgb
 
 debug_img_base_dir = Path("images/debug")
@@ -21,8 +18,9 @@ debug_img_base_dir = Path("images/debug")
 class ScreenCapture:
     """窗口截图和区域截图封装"""
 
-    def __init__(self, hwnd: int):
+    def __init__(self, hwnd: int, save_source_img=False):
         self.hwnd = hwnd
+        self.save_source_img = save_source_img
 
     def capture_window_region(self, x0=0, y0=0, x1=99999, y1=99999) -> np.ndarray:
         """捕获窗口指定区域"""
@@ -61,7 +59,7 @@ class ScreenCapture:
         img_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
         search_img = img_bgr[y0:y1, x0:x1]
 
-        if config.DEBUG:
+        if self.save_source_img:
             source_dir = debug_img_base_dir / "source"
             source_dir.mkdir(parents=True, exist_ok=True)
             timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -154,36 +152,49 @@ class ImageFinder:
 
     def __init__(self, hwnd: int):
         self.hwnd = hwnd
+        self.screenshot_capture = ScreenCapture(self.hwnd)
+        self.screenshot_cache = self.update_screenshot_cache()
 
-    @staticmethod
-    def bg_find_pic_in_screenshot(screenshot, small_picture_path, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8):
-        """在给定截图中匹配图片（增强版，支持灰度和颜色特征）"""
+    def update_screenshot_cache(self):
+        self.screenshot_cache = self.screenshot_capture.capture_window_region()
+        return self.screenshot_cache
+
+    def bg_find_pic_by_cache(self, small_picture_path, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8) -> Tuple[int, int]:
+        """直接截图匹配图片"""
+        return self.bg_find_pic(self.screenshot_cache, small_picture_path, x0, y0, x1, y1, similarity)
+
+    # TODO: 增加返回所有匹配结果的方法
+    def bg_find_pic(self, screenshot: Optional[Any], small_img_path, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8) -> Tuple[int, int]:
+        """
+        在给定截图中匹配图片（增强版，支持灰度和颜色特征）
+        :return (x, y)
+        """
         if screenshot is None:
             return -1, -1
 
-        template = cv2.imread(small_picture_path)
-        if template is None:
+        small_img = cv2.imread(small_img_path)
+        if small_img is None:
             return -1, -1
 
-        search_img = screenshot
+        big_img = screenshot
         if x0 or y0 or x1 < 99999 or y1 < 99999:
-            h_img, w_img = search_img.shape[:2]
+            h_img, w_img = big_img.shape[:2]
             x1 = min(x1, w_img)
             y1 = min(y1, h_img)
-            search_img = search_img[y0:y1, x0:x1]
+            big_img = big_img[y0:y1, x0:x1]
 
         # ---------- 灰度结构匹配 ----------
-        search_gray = cv2.cvtColor(search_img, cv2.COLOR_BGR2GRAY)
-        template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+        big_gray = cv2.cvtColor(big_img, cv2.COLOR_BGR2GRAY)
+        small_gray = cv2.cvtColor(small_img, cv2.COLOR_BGR2GRAY)
 
         result = cv2.matchTemplate(
-            search_gray,
-            template_gray,
+            big_gray,
+            small_gray,
             cv2.TM_CCOEFF_NORMED
         )
         _, gray_score, _, max_loc = cv2.minMaxLoc(result)
 
-        h, w = template.shape[:2]
+        h, w = small_img.shape[:2]
         x = x0 + max_loc[0]
         y = y0 + max_loc[1]
         roi = screenshot[y:y+h, x:x+w]
@@ -191,7 +202,7 @@ class ImageFinder:
             return -1, -1
 
         # ---------- 颜色相似度 ----------
-        tpl_hsv = cv2.cvtColor(template, cv2.COLOR_BGR2HSV)
+        tpl_hsv = cv2.cvtColor(small_img, cv2.COLOR_BGR2HSV)
         roi_hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
 
         color_diff = np.linalg.norm(
@@ -209,33 +220,39 @@ class ImageFinder:
         center_y = y + h // 2
 
         # 调试模式保存图片
-        if config.DEBUG and final_score >= 0.6:
-            template_name = Path(small_picture_path).stem
-            template_dir = debug_img_base_dir / template_name
-            template_dir.mkdir(parents=True, exist_ok=True)
-            debug_img = search_img.copy()
+        if self.screenshot_capture.save_source_img and final_score >= 0.6:
+            small_img_name = Path(small_img_path).stem
+            small_img_dir = debug_img_base_dir / small_img_name
+            small_img_dir.mkdir(parents=True, exist_ok=True)
+            debug_img = big_img.copy()
             cv2.rectangle(debug_img, max_loc, (max_loc[0] + w, max_loc[1] + h), (0, 255, 0), 1)
             match_text = f"{final_score:.2f}/{similarity}@({center_x},{center_y})"
             cv2.putText(debug_img, match_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
-            cv2.imwrite(str(template_dir / f"{final_score >= similarity}_result.png"), debug_img)
+            cv2.imwrite(str(small_img_dir / f"{final_score >= similarity}_result.png"), debug_img)
 
         if final_score >= similarity:
-            logger.debug(f"匹配成功: {Path(small_picture_path).stem} | 位置: ({center_x},{center_y}) | 相似度: {final_score:.4f}")
+            logger.debug(f"匹配成功: {Path(small_img_path).stem} | 位置: ({center_x},{center_y}) | 相似度: {final_score:.4f}")
             return center_x, center_y
         return -1, -1
-
-    def bg_find_pic(self, small_picture_path, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8) -> Tuple[int, int]:
-        """直接截图匹配图片"""
-        from pic_and_color_util import capture_window_region  # 导入截图函数
-        search_img = capture_window_region(self.hwnd, x0, y0, x1, y1)
-        return self.bg_find_pic_in_screenshot(search_img, small_picture_path, x0, y0, x1, y1, similarity)
 
     def bg_find_pic_with_timeout(self, small_picture_path, timeout=5, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8):
         """带超时的图片查找"""
         start_time = time.time()
         while time.time() - start_time < timeout:
-            point = self.bg_find_pic(small_picture_path, x0, y0, x1, y1, similarity)
+            point = self.bg_find_pic_by_cache(small_picture_path, x0, y0, x1, y1, similarity)
             if point is not None and point[0] != -1 and point[1] != -1:
                 return point
             time.sleep(0.2)
         return (-1, -1)
+
+    def bg_find_pic_by_config(self, image_match_config: ImageMatchConfig) -> tuple:
+        # 由于ImageFinder构造函数需要hwnd，我们创建一个临时实例并调用静态方法
+        # 但这里我们直接使用静态方法
+        for target_image_path in image_match_config.target_image_path_list:
+            point = self.bg_find_pic_by_cache(target_image_path, image_match_config.x0,
+                                     image_match_config.y0,
+                                     image_match_config.x1, image_match_config.y1,
+                                     image_match_config.similarity)
+            if point is not None and point[0] != -1 and point[1] != -1:
+                return point, target_image_path
+        return (-1, -1), None

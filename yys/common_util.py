@@ -7,16 +7,20 @@ from loguru import logger
 from my_mouse import bg_left_click_with_range
 from win_util.image import ImageFinder
 
+
+# TODO: 重构并删除common_util
 def bg_find_pic(hwnd, small_picture_path, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8):
     finder = ImageFinder(hwnd)
-    return finder.bg_find_pic(small_picture_path, x0, y0, x1, y1, similarity)
+    finder.update_screenshot_cache()
+    return finder.bg_find_pic_by_cache(small_picture_path, x0, y0, x1, y1, similarity)
 
 def bg_find_pic_with_timeout(hwnd, small_picture_path, timeout=5, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8):
     finder = ImageFinder(hwnd)
+    finder.update_screenshot_cache()
     return finder.bg_find_pic_with_timeout(small_picture_path, timeout, x0, y0, x1, y1, similarity)
 
 
-def find_window(title_part="阴阳师-网易游戏"):
+def find_window(title_part="阴阳师-网易游戏") -> int:
     """查找游戏窗口"""
     global hwnd
     hwnd = win32gui.FindWindow(None, title_part)
@@ -100,25 +104,6 @@ def _click_battle_end_2(hwnd):
     return click_res
 
 
-def try_bg_click_pic_by_screenshot(screenshot, template_image_path, similarity=0.8, x_range=20, y_range=20):
-    point = ImageFinder.bg_find_pic_in_screenshot(screenshot, template_image_path, similarity=similarity)
-    return bg_left_click_with_range(hwnd, point, x_range=x_range, y_range=y_range)
-
-
-def try_bg_click_pic(hwnd, template_image_path, similarity=0.8, x_range=20, y_range=20):
-    """
-    找图并点击，点击时以图片为中心点进行偏移随机
-    :param hwnd:
-    :param template_image_path:
-    :param similarity:
-    :param x_range:
-    :param y_range:
-    :return:
-    """
-    point = bg_find_pic(hwnd, template_image_path, similarity=similarity)
-    return bg_left_click_with_range(hwnd, point, x_range=x_range, y_range=y_range)
-
-
 def try_bg_click_pic_with_timeout(hwnd, template_image_path, timeout=3, x0=0, y0=0, x1=99999, y1=99999,
                                   similarity=0.8, x_range=20, y_range=20):
     """
@@ -127,11 +112,6 @@ def try_bg_click_pic_with_timeout(hwnd, template_image_path, timeout=3, x0=0, y0
     point = bg_find_pic_with_timeout(hwnd, template_image_path, x0=x0, y0=y0, x1=x1, y1=y1, timeout=timeout,
                                      similarity=similarity)
     return bg_left_click_with_range(hwnd, point, x_range=x_range, y_range=y_range)
-
-
-def do_script_end():
-    close_jia_cheng(hwnd)
-    logger.info("已完成所有战斗，程序结束")
 
 
 def close_jia_cheng(hwnd):
@@ -148,16 +128,3 @@ def close_jia_cheng(hwnd):
             success_close_count += 1
         random_sleep(0.1, 0.3)
     return True
-
-
-def input_max_battle_count():
-    """获取用户输入的轮数"""
-    while True:
-        try:
-            default_max_battle_count = 100
-            count = int(input(f"请输入要完成的次数(默认{default_max_battle_count}次): ") or default_max_battle_count)
-            if count > 0:
-                return count
-            print("请输入一个正整数！")
-        except ValueError:
-            print("请输入有效的数字！")

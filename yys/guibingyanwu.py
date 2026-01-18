@@ -1,22 +1,18 @@
-from yys.common_util import *
+import random
+import time
+
 from loguru import logger
 
-from yys.common_util import input_max_battle_count
+from yys.common_util import find_window, bg_find_pic, bg_left_click_with_range, random_sleep, try_handle_battle_end
+from yys.log_manager import get_logger
 
 """
 鬼兵演武
 """
 
 hwnd = find_window()
-# 配置loguru日志
-logger.add(
-    "logs/guibingyanwu/{time:YYYY-MM-DD}.log",  # 按日期分割日志文件
-    rotation="00:00",  # 每天午夜创建新日志
-    retention="7 days",  # 保留7天日志
-    encoding="utf-8",
-    level="DEBUG",
-    format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {message}"
-)
+# 获取日志记录器
+logger = get_logger("guibingyanwu")
 
 
 def click_tiaozhan():
@@ -25,7 +21,7 @@ def click_tiaozhan():
 
 
 def main():
-    max_battle_count = input_max_battle_count()
+    max_battle_count = 50
     cur_battle_count = 0
     next_sleep_counter = 0
     next_sleep_threshold = random.randint(40, 60)
@@ -44,7 +40,6 @@ def main():
             logger.info(f"已完成 {cur_battle_count} 场战斗，随机休息 {sleep_duration:.1f} 秒")
             time.sleep(sleep_duration)
             next_sleep_threshold = random.randint(40, 60)
-    do_script_end()
 
 
 if __name__ == '__main__':

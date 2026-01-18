@@ -1,26 +1,26 @@
-from win_util.image import ImageFinder
-from win_util.ocr import *
-from common_util import find_window
 import time
-import config
+
+import cv2
 from loguru import logger
 
-from yys.util.yys_ocr import YysOCR
+from common_util import find_window
+from win_util.image import ImageFinder
+from yys.util.yys_yu_hun_ocr import YysYuHunOCR
 
-config.DEBUG = False
+image_finder = None
 
 
-def capture_yuhun_detail_img(hwnd):
-    from pic_and_color_util import capture_window_region  # 保持原来的capture_window_region函数
-    img = capture_window_region(hwnd)
+def capture_yuhun_detail_img():
+    img = image_finder.update_screenshot_cache()
 
     x1 = 99999
-    point_share = ImageFinder.bg_find_pic_in_screenshot(img, "images/yuhun_detail_share.bmp", 0, 0, 99999, 99999, 0.95)
-    point_qiang_hua = ImageFinder.bg_find_pic_in_screenshot(img, "images/yuhun_qiang_hua.bmp", 0, 0, 99999, 99999, 0.95)
-    if (point_share is not None and point_share != (-1, -1)) or (point_qiang_hua is not None and point_qiang_hua != (-1, -1)):
+    point_share = image_finder.bg_find_pic_by_cache("images/yuhun_detail_share.bmp", 0, 0, 99999, 99999, 0.95)
+    point_qiang_hua = image_finder.bg_find_pic_by_cache("images/yuhun_qiang_hua.bmp", 0, 0, 99999, 99999, 0.95)
+    if (point_share is not None and point_share != (-1, -1)) or (
+            point_qiang_hua is not None and point_qiang_hua != (-1, -1)):
         x1 = 1020
 
-    point2 = ImageFinder.bg_find_pic_in_screenshot(img, "images/yuhun_detail.bmp", 0, 0, x1, 99999, 0.95)
+    point2 = image_finder.bg_find_pic_by_cache("images/yuhun_detail.bmp", 0, 0, x1, 99999, 0.95)
     if point2 is not None and point2 != (-1, -1):
         return img[point2[1] + 110:point2[1] + 236, point2[0] - 130:point2[0] + 130]
     return None
@@ -29,9 +29,10 @@ def capture_yuhun_detail_img(hwnd):
 if __name__ == '__main__':
     logger.info("启动")
     hwnd = find_window()
+    image_finder = ImageFinder(hwnd)
 
     logger.info("初始化ocr")
-    yysOcr = YysOCR()
+    yysOcr = YysYuHunOCR()
     logger.info("初始化ocr完成")
 
     yysOcr.set_attr_rule_4(['暴击伤害'])

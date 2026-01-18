@@ -1,4 +1,4 @@
-from common_util import *
+from common_util import find_window, bg_left_click_with_range, random_sleep, logger
 
 
 def main():

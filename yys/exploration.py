@@ -59,7 +59,7 @@ class ExplorationScript(YYSBaseScript):
         self.mouse.bg_left_click(point)
         time.sleep(0.5)
         self.image_finder.update_screenshot_cache()
-        if self.ocr.contains_text(self.screenshot_cache, "己达本日上限"):
+        if self.ocr.contains_text(self.image_finder.screenshot_cache, "己达本日上限"):
             self.stop()
 
     def _on_tansuo_idle(self, point):

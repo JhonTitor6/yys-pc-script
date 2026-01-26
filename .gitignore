@@ -1,9 +1,8 @@
-/menghuan/images/debug/
-/menghuan/logs/
-/menghuan/tests/images/debug/
 /.idea/
 /yys/images/debug/
 /yys/logs/
+node_modules/
+images/debug/
 
 
 # 以下为python ignore

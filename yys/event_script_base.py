@@ -3,13 +3,13 @@ import os
 import sys
 import time
 
+from scene_manager import SceneManager, SceneDetectionResult
 from win_util.event import EventBaseScript, Event
 from win_util.image import ImageFinder
 from win_util.image import ImageMatchConfig
 from win_util.keyboard import KeyboardController
 from win_util.mouse import bg_left_click_with_range, MouseController
 from yys.common_util import find_window, random_sleep
-from .scene_manager import SceneManager, SceneDetectionResult
 
 # 获取项目根目录并添加到 sys.path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -50,6 +50,7 @@ class YYSBaseScript(EventBaseScript):
         self._cur_battle_count = 0
         self._cur_battle_victory_count = 0
         self._max_battle_count = 203
+        self.accept_wq_type = 0  # 接收悬赏封印类型：0-拒绝，1-全部接受，TODO：2-只接收勾协
 
         self.mouse = MouseController(self.hwnd)
         self.keyboard = KeyboardController(self.hwnd)
@@ -69,9 +70,9 @@ class YYSBaseScript(EventBaseScript):
         self._register_image_match_event(ImageMatchConfig(["images/battle_end_loss.bmp"]), self._on_zhan_dou_wan_cheng)
         self._register_image_match_event(ImageMatchConfig(["images/battle_end_1.bmp", "images/battle_end_2.bmp"]),
                                          self._on_zhan_dou_wan_cheng)
-        # TODO: 判断是悬赏封印 以免误点其他的
-        self._register_image_match_event(ImageMatchConfig("images/xuanshangfengyin_reject.bmp"), self.bg_left_click)
+        # self._register_image_match_event(ImageMatchConfig("images/xuanshangfengyin_reject.bmp"), self.bg_left_click)
         # 注册ocr事件
+        self._register_ocr_match_event("悬赏封印", self._on_wanted_quests_invited)
         self._register_ocr_match_event("点击屏幕继续", self._on_ocr_click_screen_continue)
 
     def _find_window(self) -> int:
@@ -121,3 +122,14 @@ class YYSBaseScript(EventBaseScript):
 
     def on_scene_detected(self, detection_result: SceneDetectionResult):
         pass
+
+
+    def _on_wanted_quests_invited(self, point):
+        match self.accept_wq_type:
+            case 0:
+                point = self.image_finder.bg_find_pic_by_cache("images/xuanshangfengyin_reject.bmp")
+                self.bg_left_click(point)
+            case 1:
+                point = self.image_finder.bg_find_pic_by_cache("images/xuanshangfengyin_accept.bmp")
+                self.bg_left_click(point)
+

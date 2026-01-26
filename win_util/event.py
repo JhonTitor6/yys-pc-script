@@ -52,7 +52,6 @@ class EventManager:
 class EventBaseScript(ABC):
     def __init__(self):
         super().__init__()
-        self.screenshot_cache = None
 
         self.hwnd = self._find_window()
         self.image_finder = ImageFinder(self.hwnd)
@@ -94,11 +93,12 @@ class EventBaseScript(ABC):
                 self._event_manager.trigger_event(image_path, point)
                 return image_path
         # ocr
-        ocr_result = self.ocr.ocr(self.screenshot_cache)
+        ocr_results = self.ocr.find_all_text_positions(self.image_finder.screenshot_cache)
         for keyword in self._ocr_event_keywords:
-            if keyword in ocr_result:
-                self._event_manager.trigger_event(keyword, ocr_result)
-                return keyword
+            for x, y, text, similarity in ocr_results:
+                if keyword in text:
+                    self._event_manager.trigger_event(keyword, (x, y, text, similarity))
+                    return keyword
 
         self._event_manager.trigger_event(unknown, debug_log=False)
         return None

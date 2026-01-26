@@ -1,6 +1,9 @@
+from typing import Set
+
 import cv2
 import easyocr
 from loguru import logger
+
 
 class CommonOcr:
     def __init__(self, lang_list=['ch_sim', 'en'], gpu=True, **kwargs):
@@ -169,6 +172,42 @@ class CommonOcr:
         center_y = int((best_box[0][1] + best_box[2][1]) / 2)
 
         return (center_x, center_y, best_similarity)
+
+    def find_all_texts(self, img, similarity_threshold=0.8) -> Set[str]:
+        """
+        查找图像中所有的文本，返回所有匹配的文本列表
+
+        Args:
+            img: 输入图像
+            similarity_threshold: 相似度阈值，默认0.8
+
+        Returns:
+            set: 所有匹配的文本集合
+        """
+        ocr_result = self.ocr(img)
+        return {text for _, text, similarity in ocr_result if similarity >= similarity_threshold}
+
+    def find_all_text_positions(self, img, similarity_threshold=0.8, case_sensitive=False):
+        """
+        查找图像中所有文本的位置，返回所有相似度在阈值以上的文本详细信息
+
+        Args:
+            img: 输入图像
+            similarity_threshold: 相似度阈值，默认0.8
+            case_sensitive: 是否区分大小写，默认False
+
+        Returns:
+            list: 所有匹配的文本详细信息列表，格式为 [(x, y, text, similarity), ...]
+        """
+        ocr_results = self.ocr(img)
+        positions = []
+        for box, text, similarity in ocr_results:
+            if similarity >= similarity_threshold:
+                # 计算box的中心坐标
+                center_x = int((box[0][0] + box[2][0]) / 2)
+                center_y = int((box[0][1] + box[2][1]) / 2)
+                positions.append((center_x, center_y, text, similarity))
+        return positions
 
     def set_reader(self, reader: easyocr.Reader):
         self.reader = reader

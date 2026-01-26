@@ -20,27 +20,27 @@ class JieJieTuPoScript(YYSBaseScript):
         # TODO: 加个config类
         self.quit_3_times_config = True
         self.image_finder: ImageFinder = ImageFinder(self.hwnd)
-        self.jiejie_list = []
+        self.attackable_barrier_list = []
 
         # 注册借借突破特定的图像匹配事件
         self._register_image_match_event(ImageMatchConfig("images/jiejietupo_not_enough.bmp", similarity=0.9),
-                                         self._on_jiejietupo_not_enough)
+                                         self._on_ticket_not_enough)
         # 注册挑战相关的事件
-        self._register_image_match_event(ImageMatchConfig("images/jiejietupo_jingong.bmp"), self._on_jiejietupo_jingong)
+        self._register_image_match_event(ImageMatchConfig("images/jiejietupo_jingong.bmp"), self._on_attack)
         self._register_image_match_event(ImageMatchConfig("images/jiejietupo_user_jiejie.bmp"),
-                                         self._on_jiejietupo_user_jiejie)
+                                         self._on_attackable_barrier)
         # 检测是不是没有可以挑战的了
         self._register_image_match_event(ImageMatchConfig("images/scene/barrier_breakthrough.bmp"),
                                          self.on_scene_barrier_breakthrough)
 
-    def _on_jiejietupo_not_enough(self, point):
+    def _on_ticket_not_enough(self, point):
         """处理借借突破券不足事件"""
         self._max_battle_count = self._cur_battle_count
         logger.info(f"没突破券了")
 
-    def _on_jiejietupo_user_jiejie(self, point):
+    def _on_attackable_barrier(self, point):
         """处理借借突破用户头像点击"""
-        self.jiejie_list = self.get_all_attackable_barrier()
+        self.attackable_barrier_list = self.get_all_attackable_barrier()
         self.bg_left_click(point, x_range=5, y_range=5)
         random_sleep(1, 1.3)
 
@@ -72,16 +72,14 @@ class JieJieTuPoScript(YYSBaseScript):
         logger.debug(f"找到{len(all_jiejie)}个结界")
         return all_jiejie
 
-    def _on_jiejietupo_jingong(self, point):
+    def _on_attack(self, point):
         """处理进攻按钮点击"""
-        if not self.quit_3_times_config:
-            self.bg_left_click(point, x_range=20, y_range=20)
-            time.sleep(10)  # 等待战斗开始
-        # 点击进攻后，稍等片刻再执行退出逻辑
-        self.bg_left_click(point, x_range=20, y_range=20)
+        self.bg_left_click(point, x_range=10, y_range=10)
+        if not self.quit_3_times_config or len(self.attackable_barrier_list) < 9:
+            time.sleep(5)
+            return
         # 打第一个结界时先退 3 次
-        if len(self.jiejie_list) == 9:
-            self.quit_3_times()
+        self.quit_3_times()
 
     def _on_zhan_dou_wan_cheng(self, point):
         super()._on_zhan_dou_wan_cheng(point)

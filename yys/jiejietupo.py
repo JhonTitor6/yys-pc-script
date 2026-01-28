@@ -23,14 +23,14 @@ class JieJieTuPoScript(YYSBaseScript):
         self.attackable_barrier_list = []
 
         # 注册借借突破特定的图像匹配事件
-        self._register_image_match_event(ImageMatchConfig("images/jiejietupo_not_enough.bmp", similarity=0.9),
+        self._register_image_match_event(ImageMatchConfig("yys/images/jiejietupo_not_enough.bmp", similarity=0.9),
                                          self._on_ticket_not_enough)
         # 注册挑战相关的事件
-        self._register_image_match_event(ImageMatchConfig("images/jiejietupo_jingong.bmp"), self._on_attack)
-        self._register_image_match_event(ImageMatchConfig("images/jiejietupo_user_jiejie.bmp"),
+        self._register_image_match_event(ImageMatchConfig("yys/images/jiejietupo_jingong.bmp"), self._on_attack)
+        self._register_image_match_event(ImageMatchConfig("yys/images/jiejietupo_user_jiejie.bmp"),
                                          self._on_attackable_barrier)
         # 检测是不是没有可以挑战的了
-        self._register_image_match_event(ImageMatchConfig("images/scene/barrier_breakthrough.bmp"),
+        self._register_image_match_event(ImageMatchConfig("yys/images/scene/barrier_breakthrough.bmp"),
                                          self.on_scene_barrier_breakthrough)
 
     def _on_ticket_not_enough(self, point):
@@ -62,7 +62,7 @@ class JieJieTuPoScript(YYSBaseScript):
                 y1 = y1_1 + row * row_offset_y
 
                 point = self.image_finder.bg_find_pic_by_cache(
-                    "images/jiejietupo_user_jiejie.bmp",
+                    "yys/images/jiejietupo_user_jiejie.bmp",
                     x0=x0, y0=y0, x1=x1, y1=y1
                 )
                 logger.debug(f"第{row + 1}行第{col + 1}列的结界: ({x0}, {y0}, {x1}, {y1}) 坐标: {point}")
@@ -96,9 +96,9 @@ class JieJieTuPoScript(YYSBaseScript):
             self.keyboard.bg_press_key('ENTER')
             random_sleep(2, 3)
             logger.info(f"准备点击【再次挑战】")
-            try_bg_click_pic_with_timeout(self.hwnd, "images/jiejietupo_zai_ci_tiao_zhan.bmp", timeout=5)
+            try_bg_click_pic_with_timeout(self.hwnd, "yys/images/jiejietupo_zai_ci_tiao_zhan.bmp", timeout=5)
             time.sleep(0.5)
-            silence_point = bg_find_pic(self.hwnd, "images/jiejietupo_zai_ci_tiao_zhan_silence.bmp")
+            silence_point = bg_find_pic(self.hwnd, "yys/images/jiejietupo_zai_ci_tiao_zhan_silence.bmp")
             if silence_point is not None and silence_point != (-1, -1):
                 logger.info("点击【今日不再提醒】")
                 random_sleep(1, 2)
@@ -113,7 +113,7 @@ class JieJieTuPoScript(YYSBaseScript):
 
     def refresh_if_no_attackable_barrier(self):
         """检查是否有未打的结界"""
-        jiejie_list = self.image_finder.bg_find_pic_all_by_cache("images/jiejietupo_user_jiejie.bmp")
+        jiejie_list = self.image_finder.bg_find_pic_all_by_cache("yys/images/jiejietupo_user_jiejie.bmp")
         if len(jiejie_list) > 0:
             return
 

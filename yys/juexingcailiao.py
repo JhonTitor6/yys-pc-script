@@ -16,7 +16,7 @@ logger = get_logger("juexingcailiao")
 
 
 def click_tiaozhan():
-    point = bg_find_pic(hwnd, "images/juexing_tiaozhan.bmp", similarity=0.7)
+    point = bg_find_pic(hwnd, "yys/images/juexing_tiaozhan.bmp", similarity=0.7)
     bg_left_click_with_range(hwnd, point, x_range=10, y_range=10)
 
 

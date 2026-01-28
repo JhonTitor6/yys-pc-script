@@ -19,7 +19,7 @@ class TestYYS(unittest.TestCase):
         start = int(time.time() * 1000)
         while True:
             # img = capture_window_region(self.hwnd, 260, 119, 858, 285)
-            img = cv2.imread("images/debug/source/test.bmp")
+            img = cv2.imread("yys/images/debug/source/test.bmp")
             result = self.yys_ocr.ocr(img)
             print(int(time.time() * 1000) - start)
             print(result)

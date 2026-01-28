@@ -61,17 +61,17 @@ def try_handle_battle_end(hwnd):
 
 
 def _click_battle_success_end(hwnd):
-    point = bg_find_pic(hwnd, "images/battle_end.bmp", similarity=0.8)
+    point = bg_find_pic(hwnd, "yys/images/battle_end.bmp", similarity=0.8)
     first_click = bg_left_click_with_range(hwnd, point, x_range=200, y_range=50)
     if first_click:
         return first_click
-    point = bg_find_pic(hwnd, "images/battle_end_success.bmp", similarity=0.8)
+    point = bg_find_pic(hwnd, "yys/images/battle_end_success.bmp", similarity=0.8)
     second_click = bg_left_click_with_range(hwnd, point, x_range=200, y_range=50)
     return second_click
 
 
 def _click_battle_end_loss(hwnd):
-    point = bg_find_pic(hwnd, "images/battle_end_loss.bmp", similarity=0.8)
+    point = bg_find_pic(hwnd, "yys/images/battle_end_loss.bmp", similarity=0.8)
     first_click = bg_left_click_with_range(hwnd, point, x_range=200, y_range=50)
     if first_click:
         random_sleep(0.1, 0.3)
@@ -80,7 +80,7 @@ def _click_battle_end_loss(hwnd):
 
 
 def _click_suipian(hwnd):
-    point = bg_find_pic(hwnd, "images/suipian.png")
+    point = bg_find_pic(hwnd, "yys/images/suipian.png")
     click_success = bg_left_click_with_range(hwnd, point, x_range=100, y_range=100)
     if click_success:
         random_sleep(1.2, 1.7)
@@ -88,7 +88,7 @@ def _click_suipian(hwnd):
 
 
 def _click_battle_end_1(hwnd):
-    point = bg_find_pic(hwnd, "images/battle_end_1.bmp", similarity=0.7)
+    point = bg_find_pic(hwnd, "yys/images/battle_end_1.bmp", similarity=0.7)
     if point is None or point == (-1, -1):
         return False
     time.sleep(2)
@@ -97,7 +97,7 @@ def _click_battle_end_1(hwnd):
 
 
 def _click_battle_end_2(hwnd):
-    point = bg_find_pic(hwnd, "images/battle_end_2.bmp", similarity=0.7)
+    point = bg_find_pic(hwnd, "yys/images/battle_end_2.bmp", similarity=0.7)
     if point is None or point == (-1, -1):
         return False
     click_res = bg_left_click_with_range(hwnd, point, x_range=300, y_range=50)
@@ -115,7 +115,7 @@ def try_bg_click_pic_with_timeout(hwnd, template_image_path, timeout=3, x0=0, y0
 
 
 def close_jia_cheng(hwnd):
-    point = bg_find_pic(hwnd, "images/jia_cheng.bmp")
+    point = bg_find_pic(hwnd, "yys/images/jia_cheng.bmp")
     if not bg_left_click_with_range(hwnd, point, x_range=10, y_range=10):
         return False
     random_sleep(0.5, 0.8)
@@ -123,7 +123,7 @@ def close_jia_cheng(hwnd):
     loop_count = 0
     while loop_count < 30 and success_close_count < 2:
         loop_count += 1
-        point = bg_find_pic(hwnd, "images/jia_cheng_ji_huo_zhong.bmp", similarity=0.9)
+        point = bg_find_pic(hwnd, "yys/images/jia_cheng_ji_huo_zhong.bmp", similarity=0.9)
         if bg_left_click_with_range(hwnd, point, x_range=6, y_range=8):
             success_close_count += 1
         random_sleep(0.1, 0.3)

@@ -3,13 +3,13 @@ import os
 import sys
 import time
 
-from scene_manager import SceneManager, SceneDetectionResult
 from win_util.event import EventBaseScript, Event
 from win_util.image import ImageFinder
 from win_util.image import ImageMatchConfig
 from win_util.keyboard import KeyboardController
 from win_util.mouse import bg_left_click_with_range, MouseController
 from yys.common_util import find_window, random_sleep
+from yys.scene_manager import SceneManager, SceneDetectionResult
 
 # 获取项目根目录并添加到 sys.path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -33,12 +33,6 @@ SCENE_DETECTED_EVENT = Event('scene_detected')
 事件驱动
 """
 
-SCENE_DETECTED_EVENT = Event('scene_detected')
-"""
-事件驱动
-"""
-
-
 class YYSBaseScript(EventBaseScript):
     def __init__(self, script_name):
         # 使用统一的日志管理器
@@ -49,7 +43,7 @@ class YYSBaseScript(EventBaseScript):
         self.script_start_time_mills = int(time.time() * 1000)
         self._cur_battle_count = 0
         self._cur_battle_victory_count = 0
-        self._max_battle_count = 203
+        self._max_battle_count = 103
         self.accept_wq_type = 0  # 接收悬赏封印类型：0-拒绝，1-全部接受，TODO：2-只接收勾协
 
         self.mouse = MouseController(self.hwnd)
@@ -65,12 +59,12 @@ class YYSBaseScript(EventBaseScript):
 
         # self._event_manager.register_event_handler(SCENE_DETECTED_EVENT, self.on_scene_detected)
 
-        self._register_image_match_event(ImageMatchConfig(["images/battle_end_success.bmp", "images/battle_end.bmp"]),
+        self._register_image_match_event(ImageMatchConfig(["yys/images/battle_end_success.bmp", "yys/images/battle_end.bmp"]),
                                          self._on_zhan_dou_wan_cheng_victory)
-        self._register_image_match_event(ImageMatchConfig(["images/battle_end_loss.bmp"]), self._on_zhan_dou_wan_cheng)
-        self._register_image_match_event(ImageMatchConfig(["images/battle_end_1.bmp", "images/battle_end_2.bmp"]),
+        self._register_image_match_event(ImageMatchConfig(["yys/images/battle_end_loss.bmp"]), self._on_zhan_dou_wan_cheng)
+        self._register_image_match_event(ImageMatchConfig(["yys/images/battle_end_1.bmp", "yys/images/battle_end_2.bmp"]),
                                          self._on_zhan_dou_wan_cheng)
-        # self._register_image_match_event(ImageMatchConfig("images/xuanshangfengyin_reject.bmp"), self.bg_left_click)
+        # self._register_image_match_event(ImageMatchConfig("yys/images/xuanshangfengyin_reject.bmp"), self.bg_left_click)
         # 注册ocr事件
         self._register_ocr_match_event("悬赏封印", self._on_wanted_quests_invited)
         self._register_ocr_match_event("点击屏幕继续", self._on_ocr_click_screen_continue)
@@ -105,7 +99,7 @@ class YYSBaseScript(EventBaseScript):
 
     def on_run(self):
         self.logger.info(f"开始运行{self.script_name}脚本")
-        self.script_start_time_mills = int(time.time() * 1000)
+        self.logger.info(f"目标挂机次数:{self._max_battle_count} ")
         self._cur_battle_victory_count = 0
         self._cur_battle_count = 0
 
@@ -127,9 +121,9 @@ class YYSBaseScript(EventBaseScript):
     def _on_wanted_quests_invited(self, point):
         match self.accept_wq_type:
             case 0:
-                point = self.image_finder.bg_find_pic_by_cache("images/xuanshangfengyin_reject.bmp")
+                point = self.image_finder.bg_find_pic_by_cache("yys/images/xuanshangfengyin_reject.bmp")
                 self.bg_left_click(point)
             case 1:
-                point = self.image_finder.bg_find_pic_by_cache("images/xuanshangfengyin_accept.bmp")
+                point = self.image_finder.bg_find_pic_by_cache("yys/images/xuanshangfengyin_accept.bmp")
                 self.bg_left_click(point)
 

@@ -27,6 +27,9 @@ def _extract_number(value: str) -> float:
 
 
 class YysYuHunOCR:
+    """
+    实时识别游戏画面计算御魂评分工具
+    """
     def __init__(self):
         # 使用通用OCR类
         self._common_ocr = CommonOcr(['ch_sim', 'en'])

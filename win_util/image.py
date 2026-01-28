@@ -10,8 +10,16 @@ import win32ui
 from PIL import ImageGrab
 from loguru import logger
 
-debug_img_base_dir = Path("images/debug")
+debug_img_base_dir = Path("yys/images/debug")
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+def to_project_path(path: str) -> str:
+    p = Path(path)
+    # 绝对路径：不动
+    if p.is_absolute():
+        return str(p)
+    return str(PROJECT_ROOT / p)
 
 class ScreenCapture:
     """窗口截图和区域截图封装"""
@@ -192,6 +200,7 @@ class ImageFinder:
         if screenshot is None:
             return []
 
+        small_img_path = to_project_path(small_img_path)
         small_img = cv2.imread(small_img_path)
         if small_img is None:
             return []
@@ -262,6 +271,7 @@ class ImageFinder:
         
         # 调试模式保存图片
         if self.screenshot_capture.save_source_img and final_score >= 0.6:
+            small_img_path = to_project_path(small_img_path)
             small_img = cv2.imread(small_img_path)
             if small_img is not None:
                 h, w = small_img.shape[:2]

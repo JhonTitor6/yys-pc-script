@@ -15,23 +15,23 @@ class ExplorationScript(YYSBaseScript):
         self.idle_count = 0
 
         # TODO: 图片匹配增加 场景（多个） 条件，当在某些场景下才进行匹配
-        self._register_image_match_event(ImageMatchConfig("images/tansuo_boss_tiaozhan.bmp"),
+        self._register_image_match_event(ImageMatchConfig("yys/images/tansuo_boss_tiaozhan.bmp"),
                                          self.bg_left_click)
-        self._register_image_match_event(ImageMatchConfig("images/tansuo_tiaozhan.bmp"),
+        self._register_image_match_event(ImageMatchConfig("yys/images/tansuo_tiaozhan.bmp"),
                                          self.bg_left_click)
-        self._register_image_match_event(ImageMatchConfig("images/tansuo_boss_success_reward.bmp"),
+        self._register_image_match_event(ImageMatchConfig("yys/images/tansuo_boss_success_reward.bmp"),
                                          self._on_tansuo_boss_success_reward)
-        self._register_image_match_event(ImageMatchConfig("images/tansuo_bao_xiang.bmp"),
+        self._register_image_match_event(ImageMatchConfig("yys/images/tansuo_bao_xiang.bmp"),
                                          self._on_tansuo_bao_xiang)
-        self._register_image_match_event(ImageMatchConfig("images/tansuo_bao_xiang_2.bmp"),
+        self._register_image_match_event(ImageMatchConfig("yys/images/tansuo_bao_xiang_2.bmp"),
                                          self._on_tansuo_bao_xiang)
-        self._register_image_match_event(ImageMatchConfig("images/tansuo_kunnan.bmp"),
+        self._register_image_match_event(ImageMatchConfig("yys/images/tansuo_kunnan.bmp"),
                                          self.bg_left_click)
-        self._register_image_match_event(ImageMatchConfig("images/tansuo_tansuo.bmp"),
+        self._register_image_match_event(ImageMatchConfig("yys/images/tansuo_tansuo.bmp"),
                                          self._on_tansuo_entering)
-        self._register_image_match_event(ImageMatchConfig("images/tansuo_28.bmp"),
+        self._register_image_match_event(ImageMatchConfig("yys/images/tansuo_28.bmp"),
                                          self.bg_left_click)
-        self._register_image_match_event(ImageMatchConfig("images/tansuo_she_zhi.bmp"),
+        self._register_image_match_event(ImageMatchConfig("yys/images/tansuo_she_zhi.bmp"),
                                          self._on_tansuo_idle)
 
         logger.info("探索脚本初始化完成")
@@ -51,7 +51,7 @@ class ExplorationScript(YYSBaseScript):
 
     def _on_tansuo_bao_xiang(self, point):
         random_sleep(1, 2)
-        self.image_finder.bg_find_pic("images/tansuo_close.bmp")
+        self.image_finder.bg_find_pic("yys/images/tansuo_close.bmp")
         random_sleep(1, 1.6)
         bg_left_click_with_range(self.hwnd, point)
 

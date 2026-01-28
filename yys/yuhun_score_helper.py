@@ -14,13 +14,13 @@ def capture_yuhun_detail_img():
     img = image_finder.update_screenshot_cache()
 
     x1 = 99999
-    point_share = image_finder.bg_find_pic_by_cache("images/yuhun_detail_share.bmp", 0, 0, 99999, 99999, 0.95)
-    point_qiang_hua = image_finder.bg_find_pic_by_cache("images/yuhun_qiang_hua.bmp", 0, 0, 99999, 99999, 0.95)
+    point_share = image_finder.bg_find_pic_by_cache("yys/images/yuhun_detail_share.bmp", 0, 0, 99999, 99999, 0.95)
+    point_qiang_hua = image_finder.bg_find_pic_by_cache("yys/images/yuhun_qiang_hua.bmp", 0, 0, 99999, 99999, 0.95)
     if (point_share is not None and point_share != (-1, -1)) or (
             point_qiang_hua is not None and point_qiang_hua != (-1, -1)):
         x1 = 1020
 
-    point2 = image_finder.bg_find_pic_by_cache("images/yuhun_detail.bmp", 0, 0, x1, 99999, 0.95)
+    point2 = image_finder.bg_find_pic_by_cache("yys/images/yuhun_detail.bmp", 0, 0, x1, 99999, 0.95)
     if point2 is not None and point2 != (-1, -1):
         return img[point2[1] + 110:point2[1] + 236, point2[0] - 130:point2[0] + 130]
     return None

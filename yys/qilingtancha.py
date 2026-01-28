@@ -16,7 +16,7 @@ logger = get_logger("qilingtancha")
 
 
 def click_tancha():
-    point = bg_find_pic(hwnd, "images/qiling_tancha.bmp", similarity=0.7)
+    point = bg_find_pic(hwnd, "yys/images/qiling_tancha.bmp", similarity=0.7)
     bg_left_click_with_range(hwnd, point, x_range=20, y_range=20)
 
 

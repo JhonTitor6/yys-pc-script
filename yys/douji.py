@@ -14,16 +14,16 @@ class DouJi(YYSBaseScript):
 
         self._has_clicked_tianzhao = False
 
-        self._register_image_match_event(ImageMatchConfig("images/douji_zhan.bmp"), self._on_douji_zhan)
-        self._register_image_match_event(ImageMatchConfig("images/change_to_auto_battle.bmp"), self.bg_left_click)
-        self._register_image_match_event(ImageMatchConfig("images/douji_selection_auto_up.bmp", similarity=0.7),
+        self._register_image_match_event(ImageMatchConfig("yys/images/douji_zhan.bmp"), self._on_douji_zhan)
+        self._register_image_match_event(ImageMatchConfig("yys/images/change_to_auto_battle.bmp"), self.bg_left_click)
+        self._register_image_match_event(ImageMatchConfig("yys/images/douji_selection_auto_up.bmp", similarity=0.7),
                                          self.bg_left_click)
         self._register_image_match_event(ImageMatchConfig(
-            ["images/battle_tianzhao.bmp", "images/battle_tianzhao2.bmp", "images/battle_tianzhao3.bmp"], y0=262,
+            ["yys/images/battle_tianzhao.bmp", "yys/images/battle_tianzhao2.bmp", "yys/images/battle_tianzhao3.bmp"], y0=262,
             similarity=0.75), self._on_battle_tianzhao)
-        self._register_image_match_event(ImageMatchConfig("images/douji_battle_end.bmp"), self._on_zhan_dou_wan_cheng)
-        self._register_image_match_event(ImageMatchConfig("images/battle_end_loss.bmp"), self._on_battle_end_loss)
-        self._register_image_match_event(ImageMatchConfig("images/douji_battle_end_victory.bmp"),
+        self._register_image_match_event(ImageMatchConfig("yys/images/douji_battle_end.bmp"), self._on_zhan_dou_wan_cheng)
+        self._register_image_match_event(ImageMatchConfig("yys/images/battle_end_loss.bmp"), self._on_battle_end_loss)
+        self._register_image_match_event(ImageMatchConfig("yys/images/douji_battle_end_victory.bmp"),
                                          self._on_zhan_dou_wan_cheng)
 
     def try_skip_battle_end(self, point):

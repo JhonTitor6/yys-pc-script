@@ -28,22 +28,22 @@ class TestSceneManager(unittest.TestCase):
             f.write("dummy transition image content")
         
         # 临时替换图像目录
-        original_images_dir = "images/scene/"
+        original_images_dir = "yys/images/scene/"
         self.original_exists = os.path.exists
         self.original_listdir = os.listdir
         
         def mock_exists(path):
-            if path == "images/scene/":
+            if path == "yys/images/scene/":
                 return True
-            elif path == "images/scene/scene_control/":
+            elif path == "yys/images/scene/scene_control/":
                 return True
             else:
                 return self.original_exists(path)
         
         def mock_listdir(path):
-            if path == "images/scene/":
+            if path == "yys/images/scene/":
                 return ["home.bmp"]
-            elif path == "images/scene/scene_control/":
+            elif path == "yys/images/scene/scene_control/":
                 return ["home_to_battle.bmp"]
             else:
                 return self.original_listdir(path)
@@ -77,10 +77,10 @@ class TestSceneManager(unittest.TestCase):
     
     def test_scene_detection_result(self):
         """测试场景检测结果对象"""
-        result = SceneDetectionResult("home","images/scene/home.bmp", (100, 200))
+        result = SceneDetectionResult("home","yys/images/scene/home.bmp", (100, 200))
         
         self.assertEqual(result.scene_name, "home")
-        self.assertEqual(result.matched_image, "images/scene/home.bmp")
+        self.assertEqual(result.matched_image, "yys/images/scene/home.bmp")
         self.assertEqual(result.position, (100, 200))
         self.assertIn("home", str(result))
     

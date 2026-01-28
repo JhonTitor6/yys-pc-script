@@ -1,15 +1,17 @@
 import unittest
+
 import cv2
+
 
 class TestTianZhaoPic(unittest.TestCase):
     def test_grey(self):
-        big_pic = cv2.imread("images/debug/source/20250923_2108_source.bmp")
+        big_pic = cv2.imread("yys/images/debug/source/20250923_2108_source.bmp")
         gray_big_pic = cv2.cvtColor(big_pic, cv2.COLOR_BGR2GRAY)
         _, big_bin_pic = cv2.threshold(gray_big_pic, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         cv2.imshow("gray_big_pic", gray_big_pic)
 
         # 读取模板图片
-        template = cv2.imread("images/battle_tianzhao.bmp")
+        template = cv2.imread("yys/images/battle_tianzhao.bmp")
         gray_template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)  # 修复：应使用template而不是big_pic
         _, bin_template = cv2.threshold(gray_template, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         cv2.imshow("gray_template", gray_template)

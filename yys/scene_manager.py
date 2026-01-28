@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple, Set, overload, Any
 from loguru import logger
 
 from win_util.image import ImageFinder
+from win_util.image import to_project_path
 
 
 class SceneDetectionResult:
@@ -32,7 +33,11 @@ class SceneDetectionResult:
 
 
 class SceneManager:
-    """场景管理器 - 实现场景检测、路径规划和跳转功能"""
+    """
+    场景管理器 - 实现场景检测、路径规划和跳转功能
+    将场景图片放在 yys/images/scene
+    将场景跳转按钮图片放在 yys/images/scene/scene_control，图片命名规则：[source]_to_[destination].bmp/png/jpg/jpeg
+    """
     
     def __init__(self, hwnd: int, image_finder: ImageFinder):
         """
@@ -61,12 +66,14 @@ class SceneManager:
         # 加载场景资源
         self._load_scenes()
         self._build_scene_graph()
-    
+
+    # TODO: 暴露接口注册 scene
     def _load_scenes(self):
         """加载所有场景图片和跳转按钮"""
+
         # 构建场景图片映射
-        scene_dir = "images/scene/"
-        control_dir = "images/scene/scene_control/"
+        scene_dir = to_project_path("yys/images/scene/")
+        control_dir = to_project_path("yys/images/scene/scene_control/")
         
         # 检查并创建目录
         os.makedirs(scene_dir, exist_ok=True)

@@ -38,7 +38,8 @@ class YYSBaseScript(EventBaseScript):
         # 使用统一的日志管理器
         self.logger = get_logger(script_name)
         self.logger.info(f"初始化{script_name}脚本")
-        super().__init__()
+        hwnd = find_window()
+        super().__init__(hwnd)
         self.script_name = script_name
         self.script_start_time_mills = int(time.time() * 1000)
         self._cur_battle_count = 0
@@ -69,12 +70,10 @@ class YYSBaseScript(EventBaseScript):
         self._register_ocr_match_event("悬赏封印", self._on_wanted_quests_invited)
         self._register_ocr_match_event("点击屏幕继续", self._on_ocr_click_screen_continue)
 
-    def _find_window(self) -> int:
-        return find_window()
-
     def _on_zhan_dou_wan_cheng_victory(self, point):
         self.bg_left_click(point)
         self._cur_battle_victory_count += 1
+        time.sleep(1)
 
     def _on_zhan_dou_wan_cheng(self, point):
         # 不可去掉。如果不等一会，没点掉导致触发多次的话，会多次触发_cur_battle_count+=1
@@ -91,7 +90,7 @@ class YYSBaseScript(EventBaseScript):
 
     def _on_ocr_click_screen_continue(self, ocr_result):
         self.logger.debug(ocr_result)
-        self.bg_left_click((567, 460))
+        self.bg_left_click((567, 460), x_range=10, y_range=10)
 
     def set_max_battle_count(self, max_battle_count: int):
         self._max_battle_count = max_battle_count

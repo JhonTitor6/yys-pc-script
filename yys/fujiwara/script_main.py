@@ -12,4 +12,6 @@ class Main(YYSBaseScript):
 
 
 if __name__ == '__main__':
-    Main().run()
+    main = Main()
+    main.set_max_battle_count(506)
+    main.run()

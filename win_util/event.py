@@ -1,12 +1,13 @@
 import threading
 import time
-from abc import abstractmethod, ABC
+from abc import ABC
 
 from loguru import logger
 
+from win_util.common_util import random_sleep
 from win_util.image import ImageFinder, ImageMatchConfig
+from win_util.mouse import bg_left_click_with_range
 from win_util.ocr import CommonOcr
-from .mouse import bg_left_click_with_range
 
 
 class Event:
@@ -33,27 +34,25 @@ class EventManager:
     def register_event_handler(self, event: Event, callback):
         self.event_handler_map[event] = callback
 
-    def trigger_event(self, event: Event | str, data=None, debug_log=True):
+    def trigger_event(self, event: Event | str, data=None, debug_log=True) -> bool:
         event = Event(event) if isinstance(event, str) else event
-        if event in self.event_handler_map:
-            callback = self.event_handler_map[event]
-            if callback is None and debug_log:
-                logger.debug(f"触发事件 [{event}] 回调为空")
-                return
-            callback_str = type(callback.__self__).__name__ + "." + callback.__name__
-            if debug_log:
-                logger.debug(f"触发事件 [{event}] 回调 [{callback_str}]")
-            callback(data)
-            return
+        if event not in self.event_handler_map:
+            return False
+        callback = self.event_handler_map[event]
+        if callback is None and debug_log:
+            logger.debug(f"触发事件 [{event}] 但是回调为空")
+            return True
+        callback_str = type(callback.__self__).__name__ + "." + callback.__name__
         if debug_log:
-            logger.debug(f"触发事件 [{event}]")
+            logger.debug(f"触发事件 [{event}] 回调 [{callback_str}]")
+        callback(data)
+        return True
 
 
 class EventBaseScript(ABC):
-    def __init__(self):
+    def __init__(self, hwnd):
         super().__init__()
-
-        self.hwnd = self._find_window()
+        self.hwnd = hwnd
         self.image_finder = ImageFinder(self.hwnd)
         self.ocr = CommonOcr()
         self._event_manager = EventManager()
@@ -90,15 +89,15 @@ class EventBaseScript(ABC):
             if point is not None and point != (-1, -1):
                 time.sleep(0.1)
                 image_path = res[1]
-                self._event_manager.trigger_event(image_path, point)
-                return image_path
-        # ocr
-        ocr_results = self.ocr.find_all_text_positions(self.image_finder.screenshot_cache)
-        for keyword in self._ocr_event_keywords:
-            for x, y, text, similarity in ocr_results:
-                if keyword in text:
-                    self._event_manager.trigger_event(keyword, (x, y, text, similarity))
-                    return keyword
+                if self._event_manager.trigger_event(image_path, point):
+                    return image_path
+        # ocr 太耗性能，先去掉
+        # ocr_results = self.ocr.find_all_text_positions(self.image_finder.screenshot_cache)
+        # for keyword in self._ocr_event_keywords:
+        #     for x, y, text, similarity in ocr_results:
+        #         if keyword in text:
+        #             if self._event_manager.trigger_event(keyword, (x, y, text, similarity)):
+        #                 return keyword
 
         self._event_manager.trigger_event(unknown, debug_log=False)
         return None
@@ -123,7 +122,7 @@ class EventBaseScript(ABC):
             self.before_iteration()
             self.image_finder.update_screenshot_cache()
             self._trigger_event_from_screenshot_cache()
-            time.sleep(0.2)
+            random_sleep(0.1, 0.2)
             # 扩展点：每轮循环结束触发
             self.after_iteration()
         self._stop_threading_event.clear()
@@ -144,8 +143,4 @@ class EventBaseScript(ABC):
         """Hook: called after each loop iteration.
         子类可以覆写或外部注册回调使用。
         """
-        pass
-
-    @abstractmethod
-    def _find_window(self) -> int:
         pass

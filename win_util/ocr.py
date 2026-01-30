@@ -4,6 +4,8 @@ import cv2
 import easyocr
 from loguru import logger
 
+DEFAULT_SIMILARITY_THRESHOLD = 0.3
+
 
 class CommonOcr:
     def __init__(self, lang_list=['ch_sim', 'en'], gpu=True, **kwargs):
@@ -36,12 +38,21 @@ class CommonOcr:
         # 放大用于OCR
         fx, fy = 2.0, 2.0
         gray_resized = cv2.resize(gray, None, fx=fx, fy=fy, interpolation=cv2.INTER_CUBIC)
-        _, thresh = cv2.threshold(gray_resized, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        # 二值化，有时效果不好，待定
+        # _, thresh = cv2.threshold(gray_resized, 127, 255, cv2.THRESH_BINARY)
 
-        ocr_results = self.reader.readtext(thresh)
+        ocr_results = self.reader.readtext(gray_resized)
+        # debug用
+        # logger.debug(f"ocr_results: {ocr_results}")
+        # win_name = "test_ocr_source"
+        # cv2.namedWindow(win_name, cv2.WINDOW_GUI_NORMAL | cv2.WINDOW_NORMAL)
+        # cv2.resizeWindow(win_name, 1300, 700)
+        # cv2.setWindowProperty(win_name, cv2.WND_PROP_TOPMOST, 1)
+        # cv2.imshow(win_name, thresh)
+        # cv2.waitKey(100)
 
         # 计算缩放系数（更稳健：根据实际尺寸算）
-        rh, rw = thresh.shape[:2]
+        rh, rw = gray_resized.shape[:2]
         scale_x = rw / float(w)
         scale_y = rh / float(h)
 
@@ -100,7 +111,7 @@ class CommonOcr:
 
         return False
 
-    def find_text_boxes(self, img, target_text, similarity_threshold=0.8, case_sensitive=False):
+    def find_text_boxes(self, img, target_text, similarity_threshold=DEFAULT_SIMILARITY_THRESHOLD, case_sensitive=False):
         """
         查找目标文本在图像中的位置
 
@@ -125,7 +136,7 @@ class CommonOcr:
 
         return found_positions
 
-    def find_text_positions(self, img, target_text, similarity_threshold=0.8, case_sensitive=False):
+    def find_text_positions(self, img, target_text, similarity_threshold=DEFAULT_SIMILARITY_THRESHOLD, case_sensitive=False):
         """
         查找目标文本在图像中的位置，返回所有匹配的文本位置
 
@@ -147,7 +158,7 @@ class CommonOcr:
             positions.append((center_x, center_y, similarity))
         return positions
 
-    def find_text_position(self, img, target_text, similarity_threshold=0.8, case_sensitive=False):
+    def find_text_position(self, img, target_text, similarity_threshold=DEFAULT_SIMILARITY_THRESHOLD, case_sensitive=False):
         """
         查找目标文本在图像中的位置，返回第一个匹配的文本位置
 
@@ -187,14 +198,13 @@ class CommonOcr:
         ocr_result = self.ocr(img)
         return {text for _, text, similarity in ocr_result if similarity >= similarity_threshold}
 
-    def find_all_text_positions(self, img, similarity_threshold=0.8, case_sensitive=False):
+    def find_all_text_positions(self, img, similarity_threshold=DEFAULT_SIMILARITY_THRESHOLD):
         """
         查找图像中所有文本的位置，返回所有相似度在阈值以上的文本详细信息
 
         Args:
             img: 输入图像
             similarity_threshold: 相似度阈值，默认0.8
-            case_sensitive: 是否区分大小写，默认False
 
         Returns:
             list: 所有匹配的文本详细信息列表，格式为 [(x, y, text, similarity), ...]

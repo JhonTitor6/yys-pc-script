@@ -17,7 +17,6 @@ def bg_find_pic(hwnd, small_picture_path, x0=0, y0=0, x1=99999, y1=99999, simila
 
 def bg_find_pic_with_timeout(hwnd, small_picture_path, timeout=5, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8):
     finder = ImageFinder(hwnd)
-    finder.update_screenshot_cache()
     return finder.bg_find_pic_with_timeout(small_picture_path, timeout, x0, y0, x1, y1, similarity)
 
 
@@ -30,7 +29,7 @@ def find_window(title_part="阴阳师-网易游戏") -> int:
         raise Exception("未找到游戏窗口")
 
     # 设置窗口大小
-    win32gui.SetWindowPos(hwnd, None, 0, 0, 1136, 671, win32con.SWP_NOMOVE)
+    win32gui.SetWindowPos(hwnd, None, 0, 0, 1154, 680, win32con.SWP_NOMOVE)
 
     # 获取客户区大小
     _, _, width, height = win32gui.GetClientRect(hwnd)

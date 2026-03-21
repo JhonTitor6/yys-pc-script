@@ -51,12 +51,14 @@ class ExplorationScript(YYSBaseScript):
 
     def _on_tansuo_bao_xiang(self, point):
         random_sleep(1, 2)
-        self.image_finder.bg_find_pic("yys/images/tansuo_close.bmp")
+        tansuo_close_point = self.image_finder.bg_find_pic_by_cache("yys/images/tansuo_close.bmp")
+        if tansuo_close_point is not None and tansuo_close_point != (-1, -1):
+            bg_left_click(self.hwnd, tansuo_close_point[0], tansuo_close_point[1])
         random_sleep(1, 1.6)
         bg_left_click_with_range(self.hwnd, point)
 
     def _on_tansuo_entering(self, point):
-        self.mouse.bg_left_click(point)
+        self.bg_left_click(point)
         time.sleep(0.5)
         self.image_finder.update_screenshot_cache()
         if self.ocr.contains_text(self.image_finder.screenshot_cache, "己达本日上限"):
@@ -67,7 +69,7 @@ class ExplorationScript(YYSBaseScript):
         if self.idle_count >= 3:
             self.idle_count = 0
             # 向右移动
-            self.mouse.bg_left_click(random.randint(960, 1030), random.randint(450, 510))
+            self.mouse.bg_left_click_with_range((1000, 490))
             logger.debug("没有找到挑战按钮，往右移动...")
             random_sleep(1, 3)
 
@@ -78,4 +80,6 @@ class ExplorationScript(YYSBaseScript):
 
 
 if __name__ == '__main__':
-    ExplorationScript().run()
+    script = ExplorationScript()
+    script.set_max_battle_count(424)
+    script.run()

@@ -11,7 +11,9 @@
       "Read(//c/Program Files \\(x86\\)/**)",
       "Read(//c/Program Files/**)",
       "Read(//f/Users/56440/PythonProjects/yys-pc-script/$LOCALAPPDATA/**)",
-      "Bash(gh api:*)"
+      "Bash(gh api:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

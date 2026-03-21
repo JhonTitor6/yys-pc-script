@@ -1,5 +1,3 @@
-from typing import Set
-
 import cv2
 import easyocr
 from loguru import logger
@@ -8,7 +6,7 @@ DEFAULT_SIMILARITY_THRESHOLD = 0.3
 
 
 class CommonOcr:
-    def __init__(self, lang_list=['ch_sim', 'en'], gpu=True, **kwargs):
+    def __init__(self, reader: easyocr.Reader=None, lang_list=['ch_sim', 'en'], gpu=True, **kwargs):
         """
         初始化OCR阅读器
 
@@ -17,15 +15,18 @@ class CommonOcr:
             gpu: 是否使用GPU，默认True
             **kwargs: 其他传递给easyocr.Reader的参数
         """
-        self.reader: easyocr.Reader = easyocr.Reader(lang_list, gpu=gpu, **kwargs)
+        self.reader: easyocr.Reader = reader
+        if reader is None:
+            self.reader: easyocr.Reader = easyocr.Reader(lang_list, gpu=gpu, **kwargs)
 
-    def ocr(self, img):
+    def ocr(self, img, **readtext_kwargs):
         """
         识别图像中的文本，返回原生结果
 
         Args:
             img: 输入图像
 
+        TODO: 优化性能
         Returns:
             OCR结果列表，格式与easyocr一致：[(box, text, conf), ...]
         """
@@ -41,7 +42,7 @@ class CommonOcr:
         # 二值化，有时效果不好，待定
         # _, thresh = cv2.threshold(gray_resized, 127, 255, cv2.THRESH_BINARY)
 
-        ocr_results = self.reader.readtext(gray_resized)
+        ocr_results = self.reader.readtext(gray_resized, **readtext_kwargs)
         # debug用
         # logger.debug(f"ocr_results: {ocr_results}")
         # win_name = "test_ocr_source"
@@ -182,9 +183,9 @@ class CommonOcr:
         center_x = int((best_box[0][0] + best_box[2][0]) / 2)
         center_y = int((best_box[0][1] + best_box[2][1]) / 2)
 
-        return (center_x, center_y, best_similarity)
+        return center_x, center_y
 
-    def find_all_texts(self, img, similarity_threshold=0.8) -> Set[str]:
+    def find_all_texts(self, img, similarity_threshold=DEFAULT_SIMILARITY_THRESHOLD, **readtext_kwargs) -> list[str]:
         """
         查找图像中所有的文本，返回所有匹配的文本列表
 
@@ -193,10 +194,10 @@ class CommonOcr:
             similarity_threshold: 相似度阈值，默认0.8
 
         Returns:
-            set: 所有匹配的文本集合
+            list: 所有匹配的文本list
         """
-        ocr_result = self.ocr(img)
-        return {text for _, text, similarity in ocr_result if similarity >= similarity_threshold}
+        ocr_result = self.ocr(img, **readtext_kwargs)
+        return [text for _, text, similarity in ocr_result if similarity >= similarity_threshold]
 
     def find_all_text_positions(self, img, similarity_threshold=DEFAULT_SIMILARITY_THRESHOLD):
         """

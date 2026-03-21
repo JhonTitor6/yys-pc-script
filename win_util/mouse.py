@@ -14,7 +14,7 @@ class MouseController:
         """
         self.hwnd = hwnd
 
-    def bg_left_click(self, *point) -> bool:
+    def bg_left_click(self, *point, x_range=0, y_range=0) -> bool:
         """
         后台模拟鼠标左键点击
         :param point: (x, y) 或 x, y
@@ -26,11 +26,20 @@ class MouseController:
         if point is None or (len(point) == 1 and point[0] is None):
             return False
 
-        x, y = MouseController._parse_position(point)
-        x_pos, y_pos = int(round(x)), int(round(y))
+        x, y = -1, -1
+        if len(point) == 1 and isinstance(point[0], (tuple, list)):
+            x, y = point[0][0], point[0][1]
+        elif len(point) == 2:
+            x, y = point
 
-        if x_pos < 0 or y_pos < 0:
+        if x < 0 or y < 0:
             return False
+
+        x_pos = max(0, random.randint(x - x_range, x + x_range))
+        y_pos = max(0, random.randint(y - y_range, y + y_range))
+
+        if x_range >= 0 or y_range >= 0:
+            logger.debug(f"在基准点 {point} 周围随机点击: x={x}, y={y}")
 
         long_position = win32api.MAKELONG(x_pos, y_pos)
         win32api.SendMessage(self.hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, long_position)
@@ -46,24 +55,7 @@ class MouseController:
         :param y_range: y轴随机范围半径
         :return: 点击是否成功
         """
-        if point and point != (-1, -1):
-            x = random.randint(point[0] - x_range, point[0] + x_range)
-            y = random.randint(point[1] - y_range, point[1] + y_range)
-            logger.debug(f"在基准点 {point} 周围随机点击: x={x}, y={y}")
-            return self.bg_left_click(x, y)
-        return False
-
-    @staticmethod
-    def _parse_position(position):
-        """
-        解析传入坐标参数，支持 tuple/list 或 x,y 两种形式
-        """
-        if len(position) == 1 and isinstance(position[0], (tuple, list)):
-            return position[0]
-        elif len(position) == 2:
-            return position
-        else:
-            raise ValueError("坐标参数格式错误，请使用 (x,y) 或 x,y 两种形式")
+        return self.bg_left_click(point, x_range=x_range, y_range=y_range)
 
 
 def left_click(*position):

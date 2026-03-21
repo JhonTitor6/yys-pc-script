@@ -1,3 +1,4 @@
+import random
 import threading
 import time
 from abc import ABC
@@ -5,7 +6,6 @@ from typing import Callable, Optional
 
 from loguru import logger
 
-from win_util.common_util import random_sleep
 from win_util.image import ImageFinder, ImageMatchConfig
 from win_util.ocr import CommonOcr
 
@@ -21,6 +21,12 @@ LOOP_SLEEP_MAX = 0.2
 
 # 未知事件名称
 UNKNOWN_EVENT_NAME = "unknown"
+
+
+def random_sleep(min_val: float, max_val: float) -> None:
+    """随机等待一段时间"""
+    sleep_seconds = random.uniform(min_val, max_val)
+    time.sleep(sleep_seconds)
 
 
 class Event:

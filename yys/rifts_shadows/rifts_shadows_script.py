@@ -1,11 +1,17 @@
+import random
 import time
 from enum import Enum
 from typing import Optional
 
-from win_util.common_util import random_sleep
 from win_util.image import ImageMatchConfig
 from win_util.ocr import CommonOcr
 from yys.event_script_base import YYSBaseScript
+
+
+def random_sleep(min_val: float, max_val: float) -> None:
+    """随机等待一段时间"""
+    sleep_seconds = random.uniform(min_val, max_val)
+    time.sleep(sleep_seconds)
 
 
 class EnemyType(Enum):

@@ -129,6 +129,7 @@ cd gui && npm install && npm start
 | `soul_raid` 模块化（脚本+图片迁移到 `yys/soul_raid/`） | ✅ 已完成 | 2026-03-21 |
 | `realm_raid` 模块化（脚本+图片迁移到 `yys/realm_raid/`） | ✅ 已完成 | 2026-03-21 |
 | `yuling` 模块化（脚本+图片迁移到 `yys/yuling/`） | ✅ 已完成 | 2026-03-21 |
+| `common_util` 完整清理（删除 `win_util/common_util.py` 和 `yys/common_util.py`） | ✅ 已完成 | 2026-03-21 |
 
 ### 已完成模块（模块化后）
 
@@ -148,16 +149,9 @@ yys/
     └── images/
 ```
 
-### 待处理遗留问题
-
-1. **其他脚本模块化**：待迁移 `douji.py`、`guibingyanwu.py`、`exploration.py` 等
-2. **common_util 完整清理**：部分独立脚本仍依赖 `common_util`
-3. **勾协 OCR 检测**：`WantedQuestAcceptType.ACCEPT_GOUGU` 已完成枚举，但 OCR 识别逻辑待完善
-
 ### 下一步计划
 
-1. 确认是否继续其他脚本的模块化迁移
-2. 或继续 P2 功能增强任务（勾协检测、绿色标记检测等）
+暂无待处理任务
 
 ---
 

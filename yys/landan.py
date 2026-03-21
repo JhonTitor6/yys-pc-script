@@ -1,4 +1,9 @@
-from common_util import find_window, bg_left_click_with_range, random_sleep, logger
+import random
+import time
+
+from loguru import logger
+from win_util.mouse import bg_left_click_with_range
+from yys.event_script_base import find_window, random_sleep
 
 
 def main():

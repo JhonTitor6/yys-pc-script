@@ -3,8 +3,8 @@ import time
 import cv2
 from loguru import logger
 
-from common_util import find_window
 from win_util.image import ImageFinder
+from yys.event_script_base import find_window
 from yys.util.yys_yu_hun_ocr import YysYuHunOCR
 
 image_finder = None

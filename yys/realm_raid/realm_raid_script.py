@@ -1,7 +1,6 @@
 import time
 
 from win_util.image import ImageMatchConfig
-from yys.common_util import try_handle_battle_end
 from yys.event_script_base import YYSBaseScript, random_sleep
 
 """
@@ -33,7 +32,7 @@ class RealmRaidScript(YYSBaseScript):
     def _on_ticket_not_enough(self, point):
         """处理结界突破券不足事件"""
         self._max_battle_count = self._cur_battle_count
-        logger.info(f"没突破券了")
+        self.logger.info(f"没突破券了")
 
     def _on_attackable_barrier(self, point):
         """处理结界突破用户头像点击"""
@@ -62,11 +61,11 @@ class RealmRaidScript(YYSBaseScript):
                     "yys/realm_raid/images/realm_raid_user_realm.bmp",
                     x0=x0, y0=y0, x1=x1, y1=y1
                 )
-                logger.debug(f"第{row + 1}行第{col + 1}列的结界: ({x0}, {y0}, {x1}, {y1}) 坐标: {point}")
+                self.logger.debug(f"第{row + 1}行第{col + 1}列的结界: ({x0}, {y0}, {x1}, {y1}) 坐标: {point}")
                 if point is not None and point != (-1, -1):
                     all_realms.append(point)
 
-        logger.debug(f"找到{len(all_realms)}个结界")
+        self.logger.debug(f"找到{len(all_realms)}个结界")
         return all_realms
 
     def _on_attack(self, point):
@@ -78,33 +77,28 @@ class RealmRaidScript(YYSBaseScript):
         # 打第一个结界时先退 3 次
         self.quit_3_times()
 
-    def _on_zhan_dou_wan_cheng(self, point):
-        super()._on_zhan_dou_wan_cheng(point)
-        time.sleep(2)
-        try_handle_battle_end(self.hwnd)
-
     def quit_3_times(self):
-        logger.info("准备退3次...")
+        self.logger.info("准备退3次...")
         time.sleep(3)
         for i in range(0, 3):
-            logger.info(f"退出第{i + 1}次")
+            self.logger.info(f"退出第{i + 1}次")
             self.keyboard.bg_press_key('ESC')
             random_sleep(0.05, 0.2)
             self.keyboard.bg_press_key('ENTER')
             random_sleep(2, 3)
-            logger.info(f"准备点击【再次挑战】")
+            self.logger.info(f"准备点击【再次挑战】")
             if self.win_controller.find_and_click("yys/realm_raid/images/realm_raid_retry.bmp", timeout=5):
                 random_sleep(1, 2)
-            logger.info("检查【今日不再提醒】")
+            self.logger.info("检查【今日不再提醒】")
             silence_point = self.image_finder.bg_find_pic_with_timeout("yys/realm_raid/images/realm_raid_retry_silence.bmp", timeout=2)
             if silence_point is not None and silence_point != (-1, -1):
-                logger.info("点击【今日不再提醒】")
+                self.logger.info("点击【今日不再提醒】")
                 random_sleep(1, 2)
                 self.bg_left_click((494, 317), x_range=10, y_range=10)
                 random_sleep(0.2, 0.6)
                 self.bg_left_click((672, 379), y_range=10)
             random_sleep(2.5, 3)
-        logger.info("完成退3次")
+        self.logger.info("完成退3次")
 
     def on_scene_barrier_breakthrough(self, point):
         self.refresh_if_no_attackable_barrier()
@@ -115,14 +109,14 @@ class RealmRaidScript(YYSBaseScript):
         if len(realm_list) > 0:
             return
 
-        logger.info("没有可以打的结界了，准备刷新")
+        self.logger.info("没有可以打的结界了，准备刷新")
         self.win_controller.find_and_click("yys/realm_raid/images/realm_raid_refresh.bmp", x_range=10, y_range=10, timeout=1)
         random_sleep(1, 1.5)
 
         self.win_controller.update_screenshot_cache()
         self.win_controller.find_and_click("yys/realm_raid/images/realm_raid_refresh_confirm.bmp", x_range=10, y_range=10, timeout=1)
         random_sleep(1, 1.5)
-        logger.info("刷新完成")
+        self.logger.info("刷新完成")
 
     def on_run(self):
         super().on_run()

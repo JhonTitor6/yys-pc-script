@@ -2,14 +2,18 @@
 import os
 import sys
 import time
+import random
 from enum import IntEnum
+
+import win32con
+import win32gui
+from loguru import logger
 
 from win_util import WinController
 from win_util.event import EventBaseScript, Event
 from win_util.image import ImageMatchConfig, ImageFinder
 from win_util.mouse import bg_left_click_with_range
 from win_util.ocr import CommonOcr
-from yys.common_util import find_window, random_sleep
 from yys.scene_manager import SceneManager, SceneDetectionResult
 
 # 获取项目根目录并添加到 sys.path
@@ -33,6 +37,7 @@ class WantedQuestAcceptType(IntEnum):
     """悬赏封印接受类型"""
     REFUSE = 0      # 拒绝
     ACCEPT_ALL = 1  # 全部接受
+    ACCEPT_GOUGU = 2  # 只接勾协
 
 
 # 战斗相关常量
@@ -58,6 +63,32 @@ WANTED_QUEST_ACCEPT_IMAGE = "yys/images/xuanshangfengyin_accept.bmp"
 
 # OCR 点击屏幕继续
 OCR_CLICK_SCREEN_CONTINUE = "点击屏幕继续"
+
+
+# ==================== 工具函数 ====================
+
+def find_window(title_part: str = "阴阳师-网易游戏") -> int:
+    """查找游戏窗口"""
+    hwnd = win32gui.FindWindow(None, title_part)
+    if not hwnd:
+        logger.error("未找到游戏窗口")
+        raise Exception("未找到游戏窗口")
+
+    # 设置窗口大小
+    win32gui.SetWindowPos(hwnd, None, 0, 0, 1154, 680, win32con.SWP_NOMOVE)
+
+    # 获取客户区大小
+    _, _, width, height = win32gui.GetClientRect(hwnd)
+
+    logger.info(f"窗口句柄: {hwnd}, 客户区大小: {width}x{height}")
+    return hwnd
+
+
+def random_sleep(min_val: float, max_val: float):
+    """随机等待一段时间"""
+    sleep_seconds = random.uniform(min_val, max_val)
+    time.sleep(sleep_seconds)
+
 
 # 场景检测事件
 SCENE_DETECTED_EVENT = Event('scene_detected')
@@ -188,6 +219,13 @@ class YYSBaseScript(EventBaseScript):
             case WantedQuestAcceptType.ACCEPT_ALL:
                 accept_point = self.image_finder.bg_find_pic_by_cache(WANTED_QUEST_ACCEPT_IMAGE)
                 if accept_point and accept_point != (-1, -1):
+                    self.bg_left_click(accept_point)
+            case WantedQuestAcceptType.ACCEPT_GOUGU:
+                # TODO: 实现勾协检测 - 需要 OCR 识别"勾协"或"契约"文字
+                # 目前先接受所有，然后在战斗开始时检测是否为勾协，不是则退出
+                accept_point = self.image_finder.bg_find_pic_by_cache(WANTED_QUEST_ACCEPT_IMAGE)
+                if accept_point and accept_point != (-1, -1):
+                    self.logger.info("检测到勾协邀请，接受")
                     self.bg_left_click(accept_point)
             case _:
                 # 默认拒绝

@@ -1,8 +1,8 @@
 import time
 
 from win_util.image import ImageMatchConfig
-from yys.common_util import logger, random_sleep, try_handle_battle_end
-from yys.event_script_base import YYSBaseScript
+from yys.common_util import try_handle_battle_end
+from yys.event_script_base import YYSBaseScript, random_sleep
 
 """
 结界突破脚本，使用事件驱动模式
@@ -20,11 +20,11 @@ class RealmRaidScript(YYSBaseScript):
         self.attackable_barrier_list = []
 
         # 注册结界突破特定的图像匹配事件
-        self._register_image_match_event(ImageMatchConfig("yys/images/realm_raid_not_enough.bmp", similarity=0.9),
+        self._register_image_match_event(ImageMatchConfig("yys/realm_raid/images/realm_raid_not_enough.bmp", similarity=0.9),
                                          self._on_ticket_not_enough)
         # 注册挑战相关的事件
-        self._register_image_match_event(ImageMatchConfig("yys/images/realm_raid_jingong.bmp"), self._on_attack)
-        self._register_image_match_event(ImageMatchConfig("yys/images/realm_raid_user_realm.bmp"),
+        self._register_image_match_event(ImageMatchConfig("yys/realm_raid/images/realm_raid_jingong.bmp"), self._on_attack)
+        self._register_image_match_event(ImageMatchConfig("yys/realm_raid/images/realm_raid_user_realm.bmp"),
                                          self._on_attackable_barrier)
         # 检测是不是没有可以挑战的了
         self._register_image_match_event(ImageMatchConfig("yys/images/scene/barrier_breakthrough.bmp"),
@@ -59,7 +59,7 @@ class RealmRaidScript(YYSBaseScript):
                 y1 = y1_1 + row * row_offset_y
 
                 point = self.image_finder.bg_find_pic_by_cache(
-                    "yys/images/realm_raid_user_realm.bmp",
+                    "yys/realm_raid/images/realm_raid_user_realm.bmp",
                     x0=x0, y0=y0, x1=x1, y1=y1
                 )
                 logger.debug(f"第{row + 1}行第{col + 1}列的结界: ({x0}, {y0}, {x1}, {y1}) 坐标: {point}")
@@ -93,10 +93,10 @@ class RealmRaidScript(YYSBaseScript):
             self.keyboard.bg_press_key('ENTER')
             random_sleep(2, 3)
             logger.info(f"准备点击【再次挑战】")
-            if self.win_controller.find_and_click("yys/images/realm_raid_retry.bmp", timeout=5):
+            if self.win_controller.find_and_click("yys/realm_raid/images/realm_raid_retry.bmp", timeout=5):
                 random_sleep(1, 2)
             logger.info("检查【今日不再提醒】")
-            silence_point = self.image_finder.bg_find_pic_with_timeout("yys/images/realm_raid_retry_silence.bmp", timeout=2)
+            silence_point = self.image_finder.bg_find_pic_with_timeout("yys/realm_raid/images/realm_raid_retry_silence.bmp", timeout=2)
             if silence_point is not None and silence_point != (-1, -1):
                 logger.info("点击【今日不再提醒】")
                 random_sleep(1, 2)
@@ -111,16 +111,16 @@ class RealmRaidScript(YYSBaseScript):
 
     def refresh_if_no_attackable_barrier(self):
         """检查是否有未打的结界"""
-        realm_list = self.image_finder.bg_find_pic_all_by_cache("yys/images/realm_raid_user_realm.bmp")
+        realm_list = self.image_finder.bg_find_pic_all_by_cache("yys/realm_raid/images/realm_raid_user_realm.bmp")
         if len(realm_list) > 0:
             return
 
         logger.info("没有可以打的结界了，准备刷新")
-        self.win_controller.find_and_click("yys/images/realm_raid_refresh.bmp", x_range=10, y_range=10, timeout=1)
+        self.win_controller.find_and_click("yys/realm_raid/images/realm_raid_refresh.bmp", x_range=10, y_range=10, timeout=1)
         random_sleep(1, 1.5)
 
         self.win_controller.update_screenshot_cache()
-        self.win_controller.find_and_click("yys/images/realm_raid_refresh_confirm.bmp", x_range=10, y_range=10, timeout=1)
+        self.win_controller.find_and_click("yys/realm_raid/images/realm_raid_refresh_confirm.bmp", x_range=10, y_range=10, timeout=1)
         random_sleep(1, 1.5)
         logger.info("刷新完成")
 

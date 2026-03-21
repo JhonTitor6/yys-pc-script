@@ -1,6 +1,7 @@
 import time
 from ctypes import windll
 from pathlib import Path
+from dataclasses import dataclass
 from typing import List, Tuple, Union, Any, Optional
 
 import cv2
@@ -174,6 +175,29 @@ class ImageMatchConfig:
         return f"{self.target_image_path_list} {self.x0} {self.y0} {self.x1} {self.y1} {self.similarity}"
 
 
+@dataclass
+class ImageMatchResult:
+    """图像匹配结果"""
+    point: Tuple[int, int]
+    image_path: str
+    similarity: float
+
+    @property
+    def x(self) -> int:
+        return self.point[0]
+
+    @property
+    def y(self) -> int:
+        return self.point[1]
+
+    @property
+    def is_found(self) -> bool:
+        return self.point != (-1, -1)
+
+    def __bool__(self) -> bool:
+        return self.is_found
+
+
 class ImageFinder:
     """
     模板匹配、找图、点击封装，无缓存版本
@@ -288,7 +312,6 @@ class ImageFinder:
     def bg_find_pic(self, screenshot: Optional[Any], small_img_path, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8) -> Tuple[int, int]:
         """
         在给定截图中匹配图片（增强版，支持灰度和颜色特征）
-        TODO: return 最好封装为对象，改动有点大，先这样吧。。。其他类似的类同理
         :return (x, y)
         """
         matches = self.bg_find_pic_all(screenshot, small_img_path, x0, y0, x1, y1, similarity)
@@ -323,6 +346,34 @@ class ImageFinder:
         
         logger.debug(f"匹配成功: {Path(small_img_path).stem} | 位置: ({center_x},{center_y}) | 相似度: {final_score:.4f}")
         return center_x, center_y
+
+    def find_image(self, screenshot: Optional[Any], small_img_path: str, x0: int = 0, y0: int = 0,
+                   x1: int = 99999, y1: int = 99999, similarity: float = 0.8) -> ImageMatchResult:
+        """
+        在给定截图中匹配图片，返回 ImageMatchResult 对象
+
+        Args:
+            screenshot: 截图 numpy 数组
+            small_img_path: 小图路径
+            x0, y0, x1, y1: 搜索区域
+            similarity: 相似度阈值
+
+        Returns:
+            ImageMatchResult 对象，包含匹配位置、图片路径和相似度
+        """
+        matches = self.bg_find_pic_all(screenshot, small_img_path, x0, y0, x1, y1, similarity)
+
+        if not matches:
+            return ImageMatchResult(point=(-1, -1), image_path=small_img_path, similarity=0.0)
+
+        center_x, center_y, final_score = matches[0]
+        logger.debug(f"匹配成功: {Path(small_img_path).stem} | 位置: ({center_x},{center_y}) | 相似度: {final_score:.4f}")
+        return ImageMatchResult(point=(center_x, center_y), image_path=small_img_path, similarity=final_score)
+
+    def find_image_by_cache(self, small_img_path: str, x0: int = 0, y0: int = 0,
+                           x1: int = 99999, y1: int = 99999, similarity: float = 0.8) -> ImageMatchResult:
+        """使用缓存截图查找图片，返回 ImageMatchResult 对象"""
+        return self.find_image(self.screenshot_cache, small_img_path, x0, y0, x1, y1, similarity)
 
     def bg_find_pic_with_timeout(self, small_picture_path, timeout=5, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8):
         """带超时的图片查找"""

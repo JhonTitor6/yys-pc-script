@@ -35,42 +35,90 @@ class SceneDetectionResult:
 class SceneManager:
     """
     场景管理器 - 实现场景检测、路径规划和跳转功能
-    将场景图片放在 yys/images/scene
-    将场景跳转按钮图片放在 yys/images/scene/scene_control，图片命名规则：[source]_to_[destination].bmp/png/jpg/jpeg
-    TODO: 改为编程式注册
-    TODO：支持图片放在功能脚本目录下
+
+    支持两种注册方式：
+    1. 编程式注册：使用 register_scene()、register_transition() 等方法
+    2. 文件系统加载：从 yys/images/scene 和 yys/images/scene/scene_control 目录自动加载
+
+    场景图片放在 yys/images/scene
+    场景跳转按钮图片放在 yys/images/scene/scene_control，图片命名规则：[source]_to_[destination].bmp/png/jpg/jpeg
     """
-    
-    def __init__(self, hwnd: int, image_finder: ImageFinder):
+
+    def __init__(self, hwnd: int, image_finder: ImageFinder, auto_load_from_filesystem: bool = True):
         """
         初始化场景管理器
-        
+
         Args:
             hwnd: 游戏窗口句柄
+            image_finder: 图像查找器
+            auto_load_from_filesystem: 是否从文件系统自动加载场景（默认 True）
         """
         self.hwnd = hwnd
         self.image_finder = image_finder
 
-        # TODO: 将具体scene编写到代码枚举
-        self.current_scene = None
-        
+        self.current_scene: Optional[str] = None
+
         # 场景图存储：{source_scene: {dest_scene: button_image_path}}
         self.scene_graph: Dict[str, Dict[str, str]] = defaultdict(dict)
-        
+
         # 场景图像映射：{scene_name: [image_paths]}
         self.scene_images: Dict[str, List[str]] = {}
-        
+
         # 场景跳转按钮映射：{(source, dest): button_image_path}
         self.scene_transitions: Dict[Tuple[str, str], str] = {}
         # 通用跳转按钮：{dest_scene: button_path}
         self.global_transitions: Dict[str, str] = {}
-        
-        # 加载场景资源
-        self._load_scenes()
-        self._build_scene_graph()
 
-    # TODO: 暴露接口注册 scene
-    def _load_scenes(self):
+        # 是否已从文件系统加载
+        self._loaded_from_filesystem = False
+
+        # 从文件系统加载场景资源（可选）
+        if auto_load_from_filesystem:
+            self._load_scenes_from_filesystem()
+            self._build_scene_graph()
+
+    def register_scene(self, name: str, image_paths: List[str]):
+        """
+        注册场景及其图片
+
+        Args:
+            name: 场景名称
+            image_paths: 场景图片路径列表（支持多张图片用于同一场景）
+        """
+        if name not in self.scene_images:
+            self.scene_images[name] = []
+        self.scene_images[name].extend(image_paths)
+        logger.debug(f"注册场景: {name}, 图片: {image_paths}")
+
+    def register_transition(self, from_scene: str, to_scene: str, button_path: str):
+        """
+        注册场景跳转
+
+        Args:
+            from_scene: 源场景
+            to_scene: 目标场景
+            button_path: 跳转按钮图片路径
+        """
+        self.scene_transitions[(from_scene, to_scene)] = button_path
+        self.scene_graph[from_scene][to_scene] = button_path
+        logger.debug(f"注册跳转: {from_scene} -> {to_scene}, 按钮: {button_path}")
+
+    def register_global_transition(self, to_scene: str, button_path: str):
+        """
+        注册通用跳转按钮（从任意场景都可跳转到目标场景）
+
+        Args:
+            to_scene: 目标场景
+            button_path: 跳转按钮图片路径
+        """
+        self.global_transitions[to_scene] = button_path
+        # 为所有已注册的场景添加通用跳转
+        for scene in self.scene_images.keys():
+            if to_scene not in self.scene_graph[scene]:
+                self.scene_graph[scene][to_scene] = button_path
+        logger.debug(f"注册通用跳转: * -> {to_scene}, 按钮: {button_path}")
+
+    def _load_scenes_from_filesystem(self):
         """加载所有场景图片和跳转按钮"""
 
         # 构建场景图片映射
@@ -130,7 +178,6 @@ class SceneManager:
                 # 若已有显式跳转，则跳过
                 if dest_scene in self.scene_graph[source_scene]:
                     continue
-                # TODO: source -> dest 支持多条路径
                 self.scene_graph[source_scene][dest_scene] = button_path
 
         logger.info(f"场景图构建完成，共发现 {len(self.scene_graph)} 个场景节点")

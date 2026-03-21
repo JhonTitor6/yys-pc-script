@@ -21,12 +21,12 @@ pip install -r requirements.txt
 
 ## 运行脚本
 
-每个游戏任务（探索、御魂、结界突破等）都是 `yys/` 目录下的独立脚本：
-- `python yys/exploration.py` - 章节探索
-- `python yys/yuhun.py` - 御魂副本
-- `python yys/jiejietupo.py` - 结界突破
-- `python yys/yuling.py` - 御灵副本
-- `python yys/douji.py` - 收藏/组队
+每个游戏任务（探索、御魂、结界突破等）都是 `yys/` 目录下的独立模块：
+- `python -m yys.exploration` - 章节探索
+- `python -m yys.soul_raid` - 御魂副本
+- `python -m yys.realm_raid` - 结界突破
+- `python -m yys.yuling` - 御灵副本
+- `python -m yys.douji` - 斗技挂机
 - 其他脚本位于 `yys/fujiwara/`、`yys/kuzunoha/`、`yys/rifts_shadows/`
 
 ## 架构设计
@@ -73,10 +73,11 @@ class MyScript(YYSBaseScript):  # YYSBaseScript 继承自 EventBaseScript
 
 ### 关键图片路径
 
-- 游戏操作按钮：`yys/images/*.bmp`（tansuo_tiaozhan.bmp、yuhun_tiaozhan.bmp 等）
+- 游戏操作按钮：`yys/images/*.bmp`（tansuo_tiaozhan.bmp 等）
 - 场景背景：`yys/images/scene/*.bmp`（home.bmp、battling.bmp）
 - 场景跳转：`yys/images/scene/scene_control/*_to_*.bmp`
 - 战斗结束检测：`battle_end.bmp`、`battle_end_success.bmp`、`battle_end_loss.bmp`
+- 模块私有图片：各模块 `images/` 子目录下（`yys/soul_raid/images/`、`yys/realm_raid/images/` 等）
 
 ### 继承的事件处理器
 
@@ -108,9 +109,56 @@ pytest yys/test/
 cd gui && npm install && npm start
 ```
 
-## 工作流规范
+## Status（任务进度）
 
-### 任务完成提醒
-- **触发条件**：在完成复杂的重构、运行长时间的测试（超过 10 秒）或批量修改文件后。
-- **执行命令**：请运行以下 PowerShell 命令以发出声音提醒：
-  `powershell -c "(New-Object Media.SoundPlayer 'C:\Windows\Media\notify.wav').PlaySync()"`
+> 每次会话开始时更新此章节
+
+### 当前进度
+
+**已完成的重构任务：**
+
+| 重构项 | 状态 | 完成时间 |
+|--------|------|----------|
+| `jiejietupo` → `realm_raid` 命名重构 | ✅ 已完成 | - |
+| `yuhun.py` → `soul_raid.py` 命名重构 | ✅ 已完成 | - |
+| `SceneManager` 编程式注册 API | ✅ 已完成 | - |
+| `ImageMatchResult` 封装 | ✅ 已完成 | - |
+| `WantedQuestAcceptType` 枚举扩展 | ✅ 已完成 | - |
+| `event_script_base.py` 消除 `common_util` 依赖 | ✅ 已完成 | - |
+| `YYSBaseScript` 子类消除 `logger`/`random_sleep` 导入 | ✅ 已完成 | - |
+| `soul_raid` 模块化（脚本+图片迁移到 `yys/soul_raid/`） | ✅ 已完成 | 2026-03-21 |
+| `realm_raid` 模块化（脚本+图片迁移到 `yys/realm_raid/`） | ✅ 已完成 | 2026-03-21 |
+| `yuling` 模块化（脚本+图片迁移到 `yys/yuling/`） | ✅ 已完成 | 2026-03-21 |
+
+### 已完成模块（模块化后）
+
+```
+yys/
+├── soul_raid/              # 御魂副本
+│   ├── soul_raid_script.py
+│   ├── __init__.py
+│   └── images/
+├── realm_raid/             # 结界突破
+│   ├── realm_raid_script.py
+│   ├── __init__.py
+│   └── images/
+└── yuling/                # 御灵副本
+    ├── yuling_script.py
+    ├── __init__.py
+    └── images/
+```
+
+### 待处理遗留问题
+
+1. **其他脚本模块化**：待迁移 `douji.py`、`guibingyanwu.py`、`exploration.py` 等
+2. **common_util 完整清理**：部分独立脚本仍依赖 `common_util`
+3. **勾协 OCR 检测**：`WantedQuestAcceptType.ACCEPT_GOUGU` 已完成枚举，但 OCR 识别逻辑待完善
+
+### 下一步计划
+
+1. 确认是否继续其他脚本的模块化迁移
+2. 或继续 P2 功能增强任务（勾协检测、绿色标记检测等）
+
+---
+
+*此章节由 Claude Code 自动维护*

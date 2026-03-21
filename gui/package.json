@@ -1,0 +1,23 @@
+{
+  "name": "yys-script-manager",
+  "version": "1.0.0",
+  "description": "阴阳师自动化脚本管理器",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron main.js",
+    "dev": "electron main.js --dev"
+  },
+  "dependencies": {
+    "electron": "latest",
+    "electron-devtools-installer": "^4.0.0",
+    "element-plus": "^2.13.1",
+    "ws": "^8.19.0"
+  },
+  "keywords": [
+    "python",
+    "automation",
+    "game"
+  ],
+  "author": "YYS Script Manager",
+  "license": "MIT"
+}

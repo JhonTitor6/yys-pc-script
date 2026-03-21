@@ -3,11 +3,12 @@ import os
 import sys
 import time
 
+from win_util import WinController
 from win_util.event import EventBaseScript, Event
-from win_util.image import ImageFinder
-from win_util.image import ImageMatchConfig
+from win_util.image import ImageMatchConfig, ImageFinder
 from win_util.keyboard import KeyboardController
 from win_util.mouse import bg_left_click_with_range, MouseController
+from win_util.ocr import CommonOcr
 from yys.common_util import find_window, random_sleep
 from yys.scene_manager import SceneManager, SceneDetectionResult
 
@@ -22,6 +23,7 @@ except ImportError:
     # 如果直接导入失败，尝试添加到路径后再导入
     import sys
     import os
+
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(current_dir)
     if project_root not in sys.path:
@@ -33,13 +35,20 @@ SCENE_DETECTED_EVENT = Event('scene_detected')
 事件驱动
 """
 
+
 class YYSBaseScript(EventBaseScript):
     def __init__(self, script_name):
         # 使用统一的日志管理器
         self.logger = get_logger(script_name)
         self.logger.info(f"初始化{script_name}脚本")
-        hwnd = find_window()
-        super().__init__(hwnd)
+        self.hwnd = find_window()
+        self.win_controller: WinController = WinController(self.hwnd)
+        self.image_finder: ImageFinder = self.win_controller.image_finder
+        self.keyboard: KeyboardController = self.win_controller.keyboard
+        self.mouse: MouseController = self.win_controller.mouse
+        self.ocr: CommonOcr = self.win_controller.ocr
+        super().__init__(self.image_finder, self.ocr)
+
         self.script_name = script_name
         self.script_start_time_mills = int(time.time() * 1000)
         self._cur_battle_count = 0
@@ -47,28 +56,22 @@ class YYSBaseScript(EventBaseScript):
         self._max_battle_count = 103
         self.accept_wq_type = 0  # 接收悬赏封印类型：0-拒绝，1-全部接受，TODO：2-只接收勾协
 
-        self.mouse = MouseController(self.hwnd)
-        self.keyboard = KeyboardController(self.hwnd)
-        self.logger.info("初始化图片匹配中...")
-        self.image_finder: ImageFinder = ImageFinder(self.hwnd)
-        self.logger.info("初始化图片匹配完成")
-
         # 初始化场景管理器
         self.logger.info("初始化场景管理器中...")
         self.scene_manager: SceneManager = SceneManager(self.hwnd, self.image_finder)
         self.logger.info("初始化场景管理器完成")
 
         # self._event_manager.register_event_handler(SCENE_DETECTED_EVENT, self.on_scene_detected)
-
-        self._register_image_match_event(ImageMatchConfig(["yys/images/battle_end_success.bmp", "yys/images/battle_end.bmp"]),
-                                         self._on_zhan_dou_wan_cheng_victory)
+        self._register_image_match_event(ImageMatchConfig(["yys/images/battle_end_success.bmp", "yys/images/battle_end.bmp"]), self._on_zhan_dou_wan_cheng_victory)
         self._register_image_match_event(ImageMatchConfig(["yys/images/battle_end_loss.bmp"]), self._on_zhan_dou_wan_cheng)
-        self._register_image_match_event(ImageMatchConfig(["yys/images/battle_end_1.bmp", "yys/images/battle_end_2.bmp"]),
-                                         self._on_zhan_dou_wan_cheng)
-        # self._register_image_match_event(ImageMatchConfig("yys/images/xuanshangfengyin_reject.bmp"), self.bg_left_click)
+        self._register_image_match_event(ImageMatchConfig(["yys/images/battle_end_1.bmp", "yys/images/battle_end_2.bmp"]), self._on_zhan_dou_wan_cheng)
+        self._register_image_match_event(ImageMatchConfig("yys/images/xuanshangfengyin_reject.bmp"), self._on_wanted_quests_invited)
         # 注册ocr事件
-        self._register_ocr_match_event("悬赏封印", self._on_wanted_quests_invited)
+        # self._register_ocr_match_event("悬赏封印", self._on_wanted_quests_invited)
         self._register_ocr_match_event("点击屏幕继续", self._on_ocr_click_screen_continue)
+
+    def bg_left_click(self, point, x_range=20, y_range=20):
+        self.mouse.bg_left_click_with_range(point, x_range=x_range, y_range=y_range)
 
     def _on_zhan_dou_wan_cheng_victory(self, point):
         self.bg_left_click(point)
@@ -78,7 +81,7 @@ class YYSBaseScript(EventBaseScript):
     def _on_zhan_dou_wan_cheng(self, point):
         # 不可去掉。如果不等一会，没点掉导致触发多次的话，会多次触发_cur_battle_count+=1
         time.sleep(2)
-        point = (1000, 400)
+        # point 是匹配到的战斗结束图片位置，使用该位置点击
         bg_left_click_with_range(self.hwnd, point, x_range=30, y_range=50)
         self._cur_battle_count += 1
         self.log_battle_count()
@@ -116,7 +119,6 @@ class YYSBaseScript(EventBaseScript):
     def on_scene_detected(self, detection_result: SceneDetectionResult):
         pass
 
-
     def _on_wanted_quests_invited(self, point):
         match self.accept_wq_type:
             case 0:
@@ -125,4 +127,3 @@ class YYSBaseScript(EventBaseScript):
             case 1:
                 point = self.image_finder.bg_find_pic_by_cache("yys/images/xuanshangfengyin_accept.bmp")
                 self.bg_left_click(point)
-

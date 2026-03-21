@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(code-review:code-review)",
+      "Bash(where gh:*)",
+      "WebFetch(domain:api.github.com)",
+      "Bash(gh pr:*)",
+      "Bash(cmd /c \"gh pr list --state open\" 2>&1)",
+      "Bash(powershell -Command \"gh pr list --state open\" 2>&1)",
+      "Bash(powershell -Command \"Get-Command gh -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source\" 2>&1)",
+      "Read(//c/Program Files \\(x86\\)/**)",
+      "Read(//c/Program Files/**)",
+      "Read(//f/Users/56440/PythonProjects/yys-pc-script/$LOCALAPPDATA/**)",
+      "Bash(gh api:*)"
+    ]
+  }
+}

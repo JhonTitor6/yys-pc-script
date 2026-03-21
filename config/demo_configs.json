@@ -1,0 +1,30 @@
+{
+  "御魂": {
+    "debug": true,
+    "log_level": "INFO",
+    "max_battle_count": 50,
+    "battle_interval_min": 0.5,
+    "battle_interval_max": 1.0,
+    "team_member_count": 3,
+    "auto_invite": true,
+    "use_speed_up": true
+  },
+  "探索": {
+    "debug": false,
+    "log_level": "INFO",
+    "max_battle_count": 20,
+    "battle_interval_min": 0.5,
+    "battle_interval_max": 1.0,
+    "enable_boss_fight": true,
+    "boss_only": false
+  },
+  "借借突破": {
+    "debug": false,
+    "log_level": "INFO",
+    "max_battle_count": 20,
+    "battle_interval_min": 0.5,
+    "battle_interval_max": 1.0,
+    "quit_after_n_battles": 9,
+    "quit_times": 3
+  }
+}

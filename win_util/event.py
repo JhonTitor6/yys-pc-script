@@ -6,7 +6,6 @@ from loguru import logger
 
 from win_util.common_util import random_sleep
 from win_util.image import ImageFinder, ImageMatchConfig
-from win_util.mouse import bg_left_click_with_range
 from win_util.ocr import CommonOcr
 
 
@@ -50,11 +49,11 @@ class EventManager:
 
 
 class EventBaseScript(ABC):
-    def __init__(self, hwnd):
+    def __init__(self, image_finder:ImageFinder=None, ocr:CommonOcr=None):
         super().__init__()
-        self.hwnd = hwnd
-        self.image_finder = ImageFinder(self.hwnd)
-        self.ocr = CommonOcr()
+        self.image_finder = image_finder
+        self.ocr = ocr
+
         self._event_manager = EventManager()
 
         self._image_event_match_configs: [ImageMatchConfig] = []
@@ -78,8 +77,6 @@ class EventBaseScript(ABC):
         self._ocr_event_keywords.append(keyword)
         self._event_manager.register_event_handler(Event(keyword), callback)
 
-    def bg_left_click(self, point, x_range=20, y_range=20):
-        bg_left_click_with_range(self.hwnd, point, x_range=x_range, y_range=y_range)
 
     def _trigger_event_from_screenshot_cache(self):
         # 图片
@@ -120,7 +117,8 @@ class EventBaseScript(ABC):
         while not self._stop_threading_event.is_set():
             self.pause_point()
             self.before_iteration()
-            self.image_finder.update_screenshot_cache()
+            if self.image_finder is not None:
+                self.image_finder.update_screenshot_cache()
             self._trigger_event_from_screenshot_cache()
             random_sleep(0.1, 0.2)
             # 扩展点：每轮循环结束触发
@@ -129,7 +127,7 @@ class EventBaseScript(ABC):
 
     def on_run(self):
         """Hook: called on run.
-        子类可以覆写或外部注册回调使用。
+        子类可以重写，每次执行 run 前会调用该方法，可以在这做一些每次 run 都要重置的操作、场景跳转等
         """
         pass
 

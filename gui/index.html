@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>阴阳师自动化脚本管理器</title>
+    <meta charset="UTF-8">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/element-plus@2.3.14/dist/index.full.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus@2.3.14/dist/index.css">
+    <style>
+        body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { text-align: center; margin-bottom: 20px; }
+        .control-panel { margin-bottom: 20px; }
+        .log-container { border: 1px solid #dcdfe6; border-radius: 4px; height: 400px; overflow-y: auto; padding: 10px; background-color: #f5f7fa; }
+        .log-entry { margin: 5px 0; font-family: monospace; white-space: pre-wrap; }
+        .log-debug { color: #909399; }
+        .log-info { color: #606266; }
+        .log-warning { color: #e6a23c; }
+        .log-error { color: #f56c6c; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <div class="header">
+                <h1>阴阳师自动化脚本管理器</h1>
+            </div>
+            
+            <el-card class="control-panel">
+                <template #header>
+                    <span>任务控制</span>
+                </template>
+                
+                <el-row :gutter="20">
+                    <el-col :span="12">
+                        <el-form :inline="true" :model="form" class="demo-form-inline">
+                            <el-form-item label="选择任务">
+                                <el-select v-model="form.selectedTask" filterable placeholder="请选择任务" style="width: 300px;">
+                                    <el-option
+                                        v-for="item in taskOptions"
+                                        :key="item.value"
+                                        :label="item.label"
+                                        :value="item.value">
+                                    </el-option>
+                                </el-select>
+                            </el-form-item>
+                        </el-form>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-button-group>
+                            <el-button type="primary" @click="startTask" :disabled="isRunning">开始</el-button>
+                            <el-button type="warning" @click="pauseTask" :disabled="!isRunning || isPaused">暂停</el-button>
+                            <el-button type="success" @click="resumeTask" :disabled="!isRunning || !isPaused">继续</el-button>
+                            <el-button type="danger" @click="stopTask" :disabled="!isRunning">停止</el-button>
+                        </el-button-group>
+                    </el-col>
+                </el-row>
+                
+                <el-row :gutter="20" style="margin-top: 10px;" v-if="showInputArea">
+                    <el-col :span="12">
+                        <el-input 
+                            v-model="inputValue" 
+                            placeholder="请输入值并按回车提交" 
+                            @keyup.enter="submitInput"
+                            :disabled="!waitingForInput">
+                        </el-input>
+                    </el-col>
+                    <el-col :span="4">
+                        <el-button 
+                            type="primary" 
+                            @click="submitInput" 
+                            :disabled="!waitingForInput || !inputValue.trim()">
+                            提交输入
+                        </el-button>
+                    </el-col>
+                    <el-col :span="8">
+                        <el-tag v-if="waitingForInput" type="warning">等待输入...</el-tag>
+                        <el-tag v-else type="info">无输入请求</el-tag>
+                    </el-col>
+                </el-row>
+                
+                <el-row style="margin-top: 10px;">
+                    <el-col :span="24">
+                        <div>状态: {{ status }}</div>
+                    </el-col>
+                </el-row>
+            </el-card>
+            
+            <el-card>
+                <template #header>
+                    <span>日志输出</span>
+                    <el-button-group style="float: right;">
+                        <el-button size="small" @click="clearLogs">清空日志</el-button>
+                        <el-select v-model="logLevelFilter" placeholder="日志级别" size="small" style="width: 120px;">
+                            <el-option label="全部" value="ALL"></el-option>
+                            <el-option label="DEBUG" value="DEBUG"></el-option>
+                            <el-option label="INFO" value="INFO"></el-option>
+                            <el-option label="WARNING" value="WARNING"></el-option>
+                            <el-option label="ERROR" value="ERROR"></el-option>
+                        </el-select>
+                    </el-button-group>
+                </template>
+                
+                <div class="log-container" ref="logContainer">
+                    <div 
+                        v-for="(log, index) in filteredLogs" 
+                        :key="index" 
+                        :class="['log-entry', 'log-' + (log.level || 'info').toLowerCase()]">
+                        {{ log.data }}
+                    </div>
+                </div>
+            </el-card>
+        </div>
+
+        <script>
+            const { createApp, ref, computed, nextTick, onMounted, onUnmounted } = Vue;
+            const { ElMessage, ElNotification } = ElementPlus;
+
+            createApp({
+                setup() {
+                    const form = ref({
+                        selectedTask: ''
+                    });
+                    
+                    const taskOptions = ref([]);
+                    const logs = ref([]);
+                    const status = ref('未运行');
+                    const isRunning = ref(false);
+                    const isPaused = ref(false);
+                    const logLevelFilter = ref('ALL');
+                    const inputValue = ref('');
+                    const waitingForInput = ref(false);
+                    const showInputArea = ref(false);
+                    const logContainer = ref(null);
+                    const ws = ref(null); // WebSocket实例
+                    
+                    // WebSocket心跳和重连相关变量
+                    let heartbeatInterval = null;
+                    let reconnectTimer = null;
+                    let reconnectAttempts = 0;
+                    const maxReconnectAttempts = 5;
+                    const reconnectDelay = 3000; // 3秒重连延迟
+
+                    // 过滤后的日志
+                    const filteredLogs = computed(() => {
+                        if (logLevelFilter.value === 'ALL') {
+                            return logs.value;
+                        }
+                        return logs.value.filter(log => log.level === logLevelFilter.value);
+                    });
+
+                    // 连接到WebSocket服务器
+                    const connectWebSocket = () => {
+                        // 连接到本地运行的WebSocket服务器
+                        ws.value = new WebSocket('ws://localhost:8000/ws');
+                        
+                        ws.value.onopen = () => {
+                            console.log('WebSocket连接已建立');
+                            // 连接成功后，启动心跳机制
+                            startHeartbeat();
+                            
+                            // 重置重连尝试次数
+                            reconnectAttempts = 0;
+                        };
+                        
+                        ws.value.onmessage = async (event) => {
+                            const data = JSON.parse(event.data);
+                            
+                            if (data.type === 'tasks') {
+                                taskOptions.value = data.data.map(task => ({
+                                    value: task.name,
+                                    label: task.description
+                                }));
+                            } else if (data.type === 'log') {
+                                if (data.data.includes("请输入")) {
+                                    waitingForInput.value = true;
+                                    showInputArea.value = true;
+                                    ElNotification({
+                                        title: '输入请求',
+                                        message: '任务正在等待输入，请在下方输入框中输入值',
+                                        type: 'warning'
+                                    });
+                                } else {
+                                    logs.value.push(data);
+                                    await nextTick();
+                                    // 自动滚动到底部
+                                    if (logContainer.value) {
+                                        logContainer.value.scrollTop = logContainer.value.scrollHeight;
+                                    }
+                                }
+                            } else if (data.type === 'status') {
+                                if (data.data === 'running') {
+                                    status.value = '运行中';
+                                    isRunning.value = true;
+                                    isPaused.value = false;
+                                } else if (data.data === 'paused') {
+                                    status.value = '暂停';
+                                    isPaused.value = true;
+                                } else if (data.data === 'resumed') {
+                                    status.value = '运行中';
+                                    isPaused.value = false;
+                                } else if (data.data === 'stopped') {
+                                    status.value = '已停止';
+                                    isRunning.value = false;
+                                    isPaused.value = false;
+                                } else if (data.data === 'completed' || data.data === 'error') {
+                                    status.value = data.data === 'completed' ? '已完成' : '错误';
+                                    isRunning.value = false;
+                                    isPaused.value = false;
+                                }
+                            } else if (data.type === 'ping') {
+                                // 收到服务端的ping，回复pong
+                                ws.value.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+                            }
+                        };
+                        
+                        ws.value.onerror = (error) => {
+                            console.error('WebSocket错误:', error);
+                        };
+                        
+                        ws.value.onclose = () => {
+                            console.log('WebSocket连接已关闭');
+                            
+                            // 停止心跳
+                            stopHeartbeat();
+                            
+                            // 如果不是手动断开，尝试自动重连
+                            console.log(`尝试重连 (${reconnectAttempts}/${maxReconnectAttempts})...`);
+
+                            reconnectTimer = setTimeout(() => {
+                                connectWebSocket();
+                            }, reconnectDelay);
+                        };
+                    };
+                    
+                    // 启动心跳机制
+                    const startHeartbeat = () => {
+                        if (heartbeatInterval) {
+                            clearInterval(heartbeatInterval);
+                        }
+                        
+                        // 定期发送ping消息
+                        heartbeatInterval = setInterval(() => {
+                            if (ws.value && ws.value.readyState === WebSocket.OPEN) {
+                                ws.value.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+                            } else {
+                                // 如果连接断开，尝试重新连接
+                                clearInterval(heartbeatInterval);
+                                if (ws.value.readyState !== WebSocket.CLOSING && ws.value.readyState !== WebSocket.CLOSED) {
+                                    ws.value.close();
+                                }
+                            }
+                        }, 5000); // 每5秒发送一次心跳
+                    };
+                    
+                    // 停止心跳机制
+                    const stopHeartbeat = () => {
+                        if (heartbeatInterval) {
+                            clearInterval(heartbeatInterval);
+                            heartbeatInterval = null;
+                        }
+                        
+                        if (reconnectTimer) {
+                            clearTimeout(reconnectTimer);
+                            reconnectTimer = null;
+                        }
+                    };
+
+                    // 发送消息到WebSocket服务器
+                    const sendToWebSocket = (message) => {
+                        if (ws.value && ws.value.readyState === WebSocket.OPEN) {
+                            ws.value.send(message);
+                        } else {
+                            console.error('WebSocket未连接');
+                        }
+                    };
+
+                    // 开始任务
+                    const startTask = () => {
+                        if (!form.value.selectedTask) {
+                            ElMessage.warning('请先选择一个任务');
+                            return;
+                        }
+                        
+                        sendToWebSocket(JSON.stringify({ 
+                            type: 'start_task', 
+                            task_name: form.value.selectedTask 
+                        }));
+                    };
+
+                    // 暂停任务
+                    const pauseTask = () => {
+                        sendToWebSocket(JSON.stringify({ type: 'pause_task' }));
+                    };
+
+                    // 继续任务
+                    const resumeTask = () => {
+                        sendToWebSocket(JSON.stringify({ type: 'resume_task' }));
+                    };
+
+                    // 停止任务
+                    const stopTask = () => {
+                        sendToWebSocket(JSON.stringify({ type: 'stop_task' }));
+                    };
+
+                    // 提交输入
+                    const submitInput = () => {
+                        if (!inputValue.value.trim()) return;
+                        
+                        sendToWebSocket(JSON.stringify({ 
+                            type: 'input_response', 
+                            value: inputValue.value 
+                        }));
+                        
+                        inputValue.value = '';
+                        waitingForInput.value = false;
+                        showInputArea.value = false;
+                    };
+
+                    // 清空日志
+                    const clearLogs = () => {
+                        logs.value = [];
+                    };
+
+                    // 组件挂载时建立WebSocket连接
+                    onMounted(() => {
+                        connectWebSocket();
+                    });
+
+                    // 组件卸载时关闭WebSocket连接
+                    onUnmounted(() => {
+                        if (ws.value) {
+                            // 清除重连定时器
+                            if (reconnectTimer) {
+                                clearTimeout(reconnectTimer);
+                                reconnectTimer = null;
+                            }
+                            
+                            // 关闭心跳
+                            stopHeartbeat();
+                            
+                            // 关闭WebSocket连接
+                            ws.value.close();
+                        }
+                    });
+
+                    return {
+                        form,
+                        taskOptions,
+                        logs,
+                        status,
+                        isRunning,
+                        isPaused,
+                        logLevelFilter,
+                        inputValue,
+                        waitingForInput,
+                        showInputArea,
+                        filteredLogs,
+                        logContainer,
+                        startTask,
+                        pauseTask,
+                        resumeTask,
+                        stopTask,
+                        submitInput,
+                        clearLogs
+                    };
+                }
+            }).use(ElementPlus).mount('#app');
+        </script>
+    </div>
+    </body>
+</html>

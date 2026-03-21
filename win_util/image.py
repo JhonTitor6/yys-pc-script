@@ -166,6 +166,8 @@ class ImageMatchConfig:
         return hash(tuple(self.target_image_path_list))
 
     def __eq__(self, other):
+        if not isinstance(other, ImageMatchConfig):
+            return NotImplemented
         return self.target_image_path_list == other.target_image_path_list
 
     def __str__(self):
@@ -173,7 +175,10 @@ class ImageMatchConfig:
 
 
 class ImageFinder:
-    """模板匹配、找图、点击封装，无缓存版本"""
+    """
+    模板匹配、找图、点击封装，无缓存版本
+    TODO: 不依赖 hwnd，hwnd 抽到 WinController
+    """
 
     def __init__(self, hwnd: int):
         self.hwnd = hwnd
@@ -181,8 +186,31 @@ class ImageFinder:
         self.screenshot_cache = self.update_screenshot_cache()
 
     def update_screenshot_cache(self):
-        self.screenshot_cache = self.screenshot_capture.capture_window_region()
-        return self.screenshot_cache
+        try:
+            self.screenshot_cache = self.screenshot_capture.capture_window_region()
+            return self.screenshot_cache
+        except Exception as e:
+            logger.exception(f"更新截图缓存失败: {e}")
+            return self.screenshot_cache
+
+    def crop_screenshot_cache(self, x0=0, y0=0, x1=99999, y1=99999):
+        """从截图缓存中裁剪指定区域"""
+        if self.screenshot_cache is None:
+            self.update_screenshot_cache()
+        
+        h, w = self.screenshot_cache.shape[:2]
+        # 限制裁剪区域在图像范围内
+        x0 = max(0, x0)
+        y0 = max(0, y0)
+        x1 = min(w, x1)
+        y1 = min(h, y1)
+        
+        # 确保裁剪区域有效
+        if x0 >= x1 or y0 >= y1:
+            logger.warning(f"无效的裁剪区域: ({x0}, {y0}) - ({x1}, {y1}), 图像尺寸: ({w}, {h})")
+            return self.screenshot_cache
+        
+        return self.screenshot_cache[y0:y1, x0:x1]
 
     def bg_find_pic_by_cache(self, small_picture_path, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8) -> Tuple[int, int]:
         """直接截图匹配图片"""
@@ -260,6 +288,7 @@ class ImageFinder:
     def bg_find_pic(self, screenshot: Optional[Any], small_img_path, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8) -> Tuple[int, int]:
         """
         在给定截图中匹配图片（增强版，支持灰度和颜色特征）
+        TODO: return 最好封装为对象，改动有点大，先这样吧。。。其他类似的类同理
         :return (x, y)
         """
         matches = self.bg_find_pic_all(screenshot, small_img_path, x0, y0, x1, y1, similarity)
@@ -299,11 +328,12 @@ class ImageFinder:
         """带超时的图片查找"""
         start_time = time.time()
         while time.time() - start_time < timeout:
+            self.update_screenshot_cache()
             point = self.bg_find_pic_by_cache(small_picture_path, x0, y0, x1, y1, similarity)
             if point is not None and point[0] != -1 and point[1] != -1:
                 return point
             time.sleep(0.2)
-        return (-1, -1)
+        return -1, -1
 
     def bg_find_pic_by_config(self, image_match_config: ImageMatchConfig) -> tuple:
         for target_image_path in image_match_config.target_image_path_list:

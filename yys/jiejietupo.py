@@ -2,8 +2,7 @@ import time
 
 from win_util.image import ImageFinder
 from win_util.image import ImageMatchConfig
-from win_util.mouse import bg_left_click_with_range
-from yys.common_util import logger, bg_find_pic, random_sleep, try_handle_battle_end, try_bg_click_pic_with_timeout
+from yys.common_util import logger, random_sleep, try_handle_battle_end
 from yys.event_script_base import YYSBaseScript
 
 """
@@ -19,7 +18,6 @@ class JieJieTuPoScript(YYSBaseScript):
 
         # TODO: 加个config类
         self.quit_3_times_config = True
-        self.image_finder: ImageFinder = ImageFinder(self.hwnd)
         self.attackable_barrier_list = []
 
         # 注册借借突破特定的图像匹配事件
@@ -96,15 +94,16 @@ class JieJieTuPoScript(YYSBaseScript):
             self.keyboard.bg_press_key('ENTER')
             random_sleep(2, 3)
             logger.info(f"准备点击【再次挑战】")
-            try_bg_click_pic_with_timeout(self.hwnd, "yys/images/jiejietupo_zai_ci_tiao_zhan.bmp", timeout=5)
-            time.sleep(0.5)
-            silence_point = bg_find_pic(self.hwnd, "yys/images/jiejietupo_zai_ci_tiao_zhan_silence.bmp")
+            if self.win_controller.find_and_click("yys/images/jiejietupo_zai_ci_tiao_zhan.bmp", timeout=5):
+                random_sleep(1, 2)
+            logger.info("检查【今日不再提醒】")
+            silence_point = self.image_finder.bg_find_pic_with_timeout("yys/images/jiejietupo_zai_ci_tiao_zhan_silence.bmp", timeout=2)
             if silence_point is not None and silence_point != (-1, -1):
                 logger.info("点击【今日不再提醒】")
                 random_sleep(1, 2)
-                bg_left_click_with_range(self.hwnd, (494, 317), x_range=10, y_range=10)
+                self.bg_left_click((494, 317), x_range=10, y_range=10)
                 random_sleep(0.2, 0.6)
-                bg_left_click_with_range(self.hwnd, (672, 379), y_range=10)
+                self.bg_left_click((672, 379), y_range=10)
             random_sleep(2.5, 3)
         logger.info("完成退3次")
 
@@ -118,23 +117,11 @@ class JieJieTuPoScript(YYSBaseScript):
             return
 
         logger.info("没有可以打的结界了，准备刷新")
-        refresh_button_pos = self.ocr.find_text_position(self.image_finder.screenshot_cache, "刷新")
-        if not refresh_button_pos:
-            logger.warning("未找到刷新按钮")
-            return
-
-        logger.info(f"找到刷新按钮位置: {refresh_button_pos}")
-        self.bg_left_click(refresh_button_pos, x_range=10, y_range=10)
+        self.win_controller.find_and_click("yys/images/jiejietupo_refresh.bmp", x_range=10, y_range=10, timeout=1)
         random_sleep(1, 1.5)
 
-        self.image_finder.update_screenshot_cache()
-        confirm_button_pos = self.ocr.find_text_position(self.image_finder.screenshot_cache, "确定")
-        if not confirm_button_pos:
-            logger.warning("未找到确定按钮")
-            return
-
-        logger.info(f"找到确定按钮位置: {confirm_button_pos}")
-        self.bg_left_click(confirm_button_pos, x_range=10, y_range=10)
+        self.win_controller.update_screenshot_cache()
+        self.win_controller.find_and_click("yys/images/jiejietupo_refresh_confirm.bmp", x_range=10, y_range=10, timeout=1)
         random_sleep(1, 1.5)
         logger.info("刷新完成")
 

@@ -6,8 +6,8 @@ from typing import Dict, List, Optional, Tuple, Set, overload, Any
 
 from loguru import logger
 
-from win_util.image import ImageFinder
-from win_util.image import to_project_path
+from win_util.image import ImageFinder, to_project_path
+from win_util.mouse import bg_left_click_with_range
 
 
 class SceneDetectionResult:
@@ -37,6 +37,8 @@ class SceneManager:
     场景管理器 - 实现场景检测、路径规划和跳转功能
     将场景图片放在 yys/images/scene
     将场景跳转按钮图片放在 yys/images/scene/scene_control，图片命名规则：[source]_to_[destination].bmp/png/jpg/jpeg
+    TODO: 改为编程式注册
+    TODO：支持图片放在功能脚本目录下
     """
     
     def __init__(self, hwnd: int, image_finder: ImageFinder):
@@ -284,12 +286,14 @@ class SceneManager:
                 return False
             
             # 点击跳转按钮
-            from .mouse import bg_left_click_with_range
             bg_left_click_with_range(self.hwnd, button_pos, x_range=5, y_range=5)
-            
+
             # 等待场景切换完成（可适当延时等待动画）
-            time.sleep(1.0)
-            
+            time.sleep(3.0)
+
+            # 点击后刷新截图缓存，确保检测使用的是最新截图
+            self.image_finder.update_screenshot_cache()
+
             # 重新检测当前场景以确认跳转成功
             new_detection = self.detect_current_scene()
             if not new_detection or new_detection.scene_name != to_scene:
@@ -310,6 +314,16 @@ class SceneManager:
         else:
             logger.error(f"跳转完成后场景检测异常，期望: {target_scene}，实际: {final_detection.scene_name if final_detection else '未知'}")
             return False
+
+    def click_return(self):
+        """点击返回按钮"""
+        button_pos = self.image_finder.bg_find_pic_by_cache("yys/images/scene/scene_control/return.bmp")
+        if button_pos == (-1, -1):
+            logger.error("未找到返回按钮")
+            return False
+
+        bg_left_click_with_range(self.hwnd, button_pos, x_range=5, y_range=5)
+        return True
     
     def get_available_scenes(self) -> Set[str]:
         """获取所有可用的场景名称"""

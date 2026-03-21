@@ -1,7 +1,7 @@
 import time
 from ctypes import windll
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Tuple, Union, Any, Optional
 
 import cv2
@@ -201,7 +201,6 @@ class ImageMatchResult:
 class ImageFinder:
     """
     模板匹配、找图、点击封装，无缓存版本
-    TODO: 不依赖 hwnd，hwnd 抽到 WinController
     """
 
     def __init__(self, hwnd: int):

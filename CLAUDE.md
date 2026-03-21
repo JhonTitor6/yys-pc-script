@@ -121,7 +121,7 @@ cd gui && npm install && npm start
 
 ## Status（任务进度）
 
-> 每次会话开始时更新此章节
+> 每次会话开始、结束时更新此章节
 
 ### 当前进度
 

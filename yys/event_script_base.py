@@ -1,8 +1,8 @@
 # 添加项目根目录到路径，以便导入根目录下的模块
 import os
+import random
 import sys
 import time
-import random
 from enum import IntEnum
 
 import win32con
@@ -12,7 +12,6 @@ from loguru import logger
 from win_util import WinController
 from win_util.event import EventBaseScript, Event
 from win_util.image import ImageMatchConfig, ImageFinder
-from win_util.mouse import bg_left_click_with_range
 from win_util.ocr import CommonOcr
 from yys.scene_manager import SceneManager, SceneDetectionResult
 
@@ -161,7 +160,6 @@ class YYSBaseScript(EventBaseScript):
             ImageMatchConfig(WANTED_QUEST_REJECT_IMAGE),
             self._on_wanted_quests_invited
         )
-        # TODO: 支持只接收勾协（accept_wq_type = 2）
         # self._register_ocr_match_event("悬赏封印", self._on_wanted_quests_invited)
 
     def _register_ocr_click_continue_event(self):
@@ -221,7 +219,6 @@ class YYSBaseScript(EventBaseScript):
                 if accept_point and accept_point != (-1, -1):
                     self.bg_left_click(accept_point)
             case WantedQuestAcceptType.ACCEPT_GOUGU:
-                # TODO: 实现勾协检测 - 需要 OCR 识别"勾协"或"契约"文字
                 # 目前先接受所有，然后在战斗开始时检测是否为勾协，不是则退出
                 accept_point = self.image_finder.bg_find_pic_by_cache(WANTED_QUEST_ACCEPT_IMAGE)
                 if accept_point and accept_point != (-1, -1):

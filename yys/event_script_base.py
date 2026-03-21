@@ -2,12 +2,12 @@
 import os
 import sys
 import time
+from enum import IntEnum
 
 from win_util import WinController
 from win_util.event import EventBaseScript, Event
 from win_util.image import ImageMatchConfig, ImageFinder
-from win_util.keyboard import KeyboardController
-from win_util.mouse import bg_left_click_with_range, MouseController
+from win_util.mouse import bg_left_click_with_range
 from win_util.ocr import CommonOcr
 from yys.common_util import find_window, random_sleep
 from yys.scene_manager import SceneManager, SceneDetectionResult
@@ -20,110 +20,203 @@ if project_root not in sys.path:
 try:
     from yys.log_manager import get_logger
 except ImportError:
-    # 如果直接导入失败，尝试添加到路径后再导入
-    import sys
-    import os
-
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(current_dir)
     if project_root not in sys.path:
         sys.path.insert(0, project_root)
     from yys.log_manager import get_logger
 
+
+# ==================== 常量定义 ====================
+
+class WantedQuestAcceptType(IntEnum):
+    """悬赏封印接受类型"""
+    REFUSE = 0      # 拒绝
+    ACCEPT_ALL = 1  # 全部接受
+
+
+# 战斗相关常量
+BATTLE_SLEEP_SHORT = 0.5      # 短等待
+BATTLE_SLEEP_MEDIUM = 1.0     # 中等等待
+BATTLE_SLEEP_LONG = 2.0       # 长等待
+BATTLE_VICTORY_SLEEP = 1.0    # 胜利后等待
+BATTLE_END_SLEEP = 2.0        # 战斗结束等待
+BATTLE_END_CLICK_SLEEP = 0.5  # 点击后等待
+
+# 点击偏移范围
+DEFAULT_CLICK_RANGE = 20      # 默认点击偏移
+BATTLE_END_CLICK_RANGE_X = 30 # 战斗结束点击X偏移
+BATTLE_END_CLICK_RANGE_Y = 50 # 战斗结束点击Y偏移
+OCR_CLICK_RANGE = 10           # OCR点击偏移
+
+# 战斗结束图片
+BATTLE_END_SUCCESS_IMAGES = ["yys/images/battle_end_success.bmp", "yys/images/battle_end.bmp"]
+BATTLE_END_LOSS_IMAGES = ["yys/images/battle_end_loss.bmp"]
+BATTLE_END_OTHER_IMAGES = ["yys/images/battle_end_1.bmp", "yys/images/battle_end_2.bmp"]
+WANTED_QUEST_REJECT_IMAGE = "yys/images/xuanshangfengyin_reject.bmp"
+WANTED_QUEST_ACCEPT_IMAGE = "yys/images/xuanshangfengyin_accept.bmp"
+
+# OCR 点击屏幕继续
+OCR_CLICK_SCREEN_CONTINUE = "点击屏幕继续"
+
+# 场景检测事件
 SCENE_DETECTED_EVENT = Event('scene_detected')
-"""
-事件驱动
-"""
 
 
 class YYSBaseScript(EventBaseScript):
-    def __init__(self, script_name):
+    """
+    阴阳师基础脚本类
+    封装通用的战斗、悬赏封印、场景管理等逻辑
+    """
+
+    def __init__(self, script_name: str):
         # 使用统一的日志管理器
         self.logger = get_logger(script_name)
         self.logger.info(f"初始化{script_name}脚本")
+
+        # 初始化窗口句柄
         self.hwnd = find_window()
+
+        # 初始化 WinController（统一管理 image_finder, keyboard, mouse, ocr）
         self.win_controller: WinController = WinController(self.hwnd)
         self.image_finder: ImageFinder = self.win_controller.image_finder
-        self.keyboard: KeyboardController = self.win_controller.keyboard
-        self.mouse: MouseController = self.win_controller.mouse
+        self.keyboard = self.win_controller.keyboard
+        self.mouse = self.win_controller.mouse
         self.ocr: CommonOcr = self.win_controller.ocr
+
+        # 调用父类构造函数（依赖注入 image_finder 和 ocr）
         super().__init__(self.image_finder, self.ocr)
 
+        # 脚本配置
         self.script_name = script_name
         self.script_start_time_mills = int(time.time() * 1000)
         self._cur_battle_count = 0
         self._cur_battle_victory_count = 0
         self._max_battle_count = 103
-        self.accept_wq_type = 0  # 接收悬赏封印类型：0-拒绝，1-全部接受，TODO：2-只接收勾协
+        self.accept_wq_type: WantedQuestAcceptType = WantedQuestAcceptType.REFUSE
 
         # 初始化场景管理器
         self.logger.info("初始化场景管理器中...")
         self.scene_manager: SceneManager = SceneManager(self.hwnd, self.image_finder)
         self.logger.info("初始化场景管理器完成")
 
-        # self._event_manager.register_event_handler(SCENE_DETECTED_EVENT, self.on_scene_detected)
-        self._register_image_match_event(ImageMatchConfig(["yys/images/battle_end_success.bmp", "yys/images/battle_end.bmp"]), self._on_zhan_dou_wan_cheng_victory)
-        self._register_image_match_event(ImageMatchConfig(["yys/images/battle_end_loss.bmp"]), self._on_zhan_dou_wan_cheng)
-        self._register_image_match_event(ImageMatchConfig(["yys/images/battle_end_1.bmp", "yys/images/battle_end_2.bmp"]), self._on_zhan_dou_wan_cheng)
-        self._register_image_match_event(ImageMatchConfig("yys/images/xuanshangfengyin_reject.bmp"), self._on_wanted_quests_invited)
-        # 注册ocr事件
-        # self._register_ocr_match_event("悬赏封印", self._on_wanted_quests_invited)
-        self._register_ocr_match_event("点击屏幕继续", self._on_ocr_click_screen_continue)
+        # 注册战斗结束事件
+        self._register_battle_end_events()
 
-    def bg_left_click(self, point, x_range=20, y_range=20):
+        # 注册悬赏封印事件
+        self._register_wanted_quest_events()
+
+        # 注册 OCR 点击继续事件
+        self._register_ocr_click_continue_event()
+
+    def _register_battle_end_events(self):
+        """注册战斗结束相关的图像匹配事件"""
+        self._register_image_match_event(
+            ImageMatchConfig(BATTLE_END_SUCCESS_IMAGES),
+            self._on_battle_victory
+        )
+        self._register_image_match_event(
+            ImageMatchConfig(BATTLE_END_LOSS_IMAGES),
+            self._on_battle_end
+        )
+        self._register_image_match_event(
+            ImageMatchConfig(BATTLE_END_OTHER_IMAGES),
+            self._on_battle_end
+        )
+
+    def _register_wanted_quest_events(self):
+        """注册悬赏封印相关的事件"""
+        self._register_image_match_event(
+            ImageMatchConfig(WANTED_QUEST_REJECT_IMAGE),
+            self._on_wanted_quests_invited
+        )
+        # TODO: 支持只接收勾协（accept_wq_type = 2）
+        # self._register_ocr_match_event("悬赏封印", self._on_wanted_quests_invited)
+
+    def _register_ocr_click_continue_event(self):
+        """注册 OCR 点击屏幕继续事件"""
+        self._register_ocr_match_event(
+            OCR_CLICK_SCREEN_CONTINUE,
+            self._on_ocr_click_screen_continue
+        )
+
+    def bg_left_click(self, point: tuple, x_range: int = DEFAULT_CLICK_RANGE, y_range: int = DEFAULT_CLICK_RANGE):
+        """后台左键点击（带随机偏移）
+
+        Args:
+            point: 目标坐标 (x, y)
+            x_range: X轴随机偏移范围
+            y_range: Y轴随机偏移范围
+        """
         self.mouse.bg_left_click_with_range(point, x_range=x_range, y_range=y_range)
 
-    def _on_zhan_dou_wan_cheng_victory(self, point):
+    def _on_battle_victory(self, point: tuple):
+        """战斗胜利处理"""
         self.bg_left_click(point)
         self._cur_battle_victory_count += 1
-        time.sleep(1)
+        time.sleep(BATTLE_VICTORY_SLEEP)
 
-    def _on_zhan_dou_wan_cheng(self, point):
+    def _on_battle_end(self, point: tuple):
+        """战斗结束（失败/奖励）处理"""
         # 不可去掉。如果不等一会，没点掉导致触发多次的话，会多次触发_cur_battle_count+=1
-        time.sleep(2)
-        # point 是匹配到的战斗结束图片位置，使用该位置点击
-        bg_left_click_with_range(self.hwnd, point, x_range=30, y_range=50)
+        time.sleep(BATTLE_END_SLEEP)
+        # 使用匹配到的实际位置点击
+        self.bg_left_click(point, x_range=BATTLE_END_CLICK_RANGE_X, y_range=BATTLE_END_CLICK_RANGE_Y)
         self._cur_battle_count += 1
-        self.log_battle_count()
-        time.sleep(0.5)
+        self._log_battle_count()
+        time.sleep(BATTLE_END_CLICK_SLEEP)
 
-    def log_battle_count(self):
+    def _log_battle_count(self):
+        """记录战斗计数日志"""
         self.logger.success(
-            f"战斗完成，已战斗{self._cur_battle_count}/{self._max_battle_count}次，胜利{self._cur_battle_victory_count}次")
+            f"战斗完成，已战斗{self._cur_battle_count}/{self._max_battle_count}次，"
+            f"胜利{self._cur_battle_victory_count}次"
+        )
 
     def _on_ocr_click_screen_continue(self, ocr_result):
+        """OCR 检测到点击屏幕继续"""
         self.logger.debug(ocr_result)
-        self.bg_left_click((567, 460), x_range=10, y_range=10)
+        self.bg_left_click((567, 460), x_range=OCR_CLICK_RANGE, y_range=OCR_CLICK_RANGE)
 
-    def set_max_battle_count(self, max_battle_count: int):
+    def _on_wanted_quests_invited(self, point: tuple):
+        """悬赏封印邀请处理"""
+        match self.accept_wq_type:
+            case WantedQuestAcceptType.REFUSE:
+                reject_point = self.image_finder.bg_find_pic_by_cache(WANTED_QUEST_REJECT_IMAGE)
+                if reject_point and reject_point != (-1, -1):
+                    self.bg_left_click(reject_point)
+            case WantedQuestAcceptType.ACCEPT_ALL:
+                accept_point = self.image_finder.bg_find_pic_by_cache(WANTED_QUEST_ACCEPT_IMAGE)
+                if accept_point and accept_point != (-1, -1):
+                    self.bg_left_click(accept_point)
+            case _:
+                # 默认拒绝
+                reject_point = self.image_finder.bg_find_pic_by_cache(WANTED_QUEST_REJECT_IMAGE)
+                if reject_point and reject_point != (-1, -1):
+                    self.bg_left_click(reject_point)
+
+    def set_max_battle_count(self, max_battle_count: int) -> 'YYSBaseScript':
+        """设置最大战斗次数（支持链式调用）"""
         self._max_battle_count = max_battle_count
         return self
 
     def on_run(self):
+        """脚本启动时的钩子方法"""
         self.logger.info(f"开始运行{self.script_name}脚本")
-        self.logger.info(f"目标挂机次数:{self._max_battle_count} ")
+        self.logger.info(f"目标挂机次数:{self._max_battle_count}")
         self._cur_battle_victory_count = 0
         self._cur_battle_count = 0
 
     def before_iteration(self):
+        """每轮循环前的钩子方法"""
         pass
-        # res = self.scene_manager.detect_current_scene()
-        # if res:
-        #     self._event_manager.trigger_event(SCENE_DETECTED_EVENT, res)
 
     def after_iteration(self):
+        """每轮循环后的钩子方法"""
         random_sleep(0.05, 0.1)
         if self._cur_battle_count >= self._max_battle_count:
             self.stop()
 
     def on_scene_detected(self, detection_result: SceneDetectionResult):
+        """场景检测回调（子类可覆盖）"""
         pass
-
-    def _on_wanted_quests_invited(self, point):
-        match self.accept_wq_type:
-            case 0:
-                point = self.image_finder.bg_find_pic_by_cache("yys/images/xuanshangfengyin_reject.bmp")
-                self.bg_left_click(point)
-            case 1:
-                point = self.image_finder.bg_find_pic_by_cache("yys/images/xuanshangfengyin_accept.bmp")
-                self.bg_left_click(point)

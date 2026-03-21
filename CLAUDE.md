@@ -107,3 +107,10 @@ pytest yys/test/
 ```bash
 cd gui && npm install && npm start
 ```
+
+## 工作流规范
+
+### 任务完成提醒
+- **触发条件**：在完成复杂的重构、运行长时间的测试（超过 10 秒）或批量修改文件后。
+- **执行命令**：请运行以下 PowerShell 命令以发出声音提醒：
+  `powershell -c "(New-Object Media.SoundPlayer 'C:\Windows\Media\notify.wav').PlaySync()"`

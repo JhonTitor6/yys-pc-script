@@ -78,7 +78,7 @@ def _click_battle_end_2(hwnd):
 
 
 def click_tiaozhan():
-    point = _bg_find_pic(hwnd, "yys/images/qiling_tiaozhan.bmp", similarity=0.7)
+    point = _bg_find_pic(hwnd, "yys/qilingjieqi/images/qiling_tiaozhan.bmp", similarity=0.7)
     bg_left_click_with_range(hwnd, point, x_range=20, y_range=20)
 
 

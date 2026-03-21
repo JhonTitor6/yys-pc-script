@@ -78,7 +78,7 @@ def _click_battle_end_2(hwnd):
 
 
 def click_tancha():
-    point = _bg_find_pic(hwnd, "yys/images/qiling_tancha.bmp", similarity=0.7)
+    point = _bg_find_pic(hwnd, "yys/qilingtancha/images/qiling_tancha.bmp", similarity=0.7)
     bg_left_click_with_range(hwnd, point, x_range=20, y_range=20)
 
 

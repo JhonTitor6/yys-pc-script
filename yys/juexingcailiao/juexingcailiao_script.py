@@ -78,7 +78,7 @@ def _click_battle_end_2(hwnd):
 
 
 def click_tiaozhan():
-    point = _bg_find_pic(hwnd, "yys/images/juexing_tiaozhan.bmp", similarity=0.7)
+    point = _bg_find_pic(hwnd, "yys/juexingcailiao/images/juexing_tiaozhan.bmp", similarity=0.7)
     bg_left_click_with_range(hwnd, point, x_range=10, y_range=10)
 
 
@@ -91,7 +91,6 @@ def main():
             cur_battle_count += 1
             logger.success(f"通关次数：{cur_battle_count}")
         time.sleep(random.randint(1, 3))
-
 
 
 if __name__ == '__main__':

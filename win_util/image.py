@@ -2,14 +2,18 @@ import time
 from ctypes import windll
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Tuple, Union, Any, Optional
+from typing import TYPE_CHECKING, List, Tuple, Union, Any, Optional
 
 import cv2
 import numpy as np
 import win32gui
 import win32ui
+from PIL import Image as PILImage
 from PIL import ImageGrab
 from loguru import logger
+
+if TYPE_CHECKING:
+    from yys.test.environment.base import GameEnvironment
 
 debug_img_base_dir = Path("yys/images/debug")
 
@@ -23,14 +27,51 @@ def to_project_path(path: str) -> str:
     return str(PROJECT_ROOT / p)
 
 class ScreenCapture:
-    """窗口截图和区域截图封装"""
+    """
+    窗口截图和区域截图封装
 
-    def __init__(self, hwnd: int, save_source_img=False):
+    支持两种模式：
+    1. hwnd 模式：使用原生 win32 调用截取窗口画面
+    2. env 模式：使用 GameEnvironment 接口截取画面
+    """
+
+    def __init__(self, hwnd: Optional[int] = None, env: Optional['GameEnvironment'] = None, save_source_img=False):
+        """
+        初始化截图器
+
+        :param hwnd: 窗口句柄（向后兼容）
+        :param env: GameEnvironment 实例
+        :param save_source_img: 是否保存原始截图
+        """
         self.hwnd = hwnd
+        self._env = env
         self.save_source_img = save_source_img
 
     def capture_window_region(self, x0=0, y0=0, x1=99999, y1=99999) -> np.ndarray:
-        """捕获窗口指定区域"""
+        """
+        捕获窗口指定区域
+
+        :param x0: 区域左上角x坐标
+        :param y0: 区域左上角y坐标
+        :param x1: 区域右下角x坐标
+        :param y1: 区域右下角y坐标
+        :return: numpy 数组格式的 BGR 图像
+        """
+        # 优先使用 GameEnvironment 接口
+        if self._env is not None:
+            pil_img = self._env.capture_screen()
+            # 将 PIL Image 转换为 numpy 数组
+            img = np.array(pil_img.convert('RGB'))
+            img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            h, w = img_bgr.shape[:2]
+            x1 = min(x1, w)
+            y1 = min(y1, h)
+            return img_bgr[y0:y1, x0:x1]
+
+        # 向后兼容：使用原生 win32 调用
+        if self.hwnd is None:
+            raise ValueError("请在初始化时传入 hwnd 或 env 参数")
+
         client_rect = win32gui.GetClientRect(self.hwnd)
         client_width = client_rect[2] - client_rect[0] + 8
         client_height = client_rect[3] - client_rect[1] + 31
@@ -201,12 +242,24 @@ class ImageMatchResult:
 class ImageFinder:
     """
     模板匹配、找图、点击封装，无缓存版本
+
+    支持两种初始化模式：
+    1. GameEnvironment 模式：传入 env 参数，使用环境抽象接口
+    2. hwnd 模式（向后兼容）：传入 hwnd 参数，使用原生 win32 调用
     """
 
-    def __init__(self, hwnd: int):
+    def __init__(self, env: Optional['GameEnvironment'] = None, hwnd: Optional[int] = None):
+        """
+        初始化图像查找器
+
+        :param env: GameEnvironment 实例，用于抽象接口调用
+        :param hwnd: 窗口句柄，用于原生 win32 调用（向后兼容）
+        """
+        self._env = env
         self.hwnd = hwnd
-        self.screenshot_capture = ScreenCapture(self.hwnd)
-        self.screenshot_cache = self.update_screenshot_cache()
+        self.screenshot_capture = ScreenCapture(hwnd=hwnd, env=env)
+        self.screenshot_cache: Optional[np.ndarray] = None  # 初始化为 None
+        self.update_screenshot_cache()  # 第一次调用可能会失败，但会设置 screenshot_cache
 
     def update_screenshot_cache(self):
         try:

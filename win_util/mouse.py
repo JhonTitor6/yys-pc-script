@@ -1,28 +1,42 @@
 import random
+from typing import TYPE_CHECKING, Optional, Union
 
 import win32api
 import win32con
 from loguru import logger
 
+if TYPE_CHECKING:
+    from yys.test.environment.base import GameEnvironment
+
 
 class MouseController:
-    """鼠标操作封装类，支持前台点击、后台点击及随机范围点击"""
+    """
+    鼠标操作封装类，支持前台点击、后台点击及随机范围点击
 
-    def __init__(self, hwnd: int):
+    支持两种初始化模式：
+    1. GameEnvironment 模式：传入 env 参数，使用环境抽象接口
+    2. hwnd 模式（向后兼容）：传入 hwnd 参数，使用原生 win32 调用
+    """
+
+    def __init__(self, env: Optional['GameEnvironment'] = None, hwnd: Optional[int] = None):
         """
-        :param hwnd: 可选，目标窗口句柄，用于后台点击
+        初始化鼠标控制器
+
+        :param env: GameEnvironment 实例，用于抽象接口调用
+        :param hwnd: 窗口句柄，用于原生 win32 调用（向后兼容）
         """
+        self._env = env
         self.hwnd = hwnd
 
     def bg_left_click(self, *point, x_range=0, y_range=0) -> bool:
         """
         后台模拟鼠标左键点击
+
         :param point: (x, y) 或 x, y
+        :param x_range: x轴随机范围半径
+        :param y_range: y轴随机范围半径
         :return: 点击是否成功
         """
-        if self.hwnd is None:
-            raise ValueError("请在初始化时传入目标窗口句柄用于后台点击")
-
         if point is None or (len(point) == 1 and point[0] is None):
             return False
 
@@ -39,7 +53,16 @@ class MouseController:
         y_pos = max(0, random.randint(y - y_range, y + y_range))
 
         if x_range >= 0 or y_range >= 0:
-            logger.debug(f"在基准点 {point} 周围随机点击: x={x}, y={y}")
+            logger.debug(f"在基准点 {point} 周围随机点击: x={x_pos}, y={y_pos}")
+
+        # 优先使用 GameEnvironment 接口
+        if self._env is not None:
+            self._env.left_click(x_pos, y_pos)
+            return True
+
+        # 向后兼容：使用原生 win32 调用
+        if self.hwnd is None:
+            raise ValueError("请在初始化时传入 GameEnvironment 或目标窗口句柄用于后台点击")
 
         long_position = win32api.MAKELONG(x_pos, y_pos)
         win32api.SendMessage(self.hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, long_position)
@@ -50,6 +73,7 @@ class MouseController:
     def bg_left_click_with_range(self, point, x_range=20, y_range=20) -> bool:
         """
         在指定点周围随机范围内后台左键点击
+
         :param point: 基准点坐标 (x, y)
         :param x_range: x轴随机范围半径
         :param y_range: y轴随机范围半径

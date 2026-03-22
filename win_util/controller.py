@@ -1,24 +1,38 @@
+from typing import TYPE_CHECKING, Optional
+
 from win_util.image import ImageFinder, ImageMatchConfig
 from win_util.keyboard import KeyboardController
 from win_util.mouse import MouseController
 from win_util.ocr import CommonOcr
 
+if TYPE_CHECKING:
+    from yys.test.environment.base import GameEnvironment
+
 
 class WinController:
     """
     Windows 控制器，封装了图像、键盘、鼠标和OCR功能
+
+    支持两种初始化模式：
+    1. GameEnvironment 模式：传入 env 参数，使用环境抽象接口
+    2. hwnd 模式（向后兼容）：传入 hwnd 参数，使用原生 win32 调用
     """
-    
-    def __init__(self, hwnd: int):
+
+    def __init__(self, hwnd: Optional[int] = None, env: Optional['GameEnvironment'] = None):
         """
         初始化控制器
-        
-        :param hwnd: 窗口句柄
+
+        :param hwnd: 窗口句柄（向后兼容）
+        :param env: GameEnvironment 实例，用于抽象接口调用
         """
         self.hwnd = hwnd
-        self.image_finder: ImageFinder = ImageFinder(hwnd)
+        self._env = env
+
+        # 优先使用 GameEnvironment，否则使用 hwnd
+        # 注意：keyboard 暂不支持 GameEnvironment，仅传入 hwnd
+        self.image_finder: ImageFinder = ImageFinder(env=env, hwnd=hwnd)
         self.keyboard: KeyboardController = KeyboardController(hwnd)
-        self.mouse: MouseController = MouseController(hwnd)
+        self.mouse: MouseController = MouseController(env=env, hwnd=hwnd)
         self.ocr: CommonOcr = CommonOcr()
 
 

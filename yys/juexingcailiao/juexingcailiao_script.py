@@ -5,7 +5,7 @@ from loguru import logger
 from win_util.image import ImageFinder
 from win_util.mouse import bg_left_click_with_range
 from yys.event_script_base import find_window, random_sleep
-from yys.log_manager import get_logger
+from yys.common.log_manager import get_logger
 
 """
 觉醒材料

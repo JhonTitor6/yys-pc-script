@@ -2,7 +2,7 @@
 测试日志管理系统的功能
 """
 
-from yys.log_manager import get_logger, LoggerManager, electron_log_sink
+from yys.common.log_manager import get_logger, LoggerManager, electron_log_sink
 
 
 def test_basic_logging():

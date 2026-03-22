@@ -15,6 +15,18 @@ from win_util.event import EventBaseScript, Event
 from win_util.image import ImageMatchConfig, ImageFinder, to_project_path
 from win_util.ocr import CommonOcr
 from yys.scene_manager import SceneManager, SceneDetectionResult
+from yys.common import (
+    BATTLE_SLEEP_SHORT,
+    BATTLE_SLEEP_MEDIUM,
+    BATTLE_SLEEP_LONG,
+    BATTLE_VICTORY_SLEEP,
+    BATTLE_END_SLEEP,
+    BATTLE_END_CLICK_SLEEP,
+    DEFAULT_CLICK_RANGE,
+    BATTLE_END_CLICK_RANGE_X,
+    BATTLE_END_CLICK_RANGE_Y,
+    OCR_CLICK_RANGE,
+)
 
 if TYPE_CHECKING:
     from yys.test.environment.base import GameEnvironment
@@ -41,21 +53,6 @@ class WantedQuestAcceptType(IntEnum):
     REFUSE = 0      # 拒绝
     ACCEPT_ALL = 1  # 全部接受
     ACCEPT_GOUGU = 2  # 只接勾协
-
-
-# 战斗相关常量
-BATTLE_SLEEP_SHORT = 0.5      # 短等待
-BATTLE_SLEEP_MEDIUM = 1.0     # 中等等待
-BATTLE_SLEEP_LONG = 2.0       # 长等待
-BATTLE_VICTORY_SLEEP = 1.0    # 胜利后等待
-BATTLE_END_SLEEP = 2.0        # 战斗结束等待
-BATTLE_END_CLICK_SLEEP = 0.5  # 点击后等待
-
-# 点击偏移范围
-DEFAULT_CLICK_RANGE = 20      # 默认点击偏移
-BATTLE_END_CLICK_RANGE_X = 30 # 战斗结束点击X偏移
-BATTLE_END_CLICK_RANGE_Y = 50 # 战斗结束点击Y偏移
-OCR_CLICK_RANGE = 10           # OCR点击偏移
 
 # 战斗结束图片
 BATTLE_END_SUCCESS_IMAGES = ["yys/images/battle_end_success.bmp", "yys/images/battle_end.bmp"]

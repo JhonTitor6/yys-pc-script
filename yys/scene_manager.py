@@ -38,20 +38,19 @@ class SceneManager:
 
     支持两种注册方式：
     1. 编程式注册：使用 register_scene()、register_transition() 等方法
-    2. 文件系统加载：从 yys/images/scene 和 yys/images/scene/scene_control 目录自动加载
+    2. 目录注册：使用 register_scenes_from_directory() 从指定目录加载场景和跳转
 
-    场景图片放在 yys/images/scene
-    场景跳转按钮图片放在 yys/images/scene/scene_control，图片命名规则：[source]_to_[destination].bmp/png/jpg/jpeg
+    各业务模块通过 register_scenes_from_directory() 注册自己独有的场景和跳转，
+    全局场景（如 home、exploration 等）由 YYSBaseScript 在初始化时统一注册。
     """
 
-    def __init__(self, hwnd: int, image_finder: ImageFinder, auto_load_from_filesystem: bool = True):
+    def __init__(self, hwnd: int, image_finder: ImageFinder):
         """
         初始化场景管理器
 
         Args:
             hwnd: 游戏窗口句柄
             image_finder: 图像查找器
-            auto_load_from_filesystem: 是否从文件系统自动加载场景（默认 True）
         """
         self.hwnd = hwnd
         self.image_finder = image_finder
@@ -68,14 +67,6 @@ class SceneManager:
         self.scene_transitions: Dict[Tuple[str, str], str] = {}
         # 通用跳转按钮：{dest_scene: button_path}
         self.global_transitions: Dict[str, str] = {}
-
-        # 是否已从文件系统加载
-        self._loaded_from_filesystem = False
-
-        # 从文件系统加载场景资源（可选）
-        if auto_load_from_filesystem:
-            self._load_scenes_from_filesystem()
-            self._build_scene_graph()
 
     def register_scene(self, name: str, image_paths: List[str]):
         """
@@ -118,30 +109,32 @@ class SceneManager:
                 self.scene_graph[scene][to_scene] = button_path
         logger.debug(f"注册通用跳转: * -> {to_scene}, 按钮: {button_path}")
 
-    def _load_scenes_from_filesystem(self):
-        """加载所有场景图片和跳转按钮"""
+    def register_scenes_from_directory(self, scene_dir: str, control_dir: str) -> None:
+        """
+        从指定目录注册场景和跳转
 
-        # 构建场景图片映射
-        scene_dir = to_project_path("yys/images/scene/")
-        control_dir = to_project_path("yys/images/scene/scene_control/")
-        
-        # 检查并创建目录
-        os.makedirs(scene_dir, exist_ok=True)
-        os.makedirs(control_dir, exist_ok=True)
-        
-        # 遍历场景目录下的图片文件
+        扫描 scene_dir 下的图片文件，文件名（不含后缀）作为场景名注册。
+        扫描 control_dir 下的图片文件，按命名规则解析跳转关系：
+          - source_to_dest.bmp：从 source 场景跳转到 dest 场景
+          - to_dest.bmp：从任意场景跳转到 dest 场景（通用跳转）
+
+        Args:
+            scene_dir: 场景图片目录路径
+            control_dir: 场景跳转按钮图片目录路径
+        """
+        # 注册场景图片
         if os.path.exists(scene_dir):
             for filename in os.listdir(scene_dir):
                 if filename.lower().endswith(('.bmp', '.png', '.jpg', '.jpeg')) and filename != "scene_control":
-                    # 提取场景名（文件名，不含后缀）
                     scene_name = os.path.splitext(filename)[0]
                     image_path = os.path.join(scene_dir, filename)
-                    
+
                     if scene_name not in self.scene_images:
                         self.scene_images[scene_name] = []
                     self.scene_images[scene_name].append(image_path)
+                    logger.debug(f"注册场景: {scene_name}, 图片: {image_path}")
 
-        # 构建场景跳转映射
+        # 注册场景跳转
         if os.path.exists(control_dir):
             for filename in os.listdir(control_dir):
                 if not filename.lower().endswith(('.bmp', '.png', '.jpg', '.jpeg')):
@@ -149,21 +142,24 @@ class SceneManager:
 
                 button_path = os.path.join(control_dir, filename)
 
-                # 1. source_to_dest
+                # source_to_dest 格式
                 match = re.match(r'(.+)_to_(.+)\.(bmp|png|jpg|jpeg)', filename)
                 if match:
                     source_scene = match.group(1)
                     dest_scene = match.group(2)
                     self.scene_transitions[(source_scene, dest_scene)] = button_path
-                    logger.debug(f"发现场景跳转: {source_scene} -> {dest_scene}")
+                    logger.debug(f"注册场景跳转: {source_scene} -> {dest_scene}")
                     continue
 
-                # 2. to_dest（通用跳转）
+                # to_dest 格式（通用跳转）
                 match = re.match(r'to_(.+)\.(bmp|png|jpg|jpeg)', filename)
                 if match:
                     dest_scene = match.group(1)
                     self.global_transitions[dest_scene] = button_path
-                    logger.debug(f"发现通用跳转: * -> {dest_scene}")
+                    logger.debug(f"注册通用跳转: * -> {dest_scene}")
+
+        # 重建场景图
+        self._build_scene_graph()
 
     def _build_scene_graph(self):
         """构建场景有向图"""
@@ -364,7 +360,7 @@ class SceneManager:
 
     def click_return(self):
         """点击返回按钮"""
-        button_pos = self.image_finder.bg_find_pic_by_cache("yys/images/scene/scene_control/return.bmp")
+        button_pos = self.image_finder.bg_find_pic_by_cache(to_project_path("yys/common/images/scene_control/return.bmp"))
         if button_pos == (-1, -1):
             logger.error("未找到返回按钮")
             return False

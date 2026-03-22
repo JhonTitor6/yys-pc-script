@@ -26,7 +26,7 @@ class RealmRaidScript(YYSBaseScript):
         self._register_image_match_event(ImageMatchConfig("yys/realm_raid/images/realm_raid_user_realm.bmp"),
                                          self._on_attackable_barrier)
         # 检测是不是没有可以挑战的了
-        self._register_image_match_event(ImageMatchConfig("yys/images/scene/barrier_breakthrough.bmp"),
+        self._register_image_match_event(ImageMatchConfig("yys/common/images/scene/barrier_breakthrough.bmp"),
                                          self.on_scene_barrier_breakthrough)
 
     def _on_ticket_not_enough(self, point):

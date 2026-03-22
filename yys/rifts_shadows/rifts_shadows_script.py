@@ -3,7 +3,7 @@ import time
 from enum import Enum
 from typing import Optional
 
-from win_util.image import ImageMatchConfig
+from win_util.image import ImageMatchConfig, to_project_path
 from yys.event_script_base import YYSBaseScript
 
 
@@ -57,6 +57,12 @@ class Main(YYSBaseScript):
 
     def __init__(self):
         super().__init__("狭间暗域")
+
+        # 注册狭间暗域专属场景和跳转
+        self.scene_manager.register_scenes_from_directory(
+            to_project_path("yys/rifts_shadows/images/scene/"),
+            to_project_path("yys/rifts_shadows/images/scene_control/")
+        )
 
         # 状态机
         self._state = RiftsShadowsState.SELECTION
@@ -142,12 +148,12 @@ class Main(YYSBaseScript):
         """注册基础场景事件"""
         # 狭间暗域主界面
         self._register_image_match_event(
-            ImageMatchConfig("yys/images/scene/rifts_shadows_selection.bmp"),
+            ImageMatchConfig("yys/rifts_shadows/images/scene/rifts_shadows_selection.bmp"),
             self._on_rifts_shadows_selection
         )
         # 敌人选择界面
         self._register_image_match_event(
-            ImageMatchConfig("yys/images/scene/rifts_shadows_enemy_selection.bmp"),
+            ImageMatchConfig("yys/rifts_shadows/images/scene/rifts_shadows_enemy_selection.bmp"),
             self._on_rifts_shadows_enemy_selection
         )
         # 战报按钮
@@ -172,20 +178,20 @@ class Main(YYSBaseScript):
         )
         # 战斗中
         self._register_image_match_event(
-            ImageMatchConfig("yys/images/scene/battling.bmp"),
+            ImageMatchConfig("yys/common/images/scene/battling.bmp"),
             self._on_battling
         )
         # 战斗结束（胜利/失败/奖励）
         self._register_image_match_event(
-            ImageMatchConfig("yys/images/scene/battle_end_success.bmp"),
+            ImageMatchConfig("yys/images/battle_end_success.bmp"),
             self._on_battle_end
         )
         self._register_image_match_event(
-            ImageMatchConfig("yys/images/scene/battle_end_loss.bmp"),
+            ImageMatchConfig("yys/images/battle_end_loss.bmp"),
             self._on_battle_end
         )
         self._register_image_match_event(
-            ImageMatchConfig("yys/images/scene/battle_end.bmp"),
+            ImageMatchConfig("yys/images/battle_end.bmp"),
             self._on_battle_end
         )
 

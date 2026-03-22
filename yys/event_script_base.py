@@ -12,7 +12,7 @@ from loguru import logger
 
 from win_util import WinController
 from win_util.event import EventBaseScript, Event
-from win_util.image import ImageMatchConfig, ImageFinder
+from win_util.image import ImageMatchConfig, ImageFinder, to_project_path
 from win_util.ocr import CommonOcr
 from yys.scene_manager import SceneManager, SceneDetectionResult
 
@@ -147,6 +147,10 @@ class YYSBaseScript(EventBaseScript):
         # 初始化场景管理器
         self.logger.info("初始化场景管理器中...")
         self.scene_manager: SceneManager = SceneManager(self.hwnd, self.image_finder)
+        self.scene_manager.register_scenes_from_directory(
+            to_project_path("yys/common/images/scene/"),
+            to_project_path("yys/common/images/scene_control/")
+        )
         self.logger.info("初始化场景管理器完成")
 
         # 注册战斗结束事件

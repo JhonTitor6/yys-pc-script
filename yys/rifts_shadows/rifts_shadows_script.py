@@ -72,7 +72,8 @@ class Main(YYSBaseScript):
 
         # 场景索引（4个暗域轮换）
         self.cur_scene_index = 0
-        self.scene_name_list = ["rifts_shadows_dragon", "rifts_shadows_hakuzosu", "rifts_shadows_panther", "rifts_shadows_peacock"]
+        self.scene_name_list = ["abyss_dragon", "abyss_fox", "abyss_leopard", "abyss_peacock"]
+        self._current_area: Optional[str] = None  # 当前暗域区域
 
         # 伤害阈值
         commander_damage_limit = 33700000
@@ -148,17 +149,17 @@ class Main(YYSBaseScript):
         """注册基础场景事件"""
         # 狭间暗域主界面
         self._register_image_match_event(
-            ImageMatchConfig("yys/rifts_shadows/images/scene/rifts_shadows_selection.bmp"),
+            ImageMatchConfig("yys/rifts_shadows/images/scene/abyss_selection.bmp"),
             self._on_rifts_shadows_selection
         )
         # 敌人选择界面
         self._register_image_match_event(
-            ImageMatchConfig("yys/rifts_shadows/images/scene/rifts_shadows_enemy_selection.bmp"),
+            ImageMatchConfig("yys/rifts_shadows/images/scene/abyss_enemy_selection.bmp"),
             self._on_rifts_shadows_enemy_selection
         )
         # 战报按钮
         self._register_image_match_event(
-            ImageMatchConfig("yys/rifts_shadows/images/battle_report_button.bmp"),
+            ImageMatchConfig("yys/rifts_shadows/images/abyss_navigation.bmp"),
             self._on_battle_report_button
         )
         # 战斗按钮
@@ -168,7 +169,7 @@ class Main(YYSBaseScript):
         )
         # 前往按钮
         self._register_image_match_event(
-            ImageMatchConfig("yys/rifts_shadows/images/go_to_button.bmp"),
+            ImageMatchConfig("yys/rifts_shadows/images/abyss_goto_enemy.bmp"),
             self._on_go_to_button
         )
         # 准备完成
@@ -194,18 +195,53 @@ class Main(YYSBaseScript):
             ImageMatchConfig("yys/images/battle_end.bmp"),
             self._on_battle_end
         )
+        # 新增：战报页面标识
+        self._register_image_match_event(
+            ImageMatchConfig("yys/rifts_shadows/images/abyss_map.bmp"),
+            self._on_abyss_map
+        )
+        # 新增：战报退出
+        self._register_image_match_event(
+            ImageMatchConfig("yys/rifts_shadows/images/abyss_map_exit.bmp"),
+            self._on_abyss_map_exit
+        )
+        # 新增：确认框
+        self._register_image_match_event(
+            ImageMatchConfig("yys/rifts_shadows/images/abyss_confirm.bmp"),
+            self._on_confirm
+        )
+        # 新增：等待开始
+        self._register_image_match_event(
+            ImageMatchConfig("yys/rifts_shadows/images/wait_to_start.bmp"),
+            self._on_wait_to_start
+        )
+        # 新增：更换领域
+        self._register_image_match_event(
+            ImageMatchConfig("yys/rifts_shadows/images/change_area.bmp"),
+            self._on_change_area
+        )
 
     def _register_battle_report_events(self):
         """注册战报界面相关事件"""
-        # 战报界面_当前（当前暗域）
+        # 神龙暗域标识
         self._register_image_match_event(
-            ImageMatchConfig("yys/rifts_shadows/images/战报界面_当前.png"),
-            self._on_battle_report_current
+            ImageMatchConfig("yys/rifts_shadows/images/dragon_area.bmp"),
+            self._on_dragon_area
         )
-        # 战报界面_其他暗域
+        # 孔雀暗域标识
         self._register_image_match_event(
-            ImageMatchConfig("yys/rifts_shadows/images/战报界面_其他暗域.png"),
-            self._on_battle_report_other
+            ImageMatchConfig("yys/rifts_shadows/images/peacock_area.bmp"),
+            self._on_peacock_area
+        )
+        # 白藏主暗域标识
+        self._register_image_match_event(
+            ImageMatchConfig("yys/rifts_shadows/images/fox_area.bmp"),
+            self._on_fox_area
+        )
+        # 黑豹暗域标识
+        self._register_image_match_event(
+            ImageMatchConfig("yys/rifts_shadows/images/leopard_area.bmp"),
+            self._on_leopard_area
         )
 
     # ==================== 场景事件处理 ====================
@@ -215,14 +251,15 @@ class Main(YYSBaseScript):
         self._state = RiftsShadowsState.SELECTION
         self.scene_manager.goto_scene(self.scene_name_list[self.cur_scene_index])
 
-    def _on_rifts_shadows_enemy_selection(self, point):
+    def _on_rifts_shadows_enemy_selection(self, point) -> bool:
         """敌人选择界面"""
         self._state = RiftsShadowsState.ENEMY_SELECTION
         enemy = self.get_next_enemy()
         if enemy is None:
             self._handle_no_enemy_available()
-            return
+            return False
         self._select_enemy(enemy)
+        return True
 
     def _handle_no_enemy_available(self):
         """处理没有可挑战敌人的情况"""
@@ -230,13 +267,14 @@ class Main(YYSBaseScript):
             self.logger.warning("所有狭间暗域都已挑战完毕")
             self.stop()
             return
+
         # 切换到下一个暗域场景
-        self.win_controller.key_down("esc")
-        random_sleep(0.5, 1)
-        self.scene_manager.click_return()
-        random_sleep(1, 1.5)
         self.cur_scene_index += 1
-        self.scene_manager.goto_scene(self.scene_name_list[self.cur_scene_index])
+        next_area = self.scene_name_list[self.cur_scene_index]
+
+        self.logger.info(f"切换到下一个区域: {next_area}")
+        self.change_area(next_area)
+
         # 重置 enemies.has_challenged
         self._reset_enemies_challenge_status()
 
@@ -246,34 +284,70 @@ class Main(YYSBaseScript):
             for enemy in self.enemies[enemy_type]:
                 enemy.has_challenged = False
 
-    def _select_enemy(self, enemy: Enemy):
-        """选择敌人并进入战斗"""
+    def click_enemy_area(self, enemy: Enemy) -> bool:
+        """
+        点击敌人区域，进入战斗
+
+        流程：点击战报 → 点击敌人区域 → 点击前往 → 处理确认 → 点击挑战
+
+        Args:
+            enemy: 敌人对象
+
+        Returns:
+            bool: 进入战斗成功返回 True
+        """
+        # 点击战报按钮
+        if not self.win_controller.find_and_click("yys/rifts_shadows/images/abyss_navigation.bmp"):
+            self.logger.warning("未找到战报按钮")
+            return False
+
+        random_sleep(0.5, 1)
+
+        # 点击敌人区域
         positions = enemy.label_and_pic_position
         point = self.win_controller.find_image_with_timeout(
             enemy.image_path,
             x0=positions[0], y0=positions[1],
             x1=positions[2], y1=positions[3],
-            timeout=1
+            timeout=2
         )
         if point is None or point == (-1, -1):
-            return
+            self.logger.warning(f"未找到敌人: {enemy.enemy_type}")
+            return False
+
         # 点击敌人头像（带偏移）
         self.bg_left_click((point[0] + 60, point[1]), x_range=5, y_range=5)
         random_sleep(1, 2)
 
         # 点击前往按钮
-        if not self.win_controller.find_and_click("yys/rifts_shadows/images/go_to_button.bmp"):
-            return
+        if not self.win_controller.find_and_click("yys/rifts_shadows/images/abyss_goto_enemy.bmp"):
+            self.logger.warning("未找到前往按钮")
+            return False
+
+        # 处理跨区域确认框
+        random_sleep(0.5, 1)
+        self.win_controller.find_and_click("yys/rifts_shadows/images/abyss_confirm.bmp")
+        random_sleep(1, 2)
 
         # 点击挑战按钮
-        if not self.win_controller.find_and_click("yys/rifts_shadows/images/challenge_button.bmp"):
-            return
+        if not self.win_controller.find_and_click("yys/rifts_shadows/images/abyss_challenge.bmp"):
+            self.logger.warning("未找到挑战按钮")
+            return False
 
-        # 更新状态
-        enemy.has_challenged = True
-        self._cur_enemy = enemy
-        self.challenge_counts[enemy.enemy_type] += 1
-        self._state = RiftsShadowsState.BATTLE
+        # 处理奖励次数上限确认框
+        random_sleep(0.5, 1)
+        self.win_controller.find_and_click("yys/rifts_shadows/images/abyss_confirm.bmp")
+
+        self.logger.info(f"已开始挑战: {enemy.enemy_type}")
+        return True
+
+    def _select_enemy(self, enemy: Enemy):
+        """选择敌人并进入战斗"""
+        if self.click_enemy_area(enemy):
+            enemy.has_challenged = True
+            self._cur_enemy = enemy
+            self.challenge_counts[enemy.enemy_type] += 1
+            self._state = RiftsShadowsState.BATTLE
 
     def get_next_enemy(self) -> Optional[Enemy]:
         """获取下一个可挑战的敌人（优先级：首领>副将>精英）"""
@@ -308,6 +382,42 @@ class Main(YYSBaseScript):
         self.bg_left_click(point)
         # 切换到其他暗域页签后，会再次检测战报界面
         random_sleep(0.5, 1)
+
+    def _on_abyss_map(self, point):
+        """战报页面标识回调"""
+        pass  # 静默处理，不干扰主流程
+
+    def _on_abyss_map_exit(self, point):
+        """战报退出按钮回调"""
+        self.bg_left_click(point)
+
+    def _on_confirm(self, point):
+        """确认框回调"""
+        self.bg_left_click(point)
+
+    def _on_wait_to_start(self, point):
+        """等待开始回调"""
+        pass  # 静默等待
+
+    def _on_change_area(self, point):
+        """更换领域按钮回调"""
+        self.bg_left_click(point)
+
+    def _on_dragon_area(self, point):
+        """神龙暗域标识回调"""
+        self._current_area = "abyss_dragon"
+
+    def _on_peacock_area(self, point):
+        """孔雀暗域标识回调"""
+        self._current_area = "abyss_peacock"
+
+    def _on_fox_area(self, point):
+        """白藏主暗域标识回调"""
+        self._current_area = "abyss_fox"
+
+    def _on_leopard_area(self, point):
+        """黑豹暗域标识回调"""
+        self._current_area = "abyss_leopard"
 
     # ==================== 战斗相关事件处理 ====================
 
@@ -401,10 +511,102 @@ class Main(YYSBaseScript):
         self._cur_battle_count += 1
         self.log_battle_count()
 
+    def goto_abyss_shadows(self) -> bool:
+        """
+        进入狭间暗域
+
+        流程：主界面 → 神社入口 → 滑到狭间暗域 → 点击进入
+
+        Returns:
+            bool: 进入成功返回 True
+        """
+        # 点击神社入口
+        if not self.win_controller.find_and_click("yys/rifts_shadows/images/ryou_shenshe.bmp"):
+            self.logger.warning("未找到神社入口")
+            return False
+
+        random_sleep(0.5, 1)
+
+        # 滑动到狭间暗域（从神社向右滑，贝塞尔曲线防封）
+        self.mouse.bg_swipe(800, 400, 200, 400, steps=20, duration=0.6, curve_factor=0.35)
+        random_sleep(1, 1.5)
+
+        # 点击狭间暗域入口
+        if not self.win_controller.find_and_click("yys/rifts_shadows/images/abyss_shadows.bmp"):
+            self.logger.warning("未找到狭间暗域入口")
+            return False
+
+        self.logger.info("已进入狭间暗域")
+        return True
+
+    def check_current_area(self) -> Optional[str]:
+        """
+        检查当前暗域区域
+
+        Returns:
+            str or None: 当前区域名称，如 "abyss_dragon"，未识别到返回 None
+        """
+        area_mappings = [
+            ("yys/rifts_shadows/images/dragon_area.bmp", "abyss_dragon"),
+            ("yys/rifts_shadows/images/fox_area.bmp", "abyss_fox"),
+            ("yys/rifts_shadows/images/leopard_area.bmp", "abyss_leopard"),
+            ("yys/rifts_shadows/images/peacock_area.bmp", "abyss_peacock"),
+        ]
+
+        for image_path, area_name in area_mappings:
+            point = self.win_controller.find_image_with_timeout(image_path, timeout=1)
+            if point and point != (-1, -1):
+                self.logger.info(f"当前区域: {area_name}")
+                return area_name
+
+        return None
+
+    def change_area(self, target_area: str) -> bool:
+        """
+        切换到目标暗域区域
+
+        Args:
+            target_area: 目标区域名称，如 "abyss_peacock"
+
+        Returns:
+            bool: 切换成功返回 True
+        """
+        self.logger.info(f"切换到目标区域: {target_area}")
+
+        # 确保不在战报界面 - 点击退出按钮
+        if self.win_controller.find_and_click("yys/rifts_shadows/images/abyss_map_exit.bmp"):
+            random_sleep(0.5, 1)
+
+        # 点击更换领域按钮
+        if not self.win_controller.find_and_click("yys/rifts_shadows/images/change_area.bmp"):
+            self.logger.warning("未找到更换领域按钮")
+            return False
+
+        random_sleep(1, 1.5)
+
+        # 选择目标暗域入口
+        area_image_map = {
+            "abyss_dragon": "yys/rifts_shadows/images/abyss_dragon.bmp",
+            "abyss_fox": "yys/rifts_shadows/images/abyss_fox.bmp",
+            "abyss_leopard": "yys/rifts_shadows/images/abyss_leopard.bmp",
+            "abyss_peacock": "yys/rifts_shadows/images/abyss_peacock.bmp",
+        }
+
+        if target_area not in area_image_map:
+            self.logger.warning(f"未知区域: {target_area}")
+            return False
+
+        if not self.win_controller.find_and_click(area_image_map[target_area]):
+            self.logger.warning(f"未找到目标区域入口: {target_area}")
+            return False
+
+        self.logger.info(f"已切换到: {target_area}")
+        return True
+
     def on_run(self):
         """启动时调用"""
         super().on_run()
-        self.scene_manager.goto_scene("rifts_shadows_dragon")
+        self.scene_manager.goto_scene("abyss_dragon")
 
 
 if __name__ == '__main__':

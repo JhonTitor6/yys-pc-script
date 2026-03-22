@@ -399,7 +399,7 @@ class TestRiftsShadowsFlow(unittest.TestCase):
         self.script._on_rifts_shadows_selection((0, 0))
 
         # 验证导航到第一个场景
-        self.script.scene_manager.goto_scene.assert_called_with("rifts_shadows_dragon")
+        self.script.scene_manager.goto_scene.assert_called_with("abyss_dragon")
 
     def test_on_rifts_shadows_selection_navigates_based_on_index(self):
         """验证根据 cur_scene_index 导航到对应场景"""
@@ -410,7 +410,7 @@ class TestRiftsShadowsFlow(unittest.TestCase):
         self.script._on_rifts_shadows_selection((0, 0))
 
         # 验证导航到对应场景
-        self.script.scene_manager.goto_scene.assert_called_with("rifts_shadows_panther")
+        self.script.scene_manager.goto_scene.assert_called_with("abyss_leopard")
 
     def test_scene_flow_when_no_enemy_available(self):
         """验证没有可挑战敌人时切换场景
@@ -433,8 +433,9 @@ class TestRiftsShadowsFlow(unittest.TestCase):
         # 模拟没有可挑战的敌人
         self.script.ocr.find_all_texts = MagicMock(return_value=None)
         self.script.win_controller.find_image_with_timeout = MagicMock(return_value=None)
-        self.script.win_controller.key_down = MagicMock()
-        self.script.scene_manager.click_return = MagicMock(return_value=True)
+
+        # Mock change_area 方法
+        self.script.change_area = MagicMock(return_value=True)
 
         # 调用敌人选择回调（由于没有可挑战敌人，会调用 _handle_no_enemy_available）
         result = self.script._on_rifts_shadows_enemy_selection((0, 0))
@@ -442,11 +443,8 @@ class TestRiftsShadowsFlow(unittest.TestCase):
         # 验证返回 False
         self.assertFalse(result)
 
-        # 验证按下了 ESC
-        self.script.win_controller.key_down.assert_called_with("esc")
-
-        # 验证调用了返回按钮
-        self.script.scene_manager.click_return.assert_called()
+        # 验证调用了 change_area (cur_scene_index=1 递增后变成 2，对应 abyss_leopard)
+        self.script.change_area.assert_called_with("abyss_leopard")
 
         # 验证场景索引已更新
         self.assertEqual(self.script.cur_scene_index, 2)

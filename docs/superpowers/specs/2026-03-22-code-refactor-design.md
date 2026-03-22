@@ -508,8 +508,8 @@ class SoulRaidScript(YYSBaseScript):
     def __init__(self):
         super().__init__("soul_raid")
 
-        # 创建操作封装
-        operations = ImageOperations(self.win_controller)
+        # 创建操作封装（作为脚本实例属性）
+        self.operations = ImageOperations(self.win_controller)
 
         # 创建钩子
         hooks = SoulRaidHooks(self)
@@ -518,7 +518,7 @@ class SoulRaidScript(YYSBaseScript):
         self.battle_flow = BattleFlow(
             script_name="soul_raid",
             challenge_image="yys/soul_raid/images/yuhun_tiaozhan.bmp",
-            operations=operations,
+            operations=self.operations,
             hooks=hooks,
             max_battle_count=307
         )
@@ -550,9 +550,10 @@ yys/common/
 ```
 
 **说明：**
-- `base.py`：定义 `BattleFlow` 基类，包含完整战斗流程框架
-- `flow.py`：独立的状态机实现，处理战斗各阶段的精确流转逻辑，
-  可被 `BattleFlow` 组合使用
+- `base.py`：定义 `BattleFlow` 基类，包含完整战斗流程框架（推荐直接使用）
+- `flow.py`：独立的状态机实现，封装战斗阶段状态和流转逻辑。
+  **设计为可插拔组件**：未来可将 `flow.py` 的状态机逻辑注入到 `BattleFlow` 中，
+  实现更精细的阶段控制。当前版本中 `flow.py` 为预留接口，直接使用 `base.py` 即可。
 
 ### Step 2: 实现常量模块 (`constants.py`)
 - 定义所有常量类

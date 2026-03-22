@@ -1,29 +1,29 @@
 {
   "狭间暗域_选择界面": {
-    "abyss_navigation.bmp": "战报界面_当前"
+    "yys/abyss_shadows/images/abyss_navigation.bmp": "战报界面_当前"
   },
   "战报界面_当前": {
-    "boss_label.bmp": "战斗画面",
-    "commander_label.bmp": "战斗画面",
-    "elite_label.bmp": "战斗画面",
-    "abyss_navigation.bmp": "战报界面_当前"
+    "yys/abyss_shadows/images/boss_label.bmp": "战斗画面",
+    "yys/abyss_shadows/images/commander_label.bmp": "战斗画面",
+    "yys/abyss_shadows/images/elite_label.bmp": "战斗画面",
+    "yys/abyss_shadows/images/abyss_navigation.bmp": "战报界面_当前"
   },
   "战报界面_已击破": {
-    "abyss_navigation.bmp": "战报界面_当前",
-    "change_area.bmp": "战报界面_其他暗域"
+    "yys/abyss_shadows/images/abyss_navigation.bmp": "战报界面_当前",
+    "yys/abyss_shadows/images/change_area.bmp": "战报界面_其他暗域"
   },
   "战报界面_其他暗域": {
-    "abyss_navigation.bmp": "战报界面_当前",
-    "change_area.bmp": "战报界面_其他暗域"
+    "yys/abyss_shadows/images/abyss_navigation.bmp": "战报界面_当前",
+    "yys/abyss_shadows/images/change_area.bmp": "战报界面_其他暗域"
   },
   "战斗画面": {
-    "wait_to_start.bmp": "战斗结束后",
-    "confirm.bmp": "战斗结束后"
+    "yys/abyss_shadows/images/wait_to_start.bmp": "战斗结束后",
+    "yys/abyss_shadows/images/confirm.bmp": "战斗结束后"
   },
   "战斗结束后": {
-    "abyss_navigation.bmp": "战报界面_当前"
+    "yys/abyss_shadows/images/abyss_navigation.bmp": "战报界面_当前"
   },
   "战斗结束": {
-    "confirm.bmp": "战斗结束后"
+    "yys/abyss_shadows/images/confirm.bmp": "战斗结束后"
   }
 }

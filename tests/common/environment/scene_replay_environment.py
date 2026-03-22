@@ -9,7 +9,7 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Callable
 
 from PIL import Image
 
@@ -25,14 +25,43 @@ class SceneReplayEnvironment(GameEnvironment):
     - 实现 GameEnvironment 接口，复用真实的 WinController 找图逻辑
     - 只 mock capture_screen() 返回预设的场景图片
     - 场景转换由场景状态机控制
+    - 点击后自动根据配置触发场景流转
     """
+
+    # 默认按钮位置区域定义（x1, y1, x2, y2），来自 abyss_shadows_script.py 的敌人位置配置
+    _DEFAULT_CLICK_REGIONS = {
+        "战报界面_当前": [
+            # 首领位置 (554, 120, 688, 210)
+            {"region": (554, 120, 688, 210), "next_scene": "战斗画面", "button": "boss_label"},
+            # 副将位置 (424, 250, 558, 335) 和 (700, 250, 833, 335)
+            {"region": (424, 250, 558, 335), "next_scene": "战斗画面", "button": "commander_label"},
+            {"region": (700, 250, 833, 335), "next_scene": "战斗画面", "button": "commander_label"},
+            # 精英位置 (342, 360, 480, 435), (554, 360, 691, 435), (766, 360, 905, 435)
+            {"region": (342, 360, 480, 435), "next_scene": "战斗画面", "button": "elite_label"},
+            {"region": (554, 360, 691, 435), "next_scene": "战斗画面", "button": "elite_label"},
+            {"region": (766, 360, 905, 435), "next_scene": "战斗画面", "button": "elite_label"},
+        ],
+        "狭间暗域_选择界面": [
+            # 战报按钮区域（约在中间位置）
+            {"region": (500, 300, 700, 500), "next_scene": "战报界面_当前", "button": "abyss_navigation"},
+        ],
+        "战斗画面": [
+            # 等待开始位置（整个屏幕区域）
+            {"region": (0, 0, 1154, 680), "next_scene": "战斗结束后", "button": "wait_to_start"},
+        ],
+        "战斗结束后": [
+            # 战报按钮区域
+            {"region": (500, 300, 700, 500), "next_scene": "战报界面_当前", "button": "abyss_navigation"},
+        ],
+    }
 
     def __init__(
         self,
         scene_dir: str,
         transitions_config: str,
         initial_scene: str,
-        action_log=None
+        action_log=None,
+        auto_transition: bool = True
     ):
         """初始化场景回放环境
 
@@ -41,11 +70,13 @@ class SceneReplayEnvironment(GameEnvironment):
             transitions_config: 场景转换配置文件 (JSON)
             initial_scene: 初始场景名称
             action_log: 可选的操作日志记录器
+            auto_transition: 是否在点击后自动触发场景转换（默认 True）
         """
         self._scene_dir = Path(scene_dir)
         self._transitions_config = Path(transitions_config)
         self._current_scene: str = initial_scene
         self._screenshot_cache: Optional[Image.Image] = None
+        self._auto_transition = auto_transition
 
         # Mock OCR 结果配置
         self._mock_ocr_results: dict = {}
@@ -54,6 +85,9 @@ class SceneReplayEnvironment(GameEnvironment):
         self._action_log = action_log
         self._action_records: list = []
         self.action_log = action_log  # 保持向后兼容
+
+        # 点击后的自定义回调（用于测试场景转换监控）
+        self._post_click_callback: Optional[Callable] = None
 
         # 加载场景转换配置
         self._load_transitions()
@@ -78,8 +112,45 @@ class SceneReplayEnvironment(GameEnvironment):
         return self._screenshot_cache
 
     def left_click(self, x: int, y: int) -> None:
-        """鼠标左键点击"""
+        """鼠标左键点击
+
+        如果 auto_transition 为 True，会根据当前场景和点击位置自动触发场景转换
+        """
         self._record_action(ActionType.LEFT_CLICK, x, y)
+
+        # 触发点击后的回调（用于测试监控）
+        if self._post_click_callback:
+            self._post_click_callback(x, y)
+
+        # 自动触发场景转换
+        if self._auto_transition:
+            self._transition_by_click(x, y)
+
+    def _transition_by_click(self, x: int, y: int) -> None:
+        """根据点击位置触发场景转换
+
+        Args:
+            x: 点击的 x 坐标
+            y: 点击的 y 坐标
+        """
+        # 获取当前场景的点击区域配置
+        regions = self._DEFAULT_CLICK_REGIONS.get(self._current_scene, [])
+        for region_config in regions:
+            x1, y1, x2, y2 = region_config["region"]
+            if x1 <= x <= x2 and y1 <= y <= y2:
+                next_scene = region_config["next_scene"]
+                old_scene = self._current_scene
+                self.set_scene(next_scene)
+                print(f"  [场景转换] {old_scene} --[{region_config['button']}]--> {next_scene}")
+                return
+
+    def set_post_click_callback(self, callback: Optional[Callable]) -> None:
+        """设置点击后的回调函数
+
+        Args:
+            callback: 回调函数，接收 (x, y) 参数
+        """
+        self._post_click_callback = callback
 
     def right_click(self, x: int, y: int) -> None:
         """鼠标右键点击"""

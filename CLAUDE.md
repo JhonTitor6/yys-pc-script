@@ -3,7 +3,14 @@
 
 - **回答和代码注释必须使用中文**
 - **Git 提交信息必须使用中文**
-- **计划文件应放于.claude/plans文件夹，如果有plan文件，完成任务后必须在plan文件中更新进度**
+
+## 文档路径规范
+
+- **项目文档**: `docs/` — 架构、API、设计规格（可被他人阅读）
+- **实现计划**: `docs/plans/` — YYYY-MM-DD-<feature>-plan.md
+- **设计规格**: `docs/specs/` — YYYY-MM-DD-<feature>-design.md
+- **Claude 记忆**: `.claude/memory/` — MEMORY.md 索引 + 主题文件
+- **Brainstorming 临时文件**: `.superpowers/` — 会话用，完成后清理
 
 ## 项目概述
 yys-pc-script 是一个基于事件驱动架构的阴阳师 PC 端自动化脚本。通过图像识别、OCR 和鼠标/键盘控制实现游戏任务自动化，无需游戏窗口处于前台激活状态。
@@ -16,7 +23,7 @@ D:/ProgramData/anaconda3/envs/win_macro/python.exe -m pip install -r requirement
 
 ## 核心开发规则
 - 所有代码都必须提供类型提示 
-- 公共 API 必须包含文档字符串 
+- 公共 API 必须包含注释
 - 函数必须简洁明了、篇幅短小
 
 ## 测试

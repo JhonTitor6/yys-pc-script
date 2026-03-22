@@ -81,6 +81,138 @@ class MouseController:
         """
         return self.bg_left_click(point, x_range=x_range, y_range=y_range)
 
+    def bg_swipe(self, start_x: int, start_y: int, end_x: int, end_y: int,
+                 steps: int = 20, duration: float = 0.5,
+                 curve_factor: float = 0.3) -> bool:
+        """
+        后台模拟鼠标滑动操作（贝塞尔曲线防封）
+
+        :param start_x: 起始点 X 坐标
+        :param start_y: 起始点 Y 坐标
+        :param end_x: 结束点 X 坐标
+        :param end_y: 结束点 Y 坐标
+        :param steps: 滑动步数（越多越平滑）
+        :param duration: 滑动总时长（秒）
+        :param curve_factor: 曲线弯曲因子（0-1，越大越弯曲）
+        :return: 操作是否成功
+        """
+        import time
+
+        if self._env is not None:
+            # 使用 GameEnvironment 接口的贝塞尔滑动
+            points = self._generate_bezier_points(
+                start_x, start_y, end_x, end_y,
+                steps, curve_factor
+            )
+            for i, (x, y) in enumerate(points):
+                self._env.left_click(int(x), int(y))
+                if i < len(points) - 1:
+                    # 渐变延迟：开始和结束稍慢，中间稍快
+                    t = i / (len(points) - 1)
+                    # 使用缓动函数使开始和结束更自然
+                    if t < 0.2:
+                        delay = duration * 0.08  # 开始稍慢
+                    elif t > 0.8:
+                        delay = duration * 0.06  # 结束稍慢
+                    else:
+                        delay = duration * 0.03  # 中间稍快
+                    delay *= random.uniform(0.8, 1.2)  # 添加随机因子
+                    time.sleep(delay)
+            return True
+
+        # 向后兼容：使用原生 win32 调用
+        if self.hwnd is None:
+            raise ValueError("请在初始化时传入 GameEnvironment 或目标窗口句柄")
+
+        # 生成贝塞尔曲线点
+        points = self._generate_bezier_points(
+            start_x, start_y, end_x, end_y,
+            steps, curve_factor
+        )
+
+        # 按下鼠标
+        long_start = win32api.MAKELONG(int(points[0][0]), int(points[0][1]))
+        win32api.SendMessage(self.hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, long_start)
+
+        # 沿贝塞尔曲线移动
+        for i in range(1, len(points) - 1):
+            x, y = points[i]
+            long_current = win32api.MAKELONG(int(x), int(y))
+            win32api.SendMessage(self.hwnd, win32con.WM_MOUSEMOVE, 0, long_current)
+
+            # 缓动延迟
+            t = i / (len(points) - 1)
+            if t < 0.2:
+                delay = duration * 0.08
+            elif t > 0.8:
+                delay = duration * 0.06
+            else:
+                delay = duration * 0.03
+            delay *= random.uniform(0.8, 1.2)
+            time.sleep(delay)
+
+        # 释放鼠标
+        end_x_final, end_y_final = points[-1]
+        long_end = win32api.MAKELONG(int(end_x_final), int(end_y_final))
+        win32api.SendMessage(self.hwnd, win32con.WM_LBUTTONUP, 0, long_end)
+
+        return True
+
+    def _generate_bezier_points(self, start_x: int, start_y: int,
+                                 end_x: int, end_y: int,
+                                 steps: int, curve_factor: float):
+        """
+        生成贝塞尔曲线路径点
+
+        :param start_x: 起始点 X
+        :param start_y: 起始点 Y
+        :param end_x: 结束点 X
+        :param end_y: 结束点 Y
+        :param steps: 步数
+        :param curve_factor: 曲线弯曲因子
+        :return: [(x, y), ...] 点列表
+        """
+        # 计算方向向量
+        dx = end_x - start_x
+        dy = end_y - start_y
+
+        # 生成随机偏移的偏移范围（基于滑动距离）
+        offset_range = max(30, int((abs(dx) + abs(dy)) * curve_factor * 0.3))
+
+        # 控制点1：起点 + 随机偏移
+        ctrl1_x = start_x + dx * curve_factor + random.randint(-offset_range, offset_range)
+        ctrl1_y = start_y + dy * curve_factor * random.uniform(-0.5, 0.5) + random.randint(-offset_range, offset_range)
+
+        # 控制点2：终点 - 随机偏移
+        ctrl2_x = end_x - dx * curve_factor + random.randint(-offset_range, offset_range)
+        ctrl2_y = end_y - dy * curve_factor * random.uniform(-0.5, 0.5) + random.randint(-offset_range, offset_range)
+
+        # 生成贝塞尔曲线点
+        points = []
+        for i in range(steps):
+            t = i / (steps - 1) if steps > 1 else 1
+
+            # 三次贝塞尔公式
+            one_minus_t = 1 - t
+            one_minus_t_sq = one_minus_t * one_minus_t
+            one_minus_t_cube = one_minus_t_sq * one_minus_t
+            t_sq = t * t
+            t_cube = t_sq * t
+
+            x = (one_minus_t_cube * start_x +
+                 3 * one_minus_t_sq * t * ctrl1_x +
+                 3 * one_minus_t * t_sq * ctrl2_x +
+                 t_cube * end_x)
+
+            y = (one_minus_t_cube * start_y +
+                 3 * one_minus_t_sq * t * ctrl1_y +
+                 3 * one_minus_t * t_sq * ctrl2_y +
+                 t_cube * end_y)
+
+            points.append((x, y))
+
+        return points
+
 
 def left_click(*position):
     """

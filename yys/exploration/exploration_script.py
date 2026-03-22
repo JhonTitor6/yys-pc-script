@@ -37,6 +37,7 @@ class ExplorationScript(YYSBaseScript):
 
     def _on_battle_end(self, point):
         """战斗结束处理"""
+        super()._on_battle_end(point)
         random_sleep(1, 3)
         script_run_minutes = int((int(time.time() * 1000) - self.script_start_time_mills) / 1000 / 60)
         if script_run_minutes > 0 and script_run_minutes % 26 == 0:

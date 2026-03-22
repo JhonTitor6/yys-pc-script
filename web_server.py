@@ -16,7 +16,8 @@ from loguru import logger
 from yys.common.event_script_base import YYSBaseScript
 
 # 添加项目根目录到Python路径，以便能够导入yys模块
-sys.path.insert(0, str(Path("")))
+PROJECT_ROOT = Path(__file__).parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
 # 确保工作目录是项目根目录
 PROJECT_ROOT = Path(__file__).parent
@@ -41,15 +42,15 @@ pause_resume_event.set()  # 默认为运行状态
 current_task = None
 
 # 手动注册任务
-from yys.jiejietupo import JieJieTuPoScript
+from yys.realm_raid import RealmRaidScript
 from yys.exploration import ExplorationScript
-from yys.yuhun import YuHunScript
+from yys.soul_raid import SoulRaidScript
 from yys.yuling import AutoYuling
 
 TASKS: Dict[str, Type[YYSBaseScript]] = {
-    "结界突破": JieJieTuPoScript,
+    "结界突破": RealmRaidScript,
     "探28": ExplorationScript,
-    "御魂": YuHunScript,
+    "御魂": SoulRaidScript,
     "御灵": AutoYuling
 }
 
@@ -83,7 +84,8 @@ class UIStdin:
 class TaskExecutor(threading.Thread):
     """任务执行器，在独立线程中运行脚本"""
 
-    def __init__(self, task_name, task_class: Type[YYSBaseScript], log_queue, input_queue, response_queue):
+    def __init__(self, task_name, task_class: Type[YYSBaseScript], log_queue,
+                 input_queue, response_queue, config: Optional[Dict] = None):
         super().__init__()
         self.task_name = task_name
         self.task_class = task_class
@@ -91,6 +93,7 @@ class TaskExecutor(threading.Thread):
         self.input_queue = input_queue
         self.response_queue = response_queue
         self.original_cwd = os.getcwd()
+        self.config = config or {}
         self.task_instance = self._instance_class()
         self.daemon = True
 
@@ -102,7 +105,12 @@ class TaskExecutor(threading.Thread):
         logger.debug(f"任务类目录: {task_module_path}")
         os.chdir(task_module_path)
         # 创建任务实例
-        return self.task_class()
+        instance = self.task_class()
+        # 应用配置
+        if self.config:
+            if 'max_battle_count' in self.config:
+                instance.set_max_battle_count(self.config['max_battle_count'])
+        return instance
 
     def run(self):
         """执行任务的主要方法"""
@@ -119,13 +127,19 @@ class TaskExecutor(threading.Thread):
                     self.log_queue = log_queue
 
                 def write(self, text):
-                    if text.strip():
-                        timestamp = datetime.now().strftime("%H:%M:%S")
-                        self.log_queue.put({
-                            "type": "log",
-                            "data": f"[{timestamp}] {text.strip()}",
-                            "level": "INFO"
-                        })
+                    try:
+                        if text and text.strip():
+                            # 确保 text 是字符串，处理可能的编码问题
+                            if isinstance(text, bytes):
+                                text = text.decode('utf-8', errors='replace')
+                            timestamp = datetime.now().strftime("%H:%M:%S")
+                            self.log_queue.put({
+                                "type": "log",
+                                "data": f"[{timestamp}] {text.strip()}",
+                                "level": "INFO"
+                            })
+                    except Exception:
+                        pass
 
                 def flush(self):
                     pass
@@ -249,6 +263,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 if message["type"] == "start_task":
                     task_name = message["task_name"]
+                    config = message.get("config", {})
                     task_manager = TaskManager()
 
                     if task_name in task_manager.tasks:
@@ -267,7 +282,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         # 创建任务执行器
                         executor_thread = TaskExecutor(
                             task_name, task_class, log_queue,
-                            input_queue, response_queue
+                            input_queue, response_queue, config
                         )
 
                         # 启动任务

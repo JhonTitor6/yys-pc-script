@@ -29,7 +29,7 @@ from yys.common import (
 )
 
 if TYPE_CHECKING:
-    from yys.test.environment.base import GameEnvironment
+    from tests.common.environment.base import GameEnvironment
 
 # 获取项目根目录并添加到 sys.path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

@@ -3,6 +3,7 @@
 
 - **回答和代码注释必须使用中文**
 - **Git 提交信息必须使用中文**
+- **计划文件应放于.claude/plans文件夹，如果有plan文件，完成任务后必须在plan文件中更新进度**
 
 ## 项目概述
 yys-pc-script 是一个基于事件驱动架构的阴阳师 PC 端自动化脚本。通过图像识别、OCR 和鼠标/键盘控制实现游戏任务自动化，无需游戏窗口处于前台激活状态。
@@ -21,39 +22,51 @@ D:/ProgramData/anaconda3/envs/win_macro/python.exe -m pip install -r requirement
 ## 测试
 
 ### 单元测试（推荐）
-测试位于 `yys/test/`，使用 pytest 运行：
+测试位于各业务模块和 `tests/` 目录下，使用 pytest 运行：
 ```bash
 # 运行所有测试
-pytest yys/test/
+pytest tests/ yys/*/test_*.py -v
 
 # 只运行御魂模块测试（不需要游戏窗口）
-pytest yys/test/test_soul_raid.py -v
+pytest yys/soul_raid/test_soul_raid.py -v
+
+# 运行公共模块测试
+pytest tests/common/ -v
 ```
 单元测试使用 Mock 环境，不依赖游戏窗口。
 
 ### 测试框架架构
 
 ```
-yys/test/
-├── environment/           # 环境抽象层
-│   ├── base.py           # GameEnvironment 抽象基类
-│   ├── mock_environment.py  # Mock 测试环境
-│   └── windows_environment.py  # Windows 生产环境
-├── providers/             # 图片提供者
-│   └── file_image_provider.py  # 从文件加载截图
-├── recorders/           # 操作记录器
-│   ├── action_log.py    # 操作日志容器
-│   ├── action_recorder.py  # 操作记录器
-│   └── record_replay.py  # 录制-回放工具
-└── test_data/           # 测试数据
-    └── scenarios/       # 场景截图
+tests/                          # 测试基础设施
+├── conftest.py               # pytest 配置和 fixtures
+├── common/                   # 公共测试基础设施
+│   ├── environment/         # 环境抽象层
+│   │   ├── base.py         # GameEnvironment 抽象基类
+│   │   ├── mock_environment.py  # Mock 测试环境
+│   │   └── windows_environment.py  # Windows 生产环境
+│   ├── providers/           # 图片提供者
+│   │   └── file_image_provider.py  # 从文件加载截图
+│   ├── recorders/           # 操作记录器
+│   │   ├── action_log.py    # 操作日志容器
+│   │   ├── action_recorder.py  # 操作记录器
+│   │   └── record_replay.py  # 录制-回放工具
+│   ├── images/             # 测试用图片
+│   └── test_*.py           # 公共模块测试
+│
+yys/                          # 业务模块
+├── soul_raid/
+│   ├── test_soul_raid.py   # 御魂模块测试
+│   └── images/test/        # 御魂测试用图片
+└── rifts_shadows/
+    └── test_rifts_shadows_flow.py  # 狭间暗域测试
 ```
 
 ### Mock 测试示例
 
 ```python
-from yys.test.environment.mock_environment import MockEnvironment
-from yys.test.recorders.action_log import ActionLog
+from tests.common.environment.mock_environment import MockEnvironment
+from tests.common.recorders.action_log import ActionLog
 
 # 创建 Mock 环境
 log = ActionLog()
@@ -70,7 +83,7 @@ log.assert_click_count(1)
 ### 录制新测试场景
 
 ```python
-from yys.test.recorders.record_replay import ScenarioRecorder
+from tests.common.recorders.record_replay import ScenarioRecorder
 
 recorder = ScenarioRecorder()
 recorder.start_recording()

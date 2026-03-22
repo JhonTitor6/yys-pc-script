@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Optional
 
 from win_util.image import ImageMatchConfig, to_project_path
-from yys.event_script_base import YYSBaseScript
+from yys.common.event_script_base import YYSBaseScript
 
 
 def random_sleep(min_val: float, max_val: float) -> None:

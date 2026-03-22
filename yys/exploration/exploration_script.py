@@ -2,7 +2,7 @@ import random
 import time
 
 from win_util.mouse import bg_left_click, bg_left_click_with_range
-from yys.event_script_base import YYSBaseScript, ImageMatchConfig, random_sleep
+from yys.common.event_script_base import YYSBaseScript, ImageMatchConfig, random_sleep
 
 
 class ExplorationScript(YYSBaseScript):

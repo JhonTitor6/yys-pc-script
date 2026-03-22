@@ -1,7 +1,7 @@
 import time
 
 from win_util.image import ImageMatchConfig
-from yys.event_script_base import YYSBaseScript, random_sleep
+from yys.common.event_script_base import YYSBaseScript, random_sleep
 
 """
 结界突破脚本，使用事件驱动模式

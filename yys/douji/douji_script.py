@@ -1,6 +1,6 @@
 import time
 
-from yys.event_script_base import YYSBaseScript, ImageMatchConfig
+from yys.common.event_script_base import YYSBaseScript, ImageMatchConfig
 
 
 class DouJi(YYSBaseScript):

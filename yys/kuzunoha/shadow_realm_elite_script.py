@@ -1,5 +1,5 @@
 from win_util.image import ImageMatchConfig
-from yys.event_script_base import YYSBaseScript
+from yys.common.event_script_base import YYSBaseScript
 
 
 class Main(YYSBaseScript):

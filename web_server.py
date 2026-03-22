@@ -13,7 +13,7 @@ from typing import Dict, Optional, Type
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect  # 添加Request导入
 from loguru import logger
 
-from yys.event_script_base import YYSBaseScript
+from yys.common.event_script_base import YYSBaseScript
 
 # 添加项目根目录到Python路径，以便能够导入yys模块
 sys.path.insert(0, str(Path("")))

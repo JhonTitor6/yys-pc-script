@@ -4,7 +4,7 @@ import cv2
 from loguru import logger
 
 from win_util.image import ImageFinder
-from yys.event_script_base import find_window
+from yys.common.event_script_base import find_window
 from yys.util.yys_yu_hun_ocr import YysYuHunOCR
 
 image_finder = None

@@ -3,7 +3,7 @@
 
 import time
 
-from yys.event_script_base import YYSBaseScript
+from yys.common.event_script_base import YYSBaseScript
 from yys.common.battle.base import BattleFlow
 from yys.common.battle.hooks import BattleHooks
 from yys.common.constants import (

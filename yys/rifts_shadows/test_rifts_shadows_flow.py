@@ -55,7 +55,7 @@ sys.modules['mss'] = _mock_mss
 # ==================== 导入项目模块 ====================
 
 from yys.rifts_shadows.rifts_shadows_script import Main, EnemyType, Enemy, RiftsShadowsState
-from yys.event_script_base import YYSBaseScript
+from yys.common.event_script_base import YYSBaseScript
 
 
 class TestRiftsShadowsFlow(unittest.TestCase):
@@ -95,11 +95,11 @@ class TestRiftsShadowsFlow(unittest.TestCase):
         mock_scene_manager.click_return = MagicMock()
 
         # 使用 patch 在正确的位置拦截（YYSBaseScript 导入的位置）
-        with patch('yys.event_script_base.find_window', return_value=mock_hwnd), \
-             patch('yys.event_script_base.WinController', return_value=mock_win_controller), \
-             patch('yys.event_script_base.SceneManager', return_value=mock_scene_manager), \
-             patch('yys.event_script_base.ImageFinder', return_value=mock_image_finder), \
-             patch('yys.event_script_base.CommonOcr', return_value=mock_ocr):
+        with patch('yys.common.event_script_base.find_window', return_value=mock_hwnd), \
+             patch('yys.common.event_script_base.WinController', return_value=mock_win_controller), \
+             patch('yys.common.event_script_base.SceneManager', return_value=mock_scene_manager), \
+             patch('yys.common.event_script_base.ImageFinder', return_value=mock_image_finder), \
+             patch('yys.common.event_script_base.CommonOcr', return_value=mock_ocr):
 
             script = Main()
 
@@ -553,11 +553,11 @@ class TestRiftsShadowsEnemyDef(unittest.TestCase):
         mock_win_controller.keyboard = mock_keyboard
         mock_win_controller.mouse = mock_mouse
 
-        with patch('yys.event_script_base.find_window', return_value=mock_hwnd), \
-             patch('yys.event_script_base.WinController', return_value=mock_win_controller), \
-             patch('yys.event_script_base.SceneManager', return_value=mock_scene_manager), \
-             patch('yys.event_script_base.ImageFinder', return_value=mock_image_finder), \
-             patch('yys.event_script_base.CommonOcr', return_value=mock_ocr):
+        with patch('yys.common.event_script_base.find_window', return_value=mock_hwnd), \
+             patch('yys.common.event_script_base.WinController', return_value=mock_win_controller), \
+             patch('yys.common.event_script_base.SceneManager', return_value=mock_scene_manager), \
+             patch('yys.common.event_script_base.ImageFinder', return_value=mock_image_finder), \
+             patch('yys.common.event_script_base.CommonOcr', return_value=mock_ocr):
 
             script = Main()
 

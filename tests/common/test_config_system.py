@@ -3,7 +3,7 @@
 """
 import os
 
-from yys.config_manager import config_manager, runtime_context, YuHunConfig, TanSuoConfig
+from yys.common.config_manager import config_manager, runtime_context, YuHunConfig, TanSuoConfig
 
 
 def test_config_isolation():
@@ -58,7 +58,7 @@ def test_config_persistence():
     print("配置已保存到 test_config_dir/test_configs.json")
     
     # 从文件加载新管理器
-    from yys.config_manager import ConfigManager
+    from yys.common.config_manager import ConfigManager
     new_manager = ConfigManager()
     new_manager.load_from_file("test_config_dir/test_configs.json", "json")
     

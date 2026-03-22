@@ -65,10 +65,14 @@ class ImageOperations:
         """
         查找图片并点击
 
+        注意：默认的 x_range/y_range 使用字面值 20，而不是 ClickRange.DEFAULT。
+        这是为了避免 operations 模块与 battle 模块的常量产生耦合。
+        ClickRange.DEFAULT 的值也是 20，所以行为是一致的。
+
         :param image_path: 图片路径
         :param timeout: 超时时间（秒），0 表示不设置超时
-        :param x_range: X轴随机偏移范围
-        :param y_range: Y轴随机偏移范围
+        :param x_range: X轴随机偏移范围，默认 20
+        :param y_range: Y轴随机偏移范围，默认 20
         :param similarity: 相似度阈值
         :return: OperationResult，包含成功状态和位置
         """
@@ -88,8 +92,11 @@ class ImageOperations:
         """
         等待图片出现
 
+        此方法委托给 WinController.find_image_with_timeout()，该方法在超时时间内
+        持续重试查找图片，而不是只尝试一次。
+
         :param image_path: 图片路径
-        :param timeout: 超时时间（秒）
+        :param timeout: 超时时间（秒），默认 10 秒
         :param similarity: 相似度阈值
         :return: OperationResult，包含成功状态和位置
         """

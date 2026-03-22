@@ -3,14 +3,11 @@
 
 import time
 from abc import ABC, abstractmethod
-from typing import List, Dict, TYPE_CHECKING
+from typing import List, Dict
 
 from yys.common.constants import BattleSleep, ClickRange, ImageSimilarity, BattleEndType
 from yys.common.operations import ImageOperations, OperationResult
 from yys.common.battle.hooks import BattleHooks
-
-if TYPE_CHECKING:
-    pass
 
 
 class BattleFlow(ABC):
@@ -81,24 +78,29 @@ class BattleFlow(ABC):
         """等待战斗开始"""
         time.sleep(BattleSleep.MEDIUM)
 
-    def _wait_battle_end(self) -> BattleEndType:
+    def _wait_battle_end(self, max_wait_seconds: int = 300) -> BattleEndType:
         """
         等待战斗结束
 
+        :param max_wait_seconds: 最大等待时间（秒），默认 300 秒
         :return: 战斗结束类型
         """
         if self.BATTLE_END_CONFIGS:
-            return self._poll_battle_end()
+            return self._poll_battle_end(max_wait_seconds)
 
         # 默认轮询方式
+        start_time = time.time()
         while self.hooks.should_continue():
+            if time.time() - start_time > max_wait_seconds:
+                return BattleEndType.OTHER
             time.sleep(BattleSleep.SHORT)
         return BattleEndType.OTHER
 
-    def _poll_battle_end(self) -> BattleEndType:
+    def _poll_battle_end(self, max_wait_seconds: int = 300) -> BattleEndType:
         """
         轮询检测战斗结束
 
+        :param max_wait_seconds: 最大等待时间（秒），默认 300 秒
         :return: 战斗结束类型
         """
         victory_images = [
@@ -110,7 +112,11 @@ class BattleFlow(ABC):
             if c.get('type') == 'defeat'
         ]
 
+        start_time = time.time()
         while self.hooks.should_continue():
+            if time.time() - start_time > max_wait_seconds:
+                return BattleEndType.OTHER
+
             # 检查胜利图片
             for img in victory_images:
                 result = self.operations.find_image(img)

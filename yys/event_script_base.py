@@ -14,7 +14,7 @@ from win_util import WinController
 from win_util.event import EventBaseScript, Event
 from win_util.image import ImageMatchConfig, ImageFinder, to_project_path
 from win_util.ocr import CommonOcr
-from yys.scene_manager import SceneManager, SceneDetectionResult
+from yys.common.scene_manager import SceneManager, SceneDetectionResult
 from yys.common import (
     BATTLE_SLEEP_SHORT,
     BATTLE_SLEEP_MEDIUM,

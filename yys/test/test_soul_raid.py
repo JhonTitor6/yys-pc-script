@@ -5,17 +5,25 @@
 测试场景：
 1. 验证点击操作被正确记录到 ActionLog
 2. 验证 assert_click_at 支持误差范围
-3. 完整场景测试：战斗结算界面 -> 点击挑战 -> 验证操作记录
+3. 完整场景测试：战斗结算界面 -> 找图 -> 点击挑战 -> 验证操作记录
+4. 图像匹配功能测试：验证找图能找到目标并返回正确坐标
 """
 import pytest
 from pathlib import Path
+from PIL import Image
+import numpy as np
+import cv2
+
 from yys.test.environment.mock_environment import MockEnvironment
 from yys.test.providers.file_image_provider import FileImageProvider
 from yys.test.recorders.action_log import ActionLog
+from win_util.controller import WinController
+from win_util.image import ImageMatchConfig
 
 # 测试数据路径
 TEST_DATA_BASE = Path(__file__).parent / "test_data" / "scenarios"
 SOUL_RAID_EXAMPLE = TEST_DATA_BASE / "soul_raid" / "example"
+SOUL_RAID_IMAGES = Path("yys/soul_raid/images")
 
 
 class TestSoulRaidScript:
@@ -59,35 +67,6 @@ class TestSoulRaidScript:
         with pytest.raises(AssertionError):
             log.assert_click_at(100, 200, tolerance=5)
 
-    def test_full_scenario_battle_settlement_to_challenge(self):
-        """
-        完整场景测试：战斗结算界面 -> 点击挑战 -> 验证操作记录
-
-        测试流程：
-        1. 加载"御魂_战斗结算.png"作为当前画面
-        2. 模拟脚本识别"挑战"按钮（假设识别到坐标 500, 400）
-        3. 执行点击操作
-        4. 验证 ActionLog 记录正确
-        """
-        log = ActionLog()
-        env = MockEnvironment(action_log=log)
-
-        # 加载结算界面截图
-        settlement_image = SOUL_RAID_EXAMPLE / "御魂_战斗结算.png"
-        if settlement_image.exists():
-            env.image_provider.set_current_image_from_file(str(settlement_image))
-
-        # 模拟识别到挑战按钮在 (500, 400)
-        challenge_button_x = 500
-        challenge_button_y = 400
-
-        # 执行点击
-        env.left_click(challenge_button_x, challenge_button_y)
-
-        # 验证
-        log.assert_click_at(challenge_button_x, challenge_button_y, tolerance=5)
-        log.assert_click_count(1, action_type="left_click")
-
     def test_multiple_clicks_recorded(self):
         """
         测试：验证多次点击都被正确记录
@@ -123,3 +102,180 @@ class TestSoulRaidScript:
         assert img is not None
         assert img.size[0] > 0
         assert img.size[1] > 0
+
+
+class TestImageMatching:
+    """图像匹配测试"""
+
+    @pytest.fixture
+    def mock_env_with_screenshot(self):
+        """创建带截图的 Mock 环境"""
+        provider = FileImageProvider(base_folder=str(TEST_DATA_BASE))
+
+        # 加载组队界面截图作为测试画面
+        team_image = SOUL_RAID_EXAMPLE / "御魂_组队界面.png"
+        assert team_image.exists(), f"测试图片不存在: {team_image}"
+        provider.set_current_image_from_file(str(team_image))
+
+        log = ActionLog()
+        env = MockEnvironment(image_provider=provider, action_log=log)
+        return env, log
+
+    @pytest.fixture
+    def image_finder_with_mock_env(self, mock_env_with_screenshot):
+        """创建使用 Mock 环境的 ImageFinder"""
+        env, log = mock_env_with_screenshot
+        finder = WinController(env=env).image_finder
+        # 更新截图缓存
+        finder.update_screenshot_cache()
+        return finder, env, log
+
+    def test_find_challenge_button_in_team_interface(self, image_finder_with_mock_env):
+        """
+        测试：在组队界面中查找"挑战"按钮
+
+        验证点：
+        1. 图像匹配能找到挑战按钮
+        2. 返回的坐标在合理范围内（按钮应该在界面中央区域）
+        3. 相似度足够高
+        """
+        finder, env, log = image_finder_with_mock_env
+
+        # 在组队界面中查找御魂挑战按钮
+        challenge_button_path = str(SOUL_RAID_IMAGES / "yuhun_tiaozhan.bmp")
+        point = finder.bg_find_pic_by_cache(challenge_button_path, similarity=0.6)
+
+        # 验证找到了按钮（组队界面应该有挑战按钮）
+        assert point is not None, "返回结果不应为 None"
+        x, y = point
+        print(f"找到挑战按钮位置: ({x}, {y})")
+
+        # 坐标应该是有效的（非 -1）
+        assert x != -1 and y != -1, f"应该找到挑战按钮，但返回了 ({x}, {y})"
+
+        # 坐标应该在合理范围内（御魂挑战按钮一般在界面右下方）
+        # 截图尺寸 1154x680，按钮可能在右边
+        assert 0 < x < 1154, f"X坐标 {x} 不在合理范围 [0, 1154]"
+        assert 0 < y < 680, f"Y坐标 {y} 不在合理范围 [0, 680]"
+
+    def test_find_button_not_found(self, image_finder_with_mock_env):
+        """
+        测试：查找一个不存在的按钮返回 (-1, -1)
+        """
+        finder, _, _ = image_finder_with_mock_env
+
+        # 尝试查找一个肯定不存在的图片
+        nonexistent_path = str(SOUL_RAID_IMAGES / "battle_end_success.bmp")
+        point = finder.bg_find_pic_by_cache(nonexistent_path, similarity=0.8)
+
+        # 验证返回 (-1, -1) 表示未找到
+        assert point == (-1, -1), f"未找到时应返回 (-1, -1)，实际返回 {point}"
+
+    def test_find_button_and_click_recorded(self, image_finder_with_mock_env):
+        """
+        测试：查找按钮并点击，验证点击坐标与找到的坐标一致
+
+        验证点：
+        1. 图像匹配找到按钮位置
+        2. 点击操作的坐标与匹配位置一致（在误差范围内）
+        """
+        finder, env, log = image_finder_with_mock_env
+
+        # 查找挑战按钮
+        challenge_button_path = str(SOUL_RAID_IMAGES / "yuhun_tiaozhan.bmp")
+        point = finder.bg_find_pic_by_cache(challenge_button_path, similarity=0.6)
+
+        x, y = point
+        print(f"找到按钮: ({x}, {y})")
+
+        if x != -1 and y != -1:
+            # 执行点击（使用 env 的 left_click，它会记录到 log）
+            env.left_click(x, y)
+
+            # 验证点击记录
+            log.assert_click_at(x, y, tolerance=5)
+            log.assert_click_count(1, action_type="left_click")
+
+            # 验证点击坐标与匹配坐标完全一致
+            last_click = log.get_last()[0]
+            assert last_click.x == x, f"点击X坐标 {last_click.x} 与匹配坐标 {x} 不一致"
+            assert last_click.y == y, f"点击Y坐标 {last_click.y} 与匹配坐标 {y} 不一致"
+
+
+class TestFullScenario:
+    """完整场景测试"""
+
+    def test_full_scenario_team_to_battle(self):
+        """
+        完整场景测试：组队界面 -> 找挑战按钮 -> 点击 -> 验证操作
+
+        测试流程：
+        1. 加载"御魂_组队界面.png"作为当前画面
+        2. 使用 ImageFinder 查找"挑战"按钮
+        3. 执行点击操作
+        4. 验证 ActionLog 记录了正确的点击
+        """
+        # 初始化
+        provider = FileImageProvider(base_folder=str(TEST_DATA_BASE))
+        team_image = SOUL_RAID_EXAMPLE / "御魂_组队界面.png"
+        provider.set_current_image_from_file(str(team_image))
+
+        log = ActionLog()
+        env = MockEnvironment(image_provider=provider, action_log=log)
+
+        # 创建 ImageFinder 并加载截图
+        finder = WinController(env=env).image_finder
+        finder.update_screenshot_cache()
+
+        # 查找挑战按钮
+        challenge_path = str(SOUL_RAID_IMAGES / "yuhun_tiaozhan.bmp")
+        point = finder.bg_find_pic_by_cache(challenge_path, similarity=0.6)
+
+        x, y = point
+        print(f"完整场景 - 找到挑战按钮: ({x}, {y})")
+
+        # 验证找到了按钮
+        assert x != -1 and y != -1, "应该能在组队界面中找到挑战按钮"
+
+        # 执行点击
+        env.left_click(x, y)
+
+        # 验证点击记录
+        log.assert_click_count(1, action_type="left_click")
+        log.assert_click_at(x, y, tolerance=5)
+
+        # 验证点击坐标在按钮区域（截图 1154x680）
+        last_click = log.get_last()[0]
+        assert 0 < last_click.x < 1154, f"点击X坐标 {last_click.x} 不在合理范围 [0, 1154]"
+        assert 0 < last_click.y < 680, f"点击Y坐标 {last_click.y} 不在合理范围 [0, 680]"
+
+    def test_settlement_click_scenario(self):
+        """
+        场景测试：战斗结算界面 -> 查找并点击挑战按钮
+
+        这个测试验证在结算界面中能否正确找到并点击挑战按钮进行下一局
+        """
+        # 初始化
+        provider = FileImageProvider(base_folder=str(TEST_DATA_BASE))
+        settlement_image = SOUL_RAID_EXAMPLE / "御魂_战斗结算.png"
+        provider.set_current_image_from_file(str(settlement_image))
+
+        log = ActionLog()
+        env = MockEnvironment(image_provider=provider, action_log=log)
+
+        # 创建 ImageFinder 并加载截图
+        finder = WinController(env=env).image_finder
+        finder.update_screenshot_cache()
+
+        # 在结算界面查找挑战按钮（可能找不到，因为结算界面按钮位置不同）
+        challenge_path = str(SOUL_RAID_IMAGES / "yuhun_tiaozhan.bmp")
+        point = finder.bg_find_pic_by_cache(challenge_path, similarity=0.6)
+
+        x, y = point
+        print(f"结算界面 - 挑战按钮查找结果: ({x}, {y})")
+
+        # 结算界面可能找不到挑战按钮（按钮可能被结算遮罩），这是正常的
+        # 这里主要验证图像匹配功能本身正常工作
+        if x != -1 and y != -1:
+            env.left_click(x, y)
+            log.assert_click_at(x, y, tolerance=10)

@@ -4,6 +4,7 @@ import random
 import sys
 import time
 from enum import IntEnum
+from typing import Optional, TYPE_CHECKING
 
 import win32con
 import win32gui
@@ -14,6 +15,9 @@ from win_util.event import EventBaseScript, Event
 from win_util.image import ImageMatchConfig, ImageFinder
 from win_util.ocr import CommonOcr
 from yys.scene_manager import SceneManager, SceneDetectionResult
+
+if TYPE_CHECKING:
+    from yys.test.environment.base import GameEnvironment
 
 # 获取项目根目录并添加到 sys.path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -99,16 +103,31 @@ class YYSBaseScript(EventBaseScript):
     封装通用的战斗、悬赏封印、场景管理等逻辑
     """
 
-    def __init__(self, script_name: str):
+    def __init__(self, script_name: str, env: Optional['GameEnvironment'] = None):
+        """初始化阴阳师基础脚本
+
+        Args:
+            script_name: 脚本名称
+            env: GameEnvironment 实例，用于 Mock 测试时注入（可选）
+        """
         # 使用统一的日志管理器
         self.logger = get_logger(script_name)
         self.logger.info(f"初始化{script_name}脚本")
 
-        # 初始化窗口句柄
-        self.hwnd = find_window()
+        self._env = env
 
-        # 初始化 WinController（统一管理 image_finder, keyboard, mouse, ocr）
-        self.win_controller: WinController = WinController(self.hwnd)
+        # 初始化窗口句柄
+        if self._env is not None:
+            # Mock 环境使用预设的 hwnd
+            self.hwnd = self._env.find_window("阴阳师") or 12345
+        else:
+            self.hwnd = find_window()
+
+        # 初始化 WinController（支持 GameEnvironment 注入）
+        if self._env is not None:
+            self.win_controller: WinController = WinController(env=self._env)
+        else:
+            self.win_controller: WinController = WinController(self.hwnd)
         self.image_finder: ImageFinder = self.win_controller.image_finder
         self.keyboard = self.win_controller.keyboard
         self.mouse = self.win_controller.mouse
@@ -156,10 +175,10 @@ class YYSBaseScript(EventBaseScript):
 
     def _register_wanted_quest_events(self):
         """注册悬赏封印相关的事件"""
-        self._register_image_match_event(
-            ImageMatchConfig(WANTED_QUEST_REJECT_IMAGE),
-            self._on_wanted_quests_invited
-        )
+        # self._register_image_match_event(
+        #     ImageMatchConfig(WANTED_QUEST_REJECT_IMAGE),
+        #     self._on_wanted_quests_invited
+        # )
         # self._register_ocr_match_event("悬赏封印", self._on_wanted_quests_invited)
 
     def _register_ocr_click_continue_event(self):

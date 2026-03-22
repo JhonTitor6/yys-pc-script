@@ -35,6 +35,18 @@ def test_find_image_not_found(mock_controller):
     assert result.position is None
 
 
+def test_find_image_not_found_with_timeout(mock_controller):
+    """测试 find_image 未找到图片（带超时）"""
+    mock_controller.find_image_with_timeout.return_value = (-1, -1)
+    ops = ImageOperations(mock_controller)
+    result = ops.find_image("test.bmp", timeout=5)
+    assert result.success is False
+    assert result.position is None
+    mock_controller.find_image_with_timeout.assert_called_once_with(
+        "test.bmp", timeout=5, similarity=0.8
+    )
+
+
 def test_find_and_click(mock_controller):
     """测试 find_and_click 查找并点击"""
     ops = ImageOperations(mock_controller)

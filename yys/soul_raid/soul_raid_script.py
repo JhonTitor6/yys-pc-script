@@ -46,8 +46,8 @@ class SoulRaidHooks(BattleHooks):
         time.sleep(BattleSleep.SHORT)
         self.script.win_controller.find_and_click(
             self.lock_invitation_image,
-            x_range=15,
-            y_range=15,
+            x_range=ClickRange.DEFAULT,
+            y_range=ClickRange.DEFAULT,
             similarity=ImageSimilarity.DEFAULT
         )
 

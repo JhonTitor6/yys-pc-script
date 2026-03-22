@@ -1,168 +1,85 @@
 # CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## 重要说明
 
 - **回答和代码注释必须使用中文**
 - **Git 提交信息必须使用中文**
 
 ## 项目概述
-
 yys-pc-script 是一个基于事件驱动架构的阴阳师 PC 端自动化脚本。通过图像识别、OCR 和鼠标/键盘控制实现游戏任务自动化，无需游戏窗口处于前台激活状态。
 
 ## 环境配置
-
 ```bash
 # 使用项目指定的 conda 环境
 D:/ProgramData/anaconda3/envs/win_macro/python.exe -m pip install -r requirements.txt
 ```
 
-环境要求：Python 3.11+，Windows 系统
+## 核心开发规则
+- 所有代码都必须提供类型提示 
+- 公共 API 必须包含文档字符串 
+- 函数必须简洁明了、篇幅短小
 
 ## 测试
 
+### 单元测试（推荐）
 测试位于 `yys/test/`，使用 pytest 运行：
 ```bash
+# 运行所有测试
 pytest yys/test/
+
+# 只运行御魂模块测试（不需要游戏窗口）
+pytest yys/test/test_soul_raid.py -v
+```
+单元测试使用 Mock 环境，不依赖游戏窗口。
+
+### 测试框架架构
+
+```
+yys/test/
+├── environment/           # 环境抽象层
+│   ├── base.py           # GameEnvironment 抽象基类
+│   ├── mock_environment.py  # Mock 测试环境
+│   └── windows_environment.py  # Windows 生产环境
+├── providers/             # 图片提供者
+│   └── file_image_provider.py  # 从文件加载截图
+├── recorders/           # 操作记录器
+│   ├── action_log.py    # 操作日志容器
+│   ├── action_recorder.py  # 操作记录器
+│   └── record_replay.py  # 录制-回放工具
+└── test_data/           # 测试数据
+    └── scenarios/       # 场景截图
 ```
 
-集成测试需要打开游戏窗口。
-
-## 运行脚本
-
-每个游戏任务（探索、御魂、结界突破等）都是 `yys/` 目录下的独立模块：
-- `python -m yys.exploration` - 章节探索
-- `python -m yys.soul_raid` - 御魂副本
-- `python -m yys.realm_raid` - 结界突破
-- `python -m yys.yuling` - 御灵副本
-- `python -m yys.douji` - 斗技挂机
-- 其他脚本位于 `yys/fujiwara/`、`yys/kuzunoha/`、`yys/rifts_shadows/`
-
-## 架构设计
-
-### 事件驱动核心 (`win_util/`)
-
-框架基于事件驱动架构构建：
-
-1. **`EventBaseScript`** (`win_util/event.py`) - 所有游戏脚本的基类
-   - 运行连续循环，更新截图缓存并触发已注册的事件
-   - 钩子方法：`on_run()`、`before_iteration()`、`after_iteration()`
-   - 支持通过线程事件实现暂停/恢复/停止控制
-
-2. **`WinController`** (`win_util/controller.py`) - 聚合所有 Windows 控制能力
-   - `image_finder`：截图捕获和模板匹配
-   - `keyboard`：后台键盘输入
-   - `mouse`：后台鼠标点击
-   - `ocr`：基于 EasyOCR 的文字识别
-
-3. **`SceneManager`** (`yys/scene_manager.py`) - 场景检测和导航
-   - 场景图片位于 `yys/images/scene/`（如 `home.bmp`、`exploration.bmp`）
-   - 场景跳转按钮位于 `yys/images/scene/scene_control/`，命名规范：`[源场景]_to_[目标场景].bmp`
-   - 提供 `goto_scene(target)` 方法，通过 BFS 计算最短路径并执行点击
-
-### 游戏脚本模式
+### Mock 测试示例
 
 ```python
-class MyScript(YYSBaseScript):  # YYSBaseScript 继承自 EventBaseScript
-    def __init__(self):
-        super().__init__("ScriptName")
-        # 注册图像匹配事件 - 找到图像时触发回调
-        self._register_image_match_event(
-            ImageMatchConfig("path/to/button.bmp"),
-            self._on_button_clicked
-        )
+from yys.test.environment.mock_environment import MockEnvironment
+from yys.test.recorders.action_log import ActionLog
 
-    def _on_button_clicked(self, point):
-        self.bg_left_click(point)  # 带随机偏移的点击
+# 创建 Mock 环境
+log = ActionLog()
+env = MockEnvironment(action_log=log)
 
-    def on_run(self):
-        # 脚本启动时调用一次
-        self.scene_manager.goto_scene("target_scene")
+# 执行点击操作
+env.left_click(100, 200)
+
+# 验证操作记录
+log.assert_click_at(100, 200, tolerance=10)
+log.assert_click_count(1)
 ```
 
-### 关键图片路径
+### 录制新测试场景
 
-- 游戏操作按钮：`yys/images/*.bmp`（tansuo_tiaozhan.bmp 等）
-- 场景背景：`yys/images/scene/*.bmp`（home.bmp、battling.bmp）
-- 场景跳转：`yys/images/scene/scene_control/*_to_*.bmp`
-- 战斗结束检测：`battle_end.bmp`、`battle_end_success.bmp`、`battle_end_loss.bmp`
-- 模块私有图片：各模块 `images/` 子目录下（`yys/soul_raid/images/`、`yys/realm_raid/images/` 等）
+```python
+from yys.test.recorders.record_replay import ScenarioRecorder
 
-### 继承的事件处理器
+recorder = ScenarioRecorder()
+recorder.start_recording()
 
-`YYSBaseScript` 预注册了以下事件，子类可以覆盖：
-- `_on_zhan_dou_wan_cheng_victory` - 胜利画面点击
-- `_on_zhan_dou_wan_cheng` - 战斗结束（失败/奖励）点击
-- `_on_wanted_quests_invited` - 悬赏封印邀请处理
+# ... 执行操作 ...
 
-### 图像匹配
-
-- 使用 OpenCV 模板匹配，可配置相似度（默认 0.8）
-- `ImageMatchConfig` 可接受单个路径或路径列表
-- 截图缓存在 `ImageFinder.screenshot_cache` 中，每次迭代更新
-- 路径解析：相对路径通过 `to_project_path()` 从项目根目录解析
-
-## 测试
-
-测试位于 `yys/test/`，使用 pytest 运行：
-```bash
-pytest yys/test/
+# 保存场景
+screenshot = env.capture_screen()
+recorder.save_scenario("soul_raid/battle_01", screenshot)
 ```
 
 集成测试需要打开游戏窗口。
-
-## GUI（开发中）
-
-基于 Electron 的 Web GUI 位于 `gui/` 目录，运行方式：
-```bash
-cd gui && npm install && npm start
-```
-
-## Status（任务进度）
-
-> 每次会话开始、结束时更新此章节
-
-### 当前进度
-
-**已完成的重构任务：**
-
-| 重构项 | 状态 | 完成时间 |
-|--------|------|----------|
-| `jiejietupo` → `realm_raid` 命名重构 | ✅ 已完成 | - |
-| `yuhun.py` → `soul_raid.py` 命名重构 | ✅ 已完成 | - |
-| `SceneManager` 编程式注册 API | ✅ 已完成 | - |
-| `ImageMatchResult` 封装 | ✅ 已完成 | - |
-| `WantedQuestAcceptType` 枚举扩展 | ✅ 已完成 | - |
-| `event_script_base.py` 消除 `common_util` 依赖 | ✅ 已完成 | - |
-| `YYSBaseScript` 子类消除 `logger`/`random_sleep` 导入 | ✅ 已完成 | - |
-| `soul_raid` 模块化（脚本+图片迁移到 `yys/soul_raid/`） | ✅ 已完成 | 2026-03-21 |
-| `realm_raid` 模块化（脚本+图片迁移到 `yys/realm_raid/`） | ✅ 已完成 | 2026-03-21 |
-| `yuling` 模块化（脚本+图片迁移到 `yys/yuling/`） | ✅ 已完成 | 2026-03-21 |
-| `common_util` 完整清理（删除 `win_util/common_util.py` 和 `yys/common_util.py`） | ✅ 已完成 | 2026-03-21 |
-
-### 已完成模块（模块化后）
-
-```
-yys/
-├── soul_raid/              # 御魂副本
-│   ├── soul_raid_script.py
-│   ├── __init__.py
-│   └── images/
-├── realm_raid/             # 结界突破
-│   ├── realm_raid_script.py
-│   ├── __init__.py
-│   └── images/
-└── yuling/                # 御灵副本
-    ├── yuling_script.py
-    ├── __init__.py
-    └── images/
-```
-
-### 下一步计划
-
-暂无待处理任务
-
----
-
-*此章节由 Claude Code 自动维护*

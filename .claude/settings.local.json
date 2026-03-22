@@ -1,21 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -m py_compile yys/scene_manager.py)",
       "Bash(python:*)",
-      "Bash(D:/ProgramData/anaconda3/envs/win_macro/python.exe -m pytest yys/test/test_scene_manager.py -v)",
-      "Bash(D:/ProgramData/anaconda3/envs/win_macro/python.exe -m pytest yys/test/ -v 2>&1)",
-      "Bash(D:/ProgramData/anaconda3/envs/win_macro/python.exe -c \"\nimport ast\nimport os\n\nyys_dir = 'yys'\nfor filename in os.listdir\\(yys_dir\\):\n    if filename.endswith\\('.py'\\) and filename != 'common_util.py' and filename != 'event_script_base.py' and filename != '__init__.py':\n        filepath = os.path.join\\(yys_dir, filename\\)\n        with open\\(filepath, 'r', encoding='utf-8'\\) as f:\n            content = f.read\\(\\)\n        if 'common_util' in content and 'YYSBaseScript' in content:\n            print\\(f'{filename}: 使用 common_util + YYSBaseScript'\\)\n        elif 'common_util' in content:\n            print\\(f'{filename}: 使用 common_util（独立脚本）'\\)\n\")",
-      "Bash(D:/ProgramData/anaconda3/envs/win_macro/python.exe -m py_compile yys/realm_raid.py)",
-      "Bash(D:/ProgramData/anaconda3/envs/win_macro/python.exe -m py_compile yys/exploration.py)",
-      "Bash(D:/ProgramData/anaconda3/envs/win_macro/python.exe -m pytest yys/test/test_scene_manager.py yys/test/test_config_system.py yys/test/test_log_manager.py -v)",
-      "Bash(D:/ProgramData/anaconda3/envs/win_macro/python.exe -m py_compile yys/realm_raid/realm_raid_script.py)",
-      "Bash(D:/ProgramData/anaconda3/envs/win_macro/python.exe -m py_compile yys/yuling/yuling_script.py)",
-      "Bash(D:/ProgramData/anaconda3/envs/win_macro/python.exe -m py_compile yys/soul_raid/soul_raid_script.py)",
-      "Bash(D:/ProgramData/anaconda3/envs/win_macro/python.exe -c \"from yys.realm_raid import RealmRaidScript; print\\(''realm_raid import OK''\\)\")",
-      "Bash(D:/ProgramData/anaconda3/envs/win_macro/python.exe -c \"from yys.yuling import AutoYuling; print\\(''yuling import OK''\\)\")",
-      "Bash(D:/ProgramData/anaconda3/envs/win_macro/python.exe -c \"from yys.soul_raid import SoulRaidScript; print\\(''soul_raid import OK''\\)\")",
-      "Bash(D:/ProgramData/anaconda3/envs/win_macro/python.exe -m pytest yys/test/test_scene_manager.py yys/test/test_log_manager.py -v)",
+      "Bash(D:/ProgramData/anaconda3/envs/win_macro/python.exe:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Read",

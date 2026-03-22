@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, Optional
+import time
+from typing import TYPE_CHECKING, Optional, Tuple
 
 from win_util.image import ImageFinder, ImageMatchConfig
 from win_util.keyboard import KeyboardController
@@ -6,7 +7,7 @@ from win_util.mouse import MouseController
 from win_util.ocr import CommonOcr
 
 if TYPE_CHECKING:
-    from yys.test.environment.base import GameEnvironment
+    from tests.common.environment.base import GameEnvironment
 
 
 class WinController:
@@ -35,6 +36,29 @@ class WinController:
         self.mouse: MouseController = MouseController(env=env, hwnd=hwnd)
         self.ocr: CommonOcr = CommonOcr()
 
+    # 前缀 -> 组件映射（按优先级排序）
+    _PREFIX_MAP = [
+        ('bg_find_', 'image_finder'),
+        ('crop_', 'image_finder'),
+        ('update_', 'image_finder'),
+        ('bg_left', 'mouse'),
+        ('bg_right', 'mouse'),
+        ('bg_swipe', 'mouse'),
+        ('key_', 'keyboard'),
+        ('press_', 'keyboard'),
+        ('ocr_', 'ocr'),
+        ('find_text', 'ocr'),
+        ('contains_text', 'ocr'),
+    ]
+
+    def __getattr__(self, name):
+        for prefix, attr_name in self._PREFIX_MAP:
+            if name.startswith(prefix):
+                component = getattr(self, attr_name)
+                if hasattr(component, name):
+                    return getattr(component, name)
+        raise AttributeError(name)
+
 
     # 图像相关方法
     def find_image(self, small_picture_path: str, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8):
@@ -54,7 +78,7 @@ class WinController:
     def find_images_all(self, small_picture_path: str, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8):
         """
         在指定区域内查找所有匹配的图片
-        
+
         :param small_picture_path: 小图路径
         :param x0: 区域左上角x坐标
         :param y0: 区域左上角y坐标
@@ -226,4 +250,66 @@ class WinController:
             point = self.find_image(image_path, x0=x0, y0=y0, x1=x1, y1=y1, similarity=similarity)
             if point and point != (-1, -1):
                 return self.mouse.bg_left_click(point, x_range=x_range, y_range=y_range)
+        return False
+
+    def wait_for_image_disappear(self, image_path: str, timeout: float = 10,
+                                   x0: int = 0, y0: int = 0, x1: int = 99999, y1: int = 99999,
+                                   similarity: float = 0.8) -> bool:
+        """等待图片消失"""
+        start = time.time()
+        while time.time() - start < timeout:
+            self.update_screenshot_cache()
+            pos = self.find_image(image_path, x0, y0, x1, y1, similarity)
+            if pos == (-1, -1):
+                return True
+            time.sleep(0.5)
+        return False
+
+    def wait_for_text(self, text: str, timeout: float = 10,
+                      case_sensitive: bool = False) -> Optional[Tuple[int, int]]:
+        """等待文字出现"""
+        start = time.time()
+        while time.time() - start < timeout:
+            self.update_screenshot_cache()
+            result = self.find_text_position(self.image_finder.screenshot_cache, text,
+                                             similarity_threshold=0.3,
+                                             case_sensitive=case_sensitive)
+            if result:
+                return result
+            time.sleep(0.5)
+        return None
+
+    def wait_for_text_disappear(self, text: str, timeout: float = 10,
+                                 case_sensitive: bool = False) -> bool:
+        """等待文字消失"""
+        start = time.time()
+        while time.time() - start < timeout:
+            self.update_screenshot_cache()
+            result = self.find_text_position(self.image_finder.screenshot_cache, text,
+                                             similarity_threshold=0.3,
+                                             case_sensitive=case_sensitive)
+            if not result:
+                return True
+            time.sleep(0.5)
+        return False
+
+    def wait_for_image_and_click(self, image_path: str, timeout: float = 10,
+                                  x0: int = 0, y0: int = 0, x1: int = 99999, y1: int = 99999,
+                                  similarity: float = 0.8,
+                                  x_range: int = 20, y_range: int = 20) -> bool:
+        """等待图片出现并点击"""
+        pos = self.wait_for_image(image_path, timeout, x0, y0, x1, y1, similarity)
+        if pos and pos != (-1, -1):
+            self.mouse.bg_left_click(pos, x_range=x_range, y_range=y_range)
+            return True
+        return False
+
+    def wait_for_text_and_click(self, text: str, timeout: float = 10,
+                                 x_range: int = 20, y_range: int = 20,
+                                 case_sensitive: bool = False) -> bool:
+        """等待文字出现并点击"""
+        pos = self.wait_for_text(text, timeout, case_sensitive)
+        if pos:
+            self.mouse.bg_left_click(pos, x_range=x_range, y_range=y_range)
+            return True
         return False

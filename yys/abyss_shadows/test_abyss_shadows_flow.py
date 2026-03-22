@@ -54,11 +54,11 @@ sys.modules['mss'] = _mock_mss
 
 # ==================== 导入项目模块 ====================
 
-from yys.rifts_shadows.rifts_shadows_script import Main, EnemyType, Enemy, RiftsShadowsState
+from yys.abyss_shadows.abyss_shadows_script import Main, EnemyType, Enemy, AbyssShadowsState
 from yys.common.event_script_base import YYSBaseScript
 
 
-class TestRiftsShadowsFlow(unittest.TestCase):
+class TestAbyssShadowsFlow(unittest.TestCase):
     """狭间暗域脚本流程测试"""
 
     def _create_mock_script_instance(self):
@@ -299,7 +299,7 @@ class TestRiftsShadowsFlow(unittest.TestCase):
         commander_enemy = Enemy(
             enemy_type=EnemyType.COMMANDER,
             reach_damage_quit=33700000,
-            image_path="yys/rifts_shadows/images/commander_label.bmp",
+            image_path="yys/abyss_shadows/images/commander_label.bmp",
             label_position=(424, 250, 558, 335)
         )
         self.script._cur_enemy = commander_enemy
@@ -324,7 +324,7 @@ class TestRiftsShadowsFlow(unittest.TestCase):
         elite_enemy = Enemy(
             enemy_type=EnemyType.ELITE,
             reach_damage_quit=5000000,
-            image_path="yys/rifts_shadows/images/elite_label.bmp",
+            image_path="yys/abyss_shadows/images/elite_label.bmp",
             label_position=(342, 360, 480, 435)
         )
         self.script._cur_enemy = elite_enemy
@@ -349,7 +349,7 @@ class TestRiftsShadowsFlow(unittest.TestCase):
         boss_enemy = Enemy(
             enemy_type=EnemyType.BOSS,
             reach_damage_quit=999999999,  # 首领不设上限
-            image_path="yys/rifts_shadows/images/boss_label.bmp",
+            image_path="yys/abyss_shadows/images/boss_label.bmp",
             label_position=(554, 120, 688, 210)
         )
         self.script._cur_enemy = boss_enemy
@@ -373,7 +373,7 @@ class TestRiftsShadowsFlow(unittest.TestCase):
         commander_enemy = Enemy(
             enemy_type=EnemyType.COMMANDER,
             reach_damage_quit=33700000,
-            image_path="yys/rifts_shadows/images/commander_label.bmp",
+            image_path="yys/abyss_shadows/images/commander_label.bmp",
             label_position=(424, 250, 558, 335)
         )
         self.script._cur_enemy = commander_enemy
@@ -393,21 +393,21 @@ class TestRiftsShadowsFlow(unittest.TestCase):
 
     # ==================== 场景流转测试 ====================
 
-    def test_on_rifts_shadows_selection_navigates_to_dragon(self):
+    def test_on_abyss_shadows_selection_navigates_to_dragon(self):
         """验证在狭间暗域选择界面时导航到神龙暗域"""
         # 调用选择界面回调
-        self.script._on_rifts_shadows_selection((0, 0))
+        self.script._on_abyss_shadows_selection((0, 0))
 
         # 验证导航到第一个场景
         self.script.scene_manager.goto_scene.assert_called_with("abyss_dragon")
 
-    def test_on_rifts_shadows_selection_navigates_based_on_index(self):
+    def test_on_abyss_shadows_selection_navigates_based_on_index(self):
         """验证根据 cur_scene_index 导航到对应场景"""
         # 设置当前场景索引
-        self.script.cur_scene_index = 2  # 对应 rifts_shadows_panther
+        self.script.cur_scene_index = 2  # 对应 abyss_shadows_panther
 
         # 调用选择界面回调
-        self.script._on_rifts_shadows_selection((0, 0))
+        self.script._on_abyss_shadows_selection((0, 0))
 
         # 验证导航到对应场景
         self.script.scene_manager.goto_scene.assert_called_with("abyss_leopard")
@@ -438,7 +438,7 @@ class TestRiftsShadowsFlow(unittest.TestCase):
         self.script.change_area = MagicMock(return_value=True)
 
         # 调用敌人选择回调（由于没有可挑战敌人，会调用 _handle_no_enemy_available）
-        result = self.script._on_rifts_shadows_enemy_selection((0, 0))
+        result = self.script._on_abyss_shadows_enemy_selection((0, 0))
 
         # 验证返回 False
         self.assertFalse(result)
@@ -472,7 +472,7 @@ class TestRiftsShadowsFlow(unittest.TestCase):
         self.script._on_battle_report_button((100, 200))
 
         # 验证状态变为 BATTLE_REPORT
-        self.assertEqual(self.script._state, RiftsShadowsState.BATTLE_REPORT)
+        self.assertEqual(self.script._state, AbyssShadowsState.BATTLE_REPORT)
 
     # ==================== 敌人OCR识别测试 ====================
 
@@ -530,7 +530,7 @@ class TestRiftsShadowsFlow(unittest.TestCase):
             self.assertEqual(enemy.reach_damage_quit, 999999999)
 
 
-class TestRiftsShadowsEnemyDef(unittest.TestCase):
+class TestAbyssShadowsEnemyDef(unittest.TestCase):
     """狭间暗域敌人定义测试"""
 
     def _create_mock_script_instance(self):

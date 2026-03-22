@@ -8,12 +8,11 @@ import cv2
 import numpy as np
 import win32gui
 import win32ui
-from PIL import Image as PILImage
 from PIL import ImageGrab
 from loguru import logger
 
 if TYPE_CHECKING:
-    from yys.test.environment.base import GameEnvironment
+    from tests.common.environment.base import GameEnvironment
 
 debug_img_base_dir = Path("yys/images/debug")
 

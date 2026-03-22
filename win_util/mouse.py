@@ -1,12 +1,12 @@
 import random
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Optional
 
 import win32api
 import win32con
 from loguru import logger
 
 if TYPE_CHECKING:
-    from yys.test.environment.base import GameEnvironment
+    from tests.common.environment.base import GameEnvironment
 
 
 class MouseController:

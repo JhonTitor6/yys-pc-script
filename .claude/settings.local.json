@@ -22,6 +22,7 @@
       "Bash(ls *)",
       "Bash(cat *)",
       "Bash(mkdir *)"
-    ]
+    ],
+    "defaultMode": "bypassPermissions"
   }
 }

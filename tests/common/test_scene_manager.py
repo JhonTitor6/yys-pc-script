@@ -2,7 +2,7 @@ import os
 import shutil
 import tempfile
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from yys.common.scene_manager import SceneManager, SceneDetectionResult
 
@@ -32,10 +32,8 @@ class TestSceneManager(unittest.TestCase):
         # 删除临时目录
         shutil.rmtree(self.test_dir)
 
-    @patch('yys.common.scene_manager.ImageFinder')
-    def test_register_scenes_from_directory(self, mock_image_finder):
+    def test_register_scenes_from_directory(self):
         """测试从目录注册场景和跳转"""
-        mock_image_finder.return_value = Mock()
         manager = SceneManager(self.mock_hwnd, Mock())
 
         manager.register_scenes_from_directory(self.scene_dir, self.control_dir)
@@ -77,10 +75,8 @@ class TestSceneManager(unittest.TestCase):
         # 测试不可达场景
         self.assertFalse(manager.is_reachable("shop", "home"))
 
-    @patch('yys.common.scene_manager.ImageFinder')
-    def test_register_scene(self, mock_image_finder):
+    def test_register_scene(self):
         """测试注册单个场景"""
-        mock_image_finder.return_value = Mock()
         manager = SceneManager(self.mock_hwnd, Mock())
 
         manager.register_scene("test_scene", ["path/to/test.bmp"])
@@ -88,10 +84,8 @@ class TestSceneManager(unittest.TestCase):
         self.assertIn("test_scene", manager.scene_images)
         self.assertEqual(manager.scene_images["test_scene"], ["path/to/test.bmp"])
 
-    @patch('yys.common.scene_manager.ImageFinder')
-    def test_register_scene_multiple_images(self, mock_image_finder):
+    def test_register_scene_multiple_images(self):
         """测试注册场景时添加多张图片"""
-        mock_image_finder.return_value = Mock()
         manager = SceneManager(self.mock_hwnd, Mock())
 
         manager.register_scene("test_scene", ["path/to/test1.bmp", "path/to/test2.bmp"])
@@ -101,10 +95,8 @@ class TestSceneManager(unittest.TestCase):
         self.assertIn("path/to/test1.bmp", manager.scene_images["test_scene"])
         self.assertIn("path/to/test2.bmp", manager.scene_images["test_scene"])
 
-    @patch('yys.common.scene_manager.ImageFinder')
-    def test_register_transition(self, mock_image_finder):
+    def test_register_transition(self):
         """测试注册场景跳转"""
-        mock_image_finder.return_value = Mock()
         manager = SceneManager(self.mock_hwnd, Mock())
 
         manager.register_transition("home", "battle", "path/to/btn.bmp")
@@ -113,10 +105,8 @@ class TestSceneManager(unittest.TestCase):
         self.assertEqual(manager.scene_transitions[("home", "battle")], "path/to/btn.bmp")
         self.assertIn("battle", manager.scene_graph["home"])
 
-    @patch('yys.common.scene_manager.ImageFinder')
-    def test_register_global_transition(self, mock_image_finder):
+    def test_register_global_transition(self):
         """测试注册通用跳转按钮"""
-        mock_image_finder.return_value = Mock()
         manager = SceneManager(self.mock_hwnd, Mock())
 
         manager.register_scene("home", ["path/to/home.bmp"])
@@ -129,10 +119,8 @@ class TestSceneManager(unittest.TestCase):
         self.assertIn("shop", manager.scene_graph["home"])
         self.assertIn("shop", manager.scene_graph["battle"])
 
-    @patch('yys.common.scene_manager.ImageFinder')
-    def test_empty_initialization(self, mock_image_finder):
+    def test_empty_initialization(self):
         """测试初始化后默认不加载任何场景"""
-        mock_image_finder.return_value = Mock()
         manager = SceneManager(self.mock_hwnd, Mock())
 
         # 默认初始化后不应有任何场景
@@ -140,10 +128,8 @@ class TestSceneManager(unittest.TestCase):
         self.assertEqual(len(manager.scene_transitions), 0)
         self.assertEqual(len(manager.global_transitions), 0)
 
-    @patch('yys.common.scene_manager.ImageFinder')
-    def test_register_then_add_from_directory(self, mock_image_finder):
+    def test_register_then_add_from_directory(self):
         """测试编程式注册后可以继续从目录加载"""
-        mock_image_finder.return_value = Mock()
 
         # 先编程式注册
         manager = SceneManager(self.mock_hwnd, Mock())
@@ -160,10 +146,8 @@ class TestSceneManager(unittest.TestCase):
         self.assertIn("home", manager.scene_images)
         self.assertIn("custom_scene", manager.scene_images)
 
-    @patch('yys.common.scene_manager.ImageFinder')
-    def test_register_global_transition_from_directory(self, mock_image_finder):
+    def test_register_global_transition_from_directory(self):
         """测试从目录加载通用跳转（to_xxx 格式）"""
-        mock_image_finder.return_value = Mock()
 
         # 创建包含 to_xxx 格式的目录
         control_dir = os.path.join(self.test_dir, "control_with_global")

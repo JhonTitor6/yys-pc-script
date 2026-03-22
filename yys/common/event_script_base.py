@@ -125,13 +125,9 @@ class YYSBaseScript(EventBaseScript):
             self.win_controller: WinController = WinController(env=self._env)
         else:
             self.win_controller: WinController = WinController(self.hwnd)
-        self.image_finder: ImageFinder = self.win_controller.image_finder
-        self.keyboard = self.win_controller.keyboard
-        self.mouse = self.win_controller.mouse
-        self.ocr: CommonOcr = self.win_controller.ocr
 
         # 调用父类构造函数（依赖注入 image_finder 和 ocr）
-        super().__init__(self.image_finder, self.ocr)
+        super().__init__(self.win_controller.image_finder, self.win_controller.ocr)
 
         # 脚本配置
         self.script_name = script_name
@@ -143,7 +139,7 @@ class YYSBaseScript(EventBaseScript):
 
         # 初始化场景管理器
         self.logger.info("初始化场景管理器中...")
-        self.scene_manager: SceneManager = SceneManager(self.hwnd, self.image_finder)
+        self.scene_manager: SceneManager = SceneManager(self.hwnd, self.win_controller)
         self.scene_manager.register_scenes_from_directory(
             to_project_path("yys/common/images/scene/"),
             to_project_path("yys/common/images/scene_control/")
@@ -158,6 +154,14 @@ class YYSBaseScript(EventBaseScript):
 
         # 注册 OCR 点击继续事件
         self._register_ocr_click_continue_event()
+
+    def __getattr__(self, name):
+        """代理到 win_controller，实现子组件方法的直接访问"""
+        if name in ('win_controller', 'logger', 'hwnd', '_env', 'scene_manager'):
+            raise AttributeError(name)
+        if hasattr(self.win_controller, name):
+            return getattr(self.win_controller, name)
+        raise AttributeError(name)
 
     def _register_battle_end_events(self):
         """注册战斗结束相关的图像匹配事件"""

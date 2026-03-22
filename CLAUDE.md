@@ -65,8 +65,8 @@ yys/                          # 业务模块
 ├── soul_raid/
 │   ├── test_soul_raid.py   # 御魂模块测试
 │   └── images/test/        # 御魂测试用图片
-└── rifts_shadows/
-    └── test_rifts_shadows_flow.py  # 狭间暗域测试
+└── abyss_shadows/
+    └── test_abyss_shadows_flow.py  # 狭间暗域测试
 ```
 
 ### Mock 测试示例

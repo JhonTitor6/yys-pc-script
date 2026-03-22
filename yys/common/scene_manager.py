@@ -2,12 +2,15 @@ import os
 import re
 import time
 from collections import defaultdict, deque
-from typing import Dict, List, Optional, Tuple, Set, overload, Any
+from typing import Dict, List, Optional, Tuple, Set, TYPE_CHECKING, overload, Any
 
 from loguru import logger
 
-from win_util.image import ImageFinder, to_project_path
 from win_util.mouse import bg_left_click_with_range
+from win_util.image import to_project_path
+
+if TYPE_CHECKING:
+    from win_util.controller import WinController
 
 
 class SceneDetectionResult:
@@ -44,16 +47,16 @@ class SceneManager:
     全局场景（如 home、exploration 等）由 YYSBaseScript 在初始化时统一注册。
     """
 
-    def __init__(self, hwnd: int, image_finder: ImageFinder):
+    def __init__(self, hwnd: int, win_controller: 'WinController'):
         """
         初始化场景管理器
 
         Args:
             hwnd: 游戏窗口句柄
-            image_finder: 图像查找器
+            win_controller: Windows 控制器
         """
         self.hwnd = hwnd
-        self.image_finder = image_finder
+        self.win_controller = win_controller
 
         self.current_scene: Optional[str] = None
 
@@ -193,13 +196,13 @@ class SceneManager:
     # 最后的实现部分
     def detect_current_scene(self, screenshot: Optional[Any] = None) -> Optional[SceneDetectionResult]:
         # 如果没有传入 screenshot，则使用缓存
-        big_img = screenshot if screenshot is not None else self.image_finder.screenshot_cache
+        big_img = screenshot if screenshot is not None else self.win_controller.image_finder.screenshot_cache
 
         # 遍历所有场景及其对应的图像
         for scene_name, image_paths in self.scene_images.items():
             for image_path in image_paths:
                 # 注意这里使用的是处理后的 big_img
-                pos = self.image_finder.bg_find_pic(big_img, image_path)
+                pos = self.win_controller.bg_find_pic(big_img, image_path)
 
                 if pos != (-1, -1):
                     self.current_scene = scene_name
@@ -323,7 +326,7 @@ class SceneManager:
             logger.info(f"执行跳转: {from_scene} -> {to_scene}")
             
             # 查找跳转按钮并点击
-            button_pos = self.image_finder.bg_find_pic_by_cache(button_path)
+            button_pos = self.win_controller.bg_find_pic_by_cache(button_path)
             if button_pos == (-1, -1):
                 logger.error(f"未找到跳转按钮: {button_path}")
                 return False
@@ -335,7 +338,7 @@ class SceneManager:
             time.sleep(3.0)
 
             # 点击后刷新截图缓存，确保检测使用的是最新截图
-            self.image_finder.update_screenshot_cache()
+            self.win_controller.update_screenshot_cache()
 
             # 重新检测当前场景以确认跳转成功
             new_detection = self.detect_current_scene()
@@ -360,7 +363,7 @@ class SceneManager:
 
     def click_return(self):
         """点击返回按钮"""
-        button_pos = self.image_finder.bg_find_pic_by_cache(to_project_path("yys/common/images/scene_control/return.bmp"))
+        button_pos = self.win_controller.bg_find_pic_by_cache(to_project_path("yys/common/images/scene_control/return.bmp"))
         if button_pos == (-1, -1):
             logger.error("未找到返回按钮")
             return False

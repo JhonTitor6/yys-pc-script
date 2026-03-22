@@ -80,7 +80,6 @@ class LoggerManager:
             encoding="utf-8",
             level="DEBUG",
             format=format_record,  # 使用自定义格式化函数
-            enqueue=True,  # 在多线程环境下推荐使用
             filter=self._filter_records  # 只记录当前脚本的日志
         )
 

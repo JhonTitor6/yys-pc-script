@@ -6,19 +6,13 @@ import time
 from enum import IntEnum
 from typing import Optional, TYPE_CHECKING
 
-import win32con
 import win32gui
 from loguru import logger
 
 from win_util import WinController
 from win_util.event import EventBaseScript, Event
-from win_util.image import ImageMatchConfig, ImageFinder, to_project_path
-from win_util.ocr import CommonOcr
-from yys.common.scene_manager import SceneManager, SceneDetectionResult
+from win_util.image import ImageMatchConfig, to_project_path
 from yys.common import (
-    BATTLE_SLEEP_SHORT,
-    BATTLE_SLEEP_MEDIUM,
-    BATTLE_SLEEP_LONG,
     BATTLE_VICTORY_SLEEP,
     BATTLE_END_SLEEP,
     BATTLE_END_CLICK_SLEEP,
@@ -27,6 +21,7 @@ from yys.common import (
     BATTLE_END_CLICK_RANGE_Y,
     OCR_CLICK_RANGE,
 )
+from yys.common.scene_manager import SceneManager, SceneDetectionResult
 
 if TYPE_CHECKING:
     from tests.common.environment.base import GameEnvironment
@@ -75,7 +70,7 @@ def find_window(title_part: str = "阴阳师-网易游戏") -> int:
         raise Exception("未找到游戏窗口")
 
     # 设置窗口大小
-    win32gui.SetWindowPos(hwnd, None, 0, 0, 1154, 680, win32con.SWP_NOMOVE)
+    # win32gui.SetWindowPos(hwnd, None, 0, 0, 1154, 680, win32con.SWP_NOMOVE)
 
     # 获取客户区大小
     _, _, width, height = win32gui.GetClientRect(hwnd)

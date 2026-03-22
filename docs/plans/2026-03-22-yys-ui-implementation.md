@@ -1,3 +1,272 @@
+# 阴阳师 UI 界面实现计划
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task.
+
+**Goal:** 完善现有 `gui/` 目录，实现 Electron 桌面外壳 + FastAPI 后端 + 深色主题 UI
+
+**Architecture:** 基于现有 `gui/` 结构，修复 main.js 启动 Python 后端，改造 UI 为深色主题
+
+**Tech Stack:** Electron ^28.0.0, FastAPI, WebSocket, HTML/CSS/JS (现有 Vue + Element Plus)
+
+---
+
+## 文件结构（修改现有文件）
+
+```
+yys-pc-script/
+├── gui/
+│   ├── main.js              # 修改：添加 Python 后端启动 + ipcMain 处理器
+│   ├── preload.js           # 保留：已有正确的 IPC 模式
+│   ├── index.html           # 修改：深色主题 UI
+│   └── package.json         # 保留：依赖已满足
+├── web_server.py            # 修改：支持配置传递
+├── config/
+│   └── ui_config.json       # 新增：UI 配置文件
+└── docs/superpowers/plans/
+```
+
+---
+
+## 任务列表
+
+### Task 1: 修复 gui/main.js（添加 Python 后端启动 + IPC 处理）
+
+**Files:**
+- Modify: `gui/main.js`
+- Modify: `gui/preload.js` (简化，移除未使用的 IPC)
+
+> **Note:** 新 UI 直接通过 WebSocket 与后端通信，不使用 preload.js 的 IPC 通道。preload.js 中的 `ipcRenderer.invoke('start-task')` 等调用将不起作用（因为 main.js 没有对应的 `ipcMain.handle`）。但这不影响功能，因 renderer.js 直接连接 `ws://localhost:8000/ws`。
+
+- [ ] **Step 1: 替换 gui/main.js 完整内容**
+
+```javascript
+const { app, BrowserWindow, ipcMain } = require('electron');
+const { spawn } = require('child_process');
+const path = require('path');
+const net = require('net');
+
+const PYTHON_PORT = 8000;
+let mainWindow = null;
+let pythonProcess = null;
+
+function waitForPort(port, timeout = 30000) {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const check = () => {
+      const client = new net.Socket();
+      client.connect(port, '127.0.0.1', () => {
+        client.destroy();
+        resolve();
+      });
+      client.on('error', () => {
+        client.destroy();
+        if (Date.now() - start > timeout) {
+          reject(new Error('Port timeout'));
+        } else {
+          setTimeout(check, 500);
+        }
+      });
+    };
+    check();
+  });
+}
+
+function startPythonBackend() {
+  return new Promise((resolve, reject) => {
+    const pythonScript = path.join(__dirname, '..', 'web_server.py');
+    pythonProcess = spawn('python', [pythonScript], {
+      cwd: path.join(__dirname, '..'),
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    pythonProcess.stdout.on('data', (data) => {
+      console.log(`[Python] ${data}`);
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+      console.error(`[Python Error] ${data}`);
+    });
+
+    pythonProcess.on('close', (code) => {
+      console.log(`Python process exited with code ${code}`);
+      pythonProcess = null;
+    });
+
+    pythonProcess.on('error', (err) => {
+      reject(err);
+    });
+
+    // 等待端口就绪
+    waitForPort(PYTHON_PORT)
+      .then(resolve)
+      .catch(reject);
+  });
+}
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 900,
+    height: 650,
+    minWidth: 800,
+    minHeight: 600,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js')
+    }
+  });
+
+  mainWindow.loadFile(path.join(__dirname, 'index.html'));
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+}
+
+// IPC 处理器 - 窗口控制
+ipcMain.on('minimize-window', () => {
+  if (mainWindow) mainWindow.minimize();
+});
+
+ipcMain.on('maximize-window', () => {
+  if (mainWindow) {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  }
+});
+
+ipcMain.on('close-window', () => {
+  if (mainWindow) mainWindow.close();
+});
+
+app.whenReady().then(async () => {
+  try {
+    console.log('Starting Python backend...');
+    await startPythonBackend();
+    console.log('Python backend ready');
+    createWindow();
+  } catch (err) {
+    console.error('Failed to start Python backend:', err);
+    app.quit();
+  }
+});
+
+app.on('window-all-closed', () => {
+  if (pythonProcess) {
+    pythonProcess.kill('SIGTERM');
+    setTimeout(() => {
+      if (pythonProcess) {
+        pythonProcess.kill('SIGKILL');
+      }
+    }, 5000);
+  }
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add gui/main.js
+git commit -m "fix(gui): add Python backend spawn and IPC handlers to main.js"
+```
+
+---
+
+### Task 2: 修改 web_server.py 支持配置传递
+
+**Files:**
+- Modify: `web_server.py:86` (TaskExecutor.__init__)
+- Modify: `web_server.py:250` (start_task 处理)
+
+- [ ] **Step 1: 修改 TaskExecutor 接收配置参数**
+
+定位到约第 86 行，`TaskExecutor.__init__` 方法，添加 `config` 参数：
+
+```python
+def __init__(self, task_name, task_class: Type[YYSBaseScript], log_queue,
+             input_queue, response_queue, config: Optional[Dict] = None):
+    # ... 现有代码 ...
+    self.config = config or {}
+    self.task_instance = self._instance_class()
+```
+
+- [ ] **Step 2: 修改 _instance_class 方法应用配置**
+
+定位到约第 97 行，修改 `_instance_class` 方法：
+
+```python
+def _instance_class(self):
+    # 保存当前工作目录并在任务开始前切换到项目根目录
+    logger.debug(f"当前工作目录: {self.original_cwd}")
+    # 获取任务类所在的目录并切换
+    task_module_path = os.path.dirname(inspect.getfile(self.task_class))
+    logger.debug(f"任务类目录: {task_module_path}")
+    os.chdir(task_module_path)
+    # 创建任务实例
+    instance = self.task_class()
+    # 应用配置（新增）
+    if self.config:
+        if 'max_battle_count' in self.config:
+            instance.set_max_battle_count(self.config['max_battle_count'])
+    return instance
+```
+
+> ⚠️ **重要**: 必须保留 `os.chdir(task_module_path)`，否则任务运行时会因工作目录错误而失败。
+>
+> **Note**: `loop_interval` 配置暂未在任务类中使用，可后续扩展。当前仅 `max_battle_count` 生效。
+
+- [ ] **Step 3: 修改 start_task 处理接收 config**
+
+定位到约第 250 行，修改 `start_task` 处理：
+
+```python
+if message["type"] == "start_task":
+    task_name = message["task_name"]
+    config = message.get("config", {})  # 新增：接收配置
+    task_manager = TaskManager()
+
+    if task_name in task_manager.tasks:
+        global executor_thread, current_task
+        if executor_thread and executor_thread.is_alive():
+            await websocket.send_text(json.dumps({
+                "type": "log",
+                "data": "已有任务在运行，请先停止当前任务",
+                "level": "ERROR"
+            }))
+            continue
+
+        task_class = task_manager.tasks[task_name]['class']
+        current_task = task_name
+
+        executor_thread = TaskExecutor(
+            task_name, task_class, log_queue,
+            input_queue, response_queue, config  # 传递配置
+        )
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add web_server.py
+git commit -m "feat(web_server): support config parameter in TaskExecutor"
+```
+
+---
+
+### Task 3: 改造 gui/index.html 为深色主题 UI
+
+**Files:**
+- Modify: `gui/index.html` (完整替换)
+
+- [ ] **Step 1: 替换 gui/index.html 为深色主题**
+
+```html
 <!DOCTYPE html>
 <html>
 <head>
@@ -305,12 +574,8 @@
                 this.ws.onerror = (err) => console.error('WebSocket error:', err);
 
                 this.ws.onmessage = (event) => {
-                    try {
-                        const msg = JSON.parse(event.data);
-                        this.handleMessage(msg);
-                    } catch (e) {
-                        console.error('Failed to parse message:', e);
-                    }
+                    const msg = JSON.parse(event.data);
+                    this.handleMessage(msg);
                 };
             }
 
@@ -339,14 +604,12 @@
             }
 
             renderTaskList(tasks) {
-                this.elements.taskList.innerHTML = '';
-                tasks.forEach(task => {
-                    const div = document.createElement('div');
-                    div.className = 'task-item';
-                    div.dataset.task = task.name;
-                    div.textContent = task.name;
-                    div.addEventListener('click', () => this.selectTask(task.name));
-                    this.elements.taskList.appendChild(div);
+                this.elements.taskList.innerHTML = tasks.map(task => `
+                    <div class="task-item" data-task="${task.name}">${task.name}</div>
+                `).join('');
+
+                this.elements.taskList.querySelectorAll('.task-item').forEach(item => {
+                    item.addEventListener('click', () => this.selectTask(item.dataset.task));
                 });
 
                 if (tasks.length > 0 && !this.currentTask) {
@@ -449,15 +712,6 @@
 
             startTask() {
                 if (!this.currentTask || !this.ws) return;
-
-                const maxBattles = parseInt(this.elements.configBattles.value);
-                const loopInterval = parseInt(this.elements.configInterval.value);
-
-                if (isNaN(maxBattles) || maxBattles < 1 || isNaN(loopInterval) || loopInterval < 1) {
-                    console.error('Invalid config values');
-                    return;
-                }
-
                 this.saveConfig();
                 this.elements.logArea.innerHTML = '';
                 this.logs = [];
@@ -493,3 +747,94 @@
     </script>
 </body>
 </html>
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add gui/index.html
+git commit -m "refactor(gui): replace UI with dark theme design"
+```
+
+---
+
+### Task 4: 创建配置文件 config/ui_config.json
+
+**Files:**
+- Create: `config/ui_config.json`
+
+- [ ] **Step 1: 创建配置目录和文件**
+
+```bash
+mkdir -p config
+```
+
+```json
+{
+  "last_selected_task": "御魂",
+  "tasks": {
+    "御魂": { "max_battle_count": 103, "loop_interval": 5 },
+    "结界突破": { "max_battle_count": 9, "loop_interval": 3 },
+    "探28": { "max_battle_count": 50, "loop_interval": 3 },
+    "御灵": { "max_battle_count": 50, "loop_interval": 5 }
+  }
+}
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add config/ui_config.json
+git commit -m "feat(config): add UI configuration file"
+```
+
+---
+
+### Task 5: 验证和测试
+
+- [ ] **Step 1: 验证 Python 后端单独运行**
+
+```bash
+python web_server.py
+# 确认无报错，8000 端口监听中
+```
+
+- [ ] **Step 2: 验证 Electron 启动**
+
+```bash
+cd gui && npm install && npm start
+# 确认窗口打开，Python 后端自动启动
+```
+
+- [ ] **Step 3: 验证完整流程**
+
+1. 选择任务
+2. 点击启动
+3. 确认 WebSocket 连接成功
+4. 验证日志输出
+5. 验证暂停/恢复/停止
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add -A && git commit -m "test(gui): add verification results"
+```
+
+---
+
+## 验证步骤总结
+
+| 步骤 | 命令 | 预期结果 |
+|------|------|---------|
+| 1. Python 后端 | `python web_server.py` | 无报错，8000 端口监听 |
+| 2. Electron 启动 | `cd gui && npm start` | 窗口打开，Python 自动启动 |
+| 3. 任务启动 | UI 点击启动 | 日志输出，状态变化 |
+| 4. 暂停/恢复 | UI 点击暂停/恢复 | 状态正确切换 |
+| 5. 停止 | UI 点击停止 | 任务停止，状态重置 |
+
+## 风险与注意事项
+
+- 确保 Python 路径正确（`python` 命令可用）
+- 8000 端口不能被占用
+- 游戏窗口需先打开并处于可识别状态
+- Electron 日志可查看 `View > Toggle DevTools`

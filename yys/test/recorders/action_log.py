@@ -57,5 +57,9 @@ class ActionLog:
     def __len__(self) -> int:
         return len(self._records)
 
+    def __bool__(self) -> bool:
+        """始终返回 True，确保 ActionLog 对象在 or 表达式中始终被视为有效"""
+        return True
+
     def __repr__(self) -> str:
         return f"ActionLog({len(self._records)} records)"

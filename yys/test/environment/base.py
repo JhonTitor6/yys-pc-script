@@ -1,10 +1,9 @@
 # yys/test/environment/base.py
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple
 from PIL import Image
-import time
 
 
 class ActionType(Enum):
@@ -21,11 +20,11 @@ class ActionType(Enum):
 @dataclass
 class ActionRecord:
     """操作记录数据类"""
-    action_type: ActionType
+    action_type: str
     x: int
     y: int
     timestamp: float
-    extra: Optional[dict] = None
+    extra: dict = field(default_factory=dict)
 
 
 class GameEnvironment(ABC):

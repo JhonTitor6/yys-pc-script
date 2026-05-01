@@ -298,7 +298,7 @@ class TestAbyssShadowsFlow(unittest.TestCase):
         # 设置当前敌人为副将
         commander_enemy = Enemy(
             enemy_type=EnemyType.COMMANDER,
-            reach_damage_quit=33700000,
+            target_damage=33700000,
             image_path="yys/abyss_shadows/images/commander_label.bmp",
             label_position=(424, 250, 558, 335)
         )
@@ -323,7 +323,7 @@ class TestAbyssShadowsFlow(unittest.TestCase):
         # 设置当前敌人为精英
         elite_enemy = Enemy(
             enemy_type=EnemyType.ELITE,
-            reach_damage_quit=5000000,
+            target_damage=5000000,
             image_path="yys/abyss_shadows/images/elite_label.bmp",
             label_position=(342, 360, 480, 435)
         )
@@ -348,7 +348,7 @@ class TestAbyssShadowsFlow(unittest.TestCase):
         # 设置当前敌人为首领
         boss_enemy = Enemy(
             enemy_type=EnemyType.BOSS,
-            reach_damage_quit=999999999,  # 首领不设上限
+            target_damage=999999999,  # 首领不设上限
             image_path="yys/abyss_shadows/images/boss_label.bmp",
             label_position=(554, 120, 688, 210)
         )
@@ -372,7 +372,7 @@ class TestAbyssShadowsFlow(unittest.TestCase):
         # 设置当前敌人为副将
         commander_enemy = Enemy(
             enemy_type=EnemyType.COMMANDER,
-            reach_damage_quit=33700000,
+            target_damage=33700000,
             image_path="yys/abyss_shadows/images/commander_label.bmp",
             label_position=(424, 250, 558, 335)
         )
@@ -509,7 +509,7 @@ class TestAbyssShadowsFlow(unittest.TestCase):
         self.assertGreater(len(commander_enemies), 0)
 
         for enemy in commander_enemies:
-            self.assertEqual(enemy.reach_damage_quit, 33700000)
+            self.assertEqual(enemy.target_damage, 33700000)
 
     def test_elite_damage_threshold(self):
         """验证精英伤害阈值为 5,000,000"""
@@ -518,7 +518,7 @@ class TestAbyssShadowsFlow(unittest.TestCase):
         self.assertGreater(len(elite_enemies), 0)
 
         for enemy in elite_enemies:
-            self.assertEqual(enemy.reach_damage_quit, 5000000)
+            self.assertEqual(enemy.target_damage, 5000000)
 
     def test_boss_damage_threshold(self):
         """验证首领伤害阈值为 999999999（不设上限）"""
@@ -527,7 +527,7 @@ class TestAbyssShadowsFlow(unittest.TestCase):
         self.assertGreater(len(boss_enemies), 0)
 
         for enemy in boss_enemies:
-            self.assertEqual(enemy.reach_damage_quit, 999999999)
+            self.assertEqual(enemy.target_damage, 999999999)
 
 
 class TestAbyssShadowsEnemyDef(unittest.TestCase):
@@ -575,14 +575,14 @@ class TestAbyssShadowsEnemyDef(unittest.TestCase):
         self.assertEqual(len(script.enemies[EnemyType.COMMANDER]), 2)
         for commander in script.enemies[EnemyType.COMMANDER]:
             self.assertEqual(commander.enemy_type, EnemyType.COMMANDER)
-            self.assertEqual(commander.reach_damage_quit, 33700000)
+            self.assertEqual(commander.target_damage, 33700000)
             self.assertTrue(commander.has_challenged)
 
         # 验证精英配置
         self.assertEqual(len(script.enemies[EnemyType.ELITE]), 3)
         for elite in script.enemies[EnemyType.ELITE]:
             self.assertEqual(elite.enemy_type, EnemyType.ELITE)
-            self.assertEqual(elite.reach_damage_quit, 5000000)
+            self.assertEqual(elite.target_damage, 5000000)
             self.assertFalse(elite.has_challenged)  # 精英默认未挑战
 
     def test_max_challenge_counts_definition(self):

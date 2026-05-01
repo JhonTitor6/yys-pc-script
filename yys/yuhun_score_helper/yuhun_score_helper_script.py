@@ -29,7 +29,7 @@ def capture_yuhun_detail_img():
 if __name__ == '__main__':
     logger.info("启动")
     hwnd = find_window()
-    image_finder = ImageFinder(hwnd)
+    image_finder = ImageFinder(hwnd=hwnd)
 
     logger.info("初始化ocr")
     yysOcr = YysYuHunOCR()
@@ -47,7 +47,7 @@ if __name__ == '__main__':
 
         # 只在间隔时间到时OCR一次
         if now - last_ocr_time > ocr_interval:
-            last_img = capture_yuhun_detail_img(hwnd)
+            last_img = capture_yuhun_detail_img()
             last_result = yysOcr.ocr(last_img)
             last_ocr_time = now
 

@@ -2,12 +2,12 @@
 # 提供标准化的战斗流程实现
 
 import time
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import List, Dict
 
-from yys.common.constants import BattleSleep, ClickRange, ImageSimilarity, BattleEndType
-from yys.common.operations import ImageOperations, OperationResult
 from yys.common.battle.hooks import BattleHooks
+from yys.common.constants import BattleSleep, ClickRange, ImageSimilarity, BattleEndType
+from yys.common.operations import ImageOperations
 
 
 class BattleFlow(ABC):
@@ -58,7 +58,7 @@ class BattleFlow(ABC):
         """等待挑战按钮出现"""
         result = self.operations.wait_for_image(
             self.challenge_image,
-            timeout=30,
+            timeout=1,
             similarity=ImageSimilarity.DEFAULT
         )
         if result.success and result.position:

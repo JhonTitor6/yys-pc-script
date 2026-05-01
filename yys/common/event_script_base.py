@@ -175,11 +175,11 @@ class YYSBaseScript(EventBaseScript):
 
     def _register_wanted_quest_events(self):
         """注册悬赏封印相关的事件"""
-        # self._register_image_match_event(
-        #     ImageMatchConfig(WANTED_QUEST_REJECT_IMAGE),
-        #     self._on_wanted_quests_invited
-        # )
-        # self._register_ocr_match_event("悬赏封印", self._on_wanted_quests_invited)
+        self._register_image_match_event(
+            ImageMatchConfig(WANTED_QUEST_REJECT_IMAGE),
+            self._on_wanted_quests_invited
+        )
+        self._register_ocr_match_event("悬赏封印", self._on_wanted_quests_invited)
 
     def _register_ocr_click_continue_event(self):
         """注册 OCR 点击屏幕继续事件"""

@@ -6,7 +6,10 @@ import win32con
 from loguru import logger
 
 if TYPE_CHECKING:
-    from tests.common.environment.base import GameEnvironment
+    try:
+        from tests.common.environment.base import GameEnvironment
+    except ImportError:
+        GameEnvironment = None  # type: ignore
 
 
 class MouseController:

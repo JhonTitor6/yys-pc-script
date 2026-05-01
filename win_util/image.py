@@ -12,7 +12,10 @@ from PIL import ImageGrab
 from loguru import logger
 
 if TYPE_CHECKING:
-    from tests.common.environment.base import GameEnvironment
+    try:
+        from tests.common.environment.base import GameEnvironment
+    except ImportError:
+        GameEnvironment = None  # type: ignore
 
 debug_img_base_dir = Path("yys/images/debug")
 

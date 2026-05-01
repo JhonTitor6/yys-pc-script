@@ -7,7 +7,12 @@ from win_util.mouse import MouseController
 from win_util.ocr import CommonOcr
 
 if TYPE_CHECKING:
-    from tests.common.environment.base import GameEnvironment
+    # GameEnvironment 是可选的抽象接口，仅用于类型标注
+    # 运行时如果未安装 tests 模块，使用字符串避免 ImportError
+    try:
+        from tests.common.environment.base import GameEnvironment
+    except ImportError:
+        GameEnvironment = None  # type: ignore
 
 
 class WinController:

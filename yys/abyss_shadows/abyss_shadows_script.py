@@ -530,10 +530,10 @@ class Main(YYSBaseScript):
 
         # 选择目标暗域入口
         area_image_map = {
-            "abyss_dragon": "yys/abyss_shadows/images/scene/abyss_dragon.bmp",
-            "abyss_fox": "yys/abyss_shadows/images/scene/abyss_fox.bmp",
-            "abyss_leopard": "yys/abyss_shadows/images/scene/abyss_leopard.bmp",
-            "abyss_peacock": "yys/abyss_shadows/images/scene/abyss_peacock.bmp",
+            "abyss_dragon": "yys/abyss_shadows/images/scene_control/abyss_selection_to_abyss_dragon.bmp",
+            "abyss_fox": "yys/abyss_shadows/images/scene_control/abyss_selection_to_abyss_fox.bmp",
+            "abyss_leopard": "yys/abyss_shadows/images/scene_control/abyss_selection_to_abyss_leopard.bmp",
+            "abyss_peacock": "yys/abyss_shadows/images/scene_control/abyss_selection_to_abyss_peacock.bmp",
         }
 
         if target_area not in area_image_map:
@@ -594,3 +594,4 @@ class Main(YYSBaseScript):
 if __name__ == '__main__':
     main = Main()
     main.run()
+    # main.change_area(main.scene_name_list[1])

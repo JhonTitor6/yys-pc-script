@@ -81,5 +81,5 @@ class ExplorationScript(YYSBaseScript):
 
 if __name__ == '__main__':
     script = ExplorationScript()
-    script.set_max_battle_count(324)
+    script.set_max_battle_count(224)
     script.run()

@@ -1,6 +1,6 @@
 import time
 
-from yys.common.event_script_base import YYSBaseScript, ImageMatchConfig
+from yys.common.event_script_base import YYSBaseScript, ImageMatchConfig, random_sleep
 
 
 class DouJi(YYSBaseScript):
@@ -11,18 +11,13 @@ class DouJi(YYSBaseScript):
     def __init__(self):
         super().__init__(script_name="douji")
 
-        self._has_clicked_tianzhao = False
-
-        self._register_image_match_event(ImageMatchConfig("yys/douji/images/douji_zhan.bmp"), self._on_douji_zhan)
-        self._register_image_match_event(ImageMatchConfig("yys/douji/images/change_to_auto_battle.bmp"), self.bg_left_click)
+        self._register_image_match_event(ImageMatchConfig("yys/douji/images/douji_zhan.bmp", similarity=0.7), self._on_douji_zhan)
+        self._register_image_match_event(ImageMatchConfig("yys/douji/images/change_to_auto_battle.bmp"), self._on_change_to_auto_battle)
         self._register_image_match_event(ImageMatchConfig("yys/douji/images/douji_selection_auto_up.bmp", similarity=0.7),
                                          self.bg_left_click)
-        self._register_image_match_event(ImageMatchConfig(
-            ["yys/douji/images/battle_tianzhao.bmp", "yys/douji/images/battle_tianzhao2.bmp", "yys/douji/images/battle_tianzhao3.bmp"], y0=262,
-            similarity=0.75), self._on_battle_tianzhao)
         self._register_image_match_event(ImageMatchConfig("yys/douji/images/douji_battle_end.bmp"), self._on_battle_end)
-        self._register_image_match_event(ImageMatchConfig("yys/douji/images/battle_end_loss.bmp"), self._on_battle_end)
-        self._register_image_match_event(ImageMatchConfig("yys/douji/images/douji_battle_end_victory.bmp"),
+        self._register_image_match_event(ImageMatchConfig("yys/images/battle_end_loss.bmp"), self._on_battle_end)
+        self._register_image_match_event(ImageMatchConfig("yys/douji/images/douji_battle_end_victory.bmp", similarity=0.6),
                                          self._on_battle_victory)
 
     def _on_battle_victory(self, point):
@@ -41,14 +36,14 @@ class DouJi(YYSBaseScript):
 
     def _on_douji_zhan(self, point):
         self.bg_left_click(point)
-        self._has_clicked_tianzhao = False
 
-    def _on_battle_tianzhao(self, point):
-        if not self._has_clicked_tianzhao:
-            time.sleep(2)
-            self.logger.info("点击标记天照")
-            self.bg_left_click(point, x_range=2, y_range=2)
-            self._has_clicked_tianzhao = True
+    def _on_change_to_auto_battle(self, point):
+        self.bg_left_click(point)
+        random_sleep(3, 4)
+        # 标记左一
+        self.bg_left_click((906, 811), x_range=5, y_range=5)
+        random_sleep(1, 2)
+        self.bg_left_click((997, 744), x_range=5, y_range=5)
 
 
 if __name__ == '__main__':

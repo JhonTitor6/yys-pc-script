@@ -1,7 +1,9 @@
 import time
 import unittest
+from typing import Any
 
 import cv2
+from pytest import MonkeyPatch
 import win32con
 import win32gui
 
@@ -51,3 +53,60 @@ class TestYYS(unittest.TestCase):
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
         cv2.destroyAllWindows()
+
+
+def test_base_script_state_snapshot(mock_env: object, monkeypatch: MonkeyPatch) -> None:
+    import win_util.controller as controller
+    from yys.soul_raid.soul_raid_script import SoulRaidScript
+
+    fake_ocr_init_count = 0
+
+    class FakeCommonOcr:
+        """轻量 OCR 替身，避免状态快照测试初始化真实 OCR。"""
+
+        def __init__(self) -> None:
+            nonlocal fake_ocr_init_count
+            fake_ocr_init_count += 1
+
+        def ocr(self, img: Any) -> list[Any]:
+            """返回空 OCR 结果。"""
+            return []
+
+        def contains_text(self, img: Any, target_text: str, case_sensitive: bool = False) -> bool:
+            """判断图片中是否包含文本。"""
+            return False
+
+        def find_text_position(
+            self,
+            img: Any,
+            target_text: str,
+            similarity_threshold: float = 0.3,
+            case_sensitive: bool = False,
+        ) -> None:
+            """查找文本位置。"""
+            return None
+
+        def find_text_positions(
+            self,
+            img: Any,
+            target_text: str,
+            similarity_threshold: float = 0.3,
+            case_sensitive: bool = False,
+        ) -> list[Any]:
+            """查找所有文本位置。"""
+            return []
+
+    monkeypatch.setattr(controller, "CommonOcr", FakeCommonOcr)
+
+    script = SoulRaidScript(env=mock_env)
+    script.set_max_battle_count(10)
+    script._cur_battle_count = 3
+    script._cur_battle_victory_count = 2
+
+    snapshot = script.get_state_snapshot()
+
+    assert fake_ocr_init_count == 1
+    assert snapshot["script_name"] == "soul_raid"
+    assert snapshot["battle_count"] == 3
+    assert snapshot["victory_count"] == 2
+    assert snapshot["max_battle_count"] == 10

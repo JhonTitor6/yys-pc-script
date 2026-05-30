@@ -1,7 +1,11 @@
-// 简化版 preload - UI 直接使用 WebSocket，不需要复杂的 IPC
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('electronAPI', {
+contextBridge.exposeInMainWorld('desktopBridge', {
+  onTrayCommand: (callback) => {
+    const listener = (_event, command) => callback(command);
+    ipcRenderer.on('tray-command', listener);
+    return () => ipcRenderer.removeListener('tray-command', listener);
+  },
   minimizeWindow: () => ipcRenderer.send('minimize-window'),
   maximizeWindow: () => ipcRenderer.send('maximize-window'),
   closeWindow: () => ipcRenderer.send('close-window')

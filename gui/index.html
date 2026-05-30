@@ -1,495 +1,113 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <title>阴阳师自动化工具</title>
-    <style>
-        :root {
-            --bg-primary: #0f0f1a;
-            --bg-secondary: #1a1a2e;
-            --bg-tertiary: #16213e;
-            --border-color: #333;
-            --text-primary: #fff;
-            --text-secondary: #ccc;
-            --text-muted: #888;
-            --accent-green: #4ade80;
-            --accent-yellow: #facc15;
-            --accent-red: #ef4444;
-            --accent-blue: #3b82f6;
-        }
-
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            height: 100vh;
-            overflow: hidden;
-        }
-
-        .container {
-            display: flex;
-            height: 100%;
-        }
-
-        /* 侧边栏 */
-        .sidebar {
-            width: 220px;
-            background: var(--bg-secondary);
-            border-right: 1px solid var(--border-color);
-            padding: 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 24px;
-        }
-
-        .section-title {
-            font-size: 12px;
-            color: var(--text-muted);
-            margin-bottom: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .task-list {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .task-item {
-            padding: 10px 12px;
-            background: var(--bg-tertiary);
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.2s;
-            border: 1px solid transparent;
-            color: var(--text-secondary);
-        }
-
-        .task-item:hover { border-color: var(--border-color); }
-
-        .task-item.active {
-            border-color: var(--accent-green);
-            color: var(--accent-green);
-        }
-
-        .config-item { margin-bottom: 12px; }
-
-        .config-item label {
-            display: block;
-            font-size: 13px;
-            color: var(--text-secondary);
-            margin-bottom: 4px;
-        }
-
-        .config-item input {
-            width: 100%;
-            padding: 6px 10px;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            color: var(--text-primary);
-            font-size: 13px;
-        }
-
-        /* 主区域 */
-        .main {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        /* 控制栏 */
-        .control-bar {
-            padding: 16px;
-            border-bottom: 1px solid var(--border-color);
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
-
-        .control-buttons { display: flex; gap: 8px; }
-
-        .btn {
-            padding: 8px 20px;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-        .btn-start { background: var(--accent-green); color: #000; }
-        .btn-start:hover:not(:disabled) { background: #22c55e; }
-
-        .btn-pause { background: var(--accent-yellow); color: #000; }
-        .btn-pause:hover:not(:disabled) { background: #eab308; }
-
-        .btn-resume { background: var(--accent-blue); color: #fff; }
-        .btn-resume:hover:not(:disabled) { background: #2563eb; }
-
-        .btn-stop { background: var(--accent-red); color: #fff; }
-        .btn-stop:hover:not(:disabled) { background: #dc2626; }
-
-        .status-indicator {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-left: auto;
-        }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--text-muted);
-        }
-
-        .status-indicator.running .status-dot { background: var(--accent-green); }
-        .status-indicator.paused .status-dot { background: var(--accent-yellow); }
-        .status-indicator.error .status-dot { background: var(--accent-red); }
-
-        .status-text { font-size: 13px; color: var(--text-secondary); }
-
-        /* 统计栏 */
-        .stats-bar {
-            padding: 16px;
-            border-bottom: 1px solid var(--border-color);
-            display: flex;
-            gap: 32px;
-        }
-
-        .stat-item { display: flex; flex-direction: column; gap: 4px; }
-
-        .stat-label { font-size: 12px; color: var(--text-muted); }
-
-        .stat-value { font-size: 24px; font-weight: 600; }
-
-        /* 日志区 */
-        .log-container { flex: 1; overflow: hidden; padding: 16px; }
-
-        .log-area {
-            height: 100%;
-            overflow-y: auto;
-            font-family: 'Consolas', 'Monaco', monospace;
-            font-size: 12px;
-            line-height: 1.6;
-        }
-
-        .log-line { padding: 2px 0; }
-        .log-line.INFO { color: var(--text-primary); }
-        .log-line.WARNING { color: var(--accent-yellow); }
-        .log-line.ERROR { color: var(--accent-red); }
-        .log-line.SUCCESS { color: var(--accent-green); }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>阴阳师脚本工作台</title>
+  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-    <div class="container">
-        <!-- 左侧栏 -->
-        <aside class="sidebar">
-            <div class="sidebar-section">
-                <h3 class="section-title">任务列表</h3>
-                <div id="task-list" class="task-list"></div>
+  <div class="app-shell">
+    <aside class="rail">
+      <div class="brand-mark">阴</div>
+      <button class="rail-button active" data-view="execute" title="执行">▶</button>
+      <button class="rail-button" data-view="workflows" title="编排">⏱</button>
+      <button class="rail-button" data-view="progress" title="进度暂未开放" aria-disabled="true" disabled>▦</button>
+      <button class="rail-button" data-view="logs" title="日志暂未开放" aria-disabled="true" disabled>≡</button>
+      <button class="rail-button" data-view="settings" title="设置暂未开放" aria-disabled="true" disabled>⚙</button>
+    </aside>
+    <aside class="script-panel">
+      <div class="panel-title">
+        <p>脚本列表</p>
+        <h1>执行工作台</h1>
+      </div>
+      <div id="scriptList" class="script-list"></div>
+    </aside>
+    <main class="main-panel">
+      <section id="executeView" class="view active">
+        <header class="run-header">
+          <div>
+            <p class="eyebrow">当前运行</p>
+            <h2 id="currentRunTitle">暂无运行脚本</h2>
+          </div>
+          <div class="run-actions">
+            <span id="runStatus" class="status-pill idle">空闲</span>
+            <button id="pauseButton" class="ghost-button" disabled>暂停</button>
+            <button id="resumeButton" class="ghost-button" disabled>恢复</button>
+            <button id="stopButton" class="danger-button" disabled>停止</button>
+          </div>
+        </header>
+        <section class="run-summary">
+          <div>
+            <p class="eyebrow">参数</p>
+            <p id="runConfigText" class="summary-value">未启动</p>
+            <div class="progress-bar"><span id="progressBar"></span></div>
+          </div>
+          <div class="metric-grid">
+            <div class="metric"><p>已战斗</p><strong id="battleCount">0 / 0</strong></div>
+            <div class="metric"><p>胜利</p><strong id="victoryCount">0</strong></div>
+            <div class="metric"><p>运行来源</p><strong id="runSource">-</strong></div>
+          </div>
+        </section>
+        <section class="log-panel">
+          <div class="log-header">
+            <span>实时日志</span>
+            <div class="log-actions">
+              <select id="logLevelFilter">
+                <option value="DEBUG">DEBUG+</option>
+                <option value="INFO" selected>INFO+</option>
+                <option value="WARNING">WARN+</option>
+                <option value="ERROR">ERROR</option>
+              </select>
+              <button id="clearLogButton">清空</button>
             </div>
-
-            <div class="sidebar-section">
-                <h3 class="section-title">配置</h3>
-                <div class="config-item">
-                    <label>战斗次数:</label>
-                    <input type="number" id="config-battles" value="103" min="1" max="999">
-                </div>
-                <div class="config-item">
-                    <label>循环间隔(秒):</label>
-                    <input type="number" id="config-interval" value="5" min="1" max="60">
-                </div>
-            </div>
-        </aside>
-
-        <!-- 主区域 -->
-        <main class="main">
-            <!-- 控制栏 -->
-            <div class="control-bar">
-                <div class="control-buttons">
-                    <button id="btn-start" class="btn btn-start">启动</button>
-                    <button id="btn-pause" class="btn btn-pause" disabled>暂停</button>
-                    <button id="btn-resume" class="btn btn-resume" disabled style="display:none">恢复</button>
-                    <button id="btn-stop" class="btn btn-stop" disabled>停止</button>
-                </div>
-                <div id="status-indicator" class="status-indicator">
-                    <span class="status-dot"></span>
-                    <span class="status-text">空闲</span>
-                </div>
-            </div>
-
-            <!-- 统计栏 -->
-            <div class="stats-bar">
-                <div class="stat-item">
-                    <span class="stat-label">当前战斗</span>
-                    <span class="stat-value"><span id="cur-battles">0</span>/<span id="max-battles">103</span></span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">胜利次数</span>
-                    <span class="stat-value" id="victories">0</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">运行时长</span>
-                    <span class="stat-value" id="runtime">00:00</span>
-                </div>
-            </div>
-
-            <!-- 日志区 -->
-            <div class="log-container">
-                <div id="log-area" class="log-area"></div>
-            </div>
-        </main>
+          </div>
+          <div id="logBody" class="log-body"></div>
+        </section>
+      </section>
+      <section id="workflowsView" class="view">
+        <header class="workflows-view-header">
+          <h2>编排任务</h2>
+          <button id="newWorkflowButton" type="button" class="primary-button">+ 新建编排</button>
+        </header>
+        <div id="workflowList" class="workflow-list"></div>
+      </section>
+    </main>
+    <aside class="side-panel">
+      <section class="side-card"><p class="eyebrow">调度预告</p><div id="schedulePreview">暂无启用任务</div></section>
+      <section class="side-card"><p class="eyebrow">断点快照</p><div id="snapshotPreview">暂无快照</div></section>
+      <section class="side-card"><p class="eyebrow">关键日志</p><div id="keyLogPreview">暂无警告或错误</div></section>
+    </aside>
+  </div>
+  <div id="workflowModal" class="modal-overlay" hidden>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="workflowModalTitle">
+      <div class="modal-header">
+        <h3 id="workflowModalTitle">新建编排</h3>
+        <button id="closeWorkflowModalButton" type="button" class="modal-close" aria-label="关闭">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="workflowModalForm" class="workflow-editor">
+          <input type="hidden" name="workflow_id" value="">
+          <label><span>名称</span><input name="name" required></label>
+          <label><span>分组</span><input name="group_name"></label>
+          <label><span>失败策略</span>
+            <select name="failure_policy">
+              <option value="stop_workflow">失败后停止</option>
+              <option value="continue_next">失败后继续</option>
+              <option value="retry_then_stop">重试后停止</option>
+            </select>
+          </label>
+          <div id="workflowModalSteps" class="step-accordion-list"></div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button id="addModalStep" type="button" class="ghost-button">+ 添加步骤</button>
+        <span class="spacer"></span>
+        <button id="cancelWorkflowModalButton" type="button" class="ghost-button">取消</button>
+        <button id="saveWorkflowModalButton" type="submit" class="primary-button" form="workflowModalForm">保存</button>
+      </div>
     </div>
-
-    <script>
-        class YYSUI {
-            constructor() {
-                this.ws = null;
-                this.currentTask = null;
-                this.status = 'idle';
-                this.taskStartTime = null;
-                this.logs = [];
-                this.maxLogs = 500;
-                this.reconnectAttempts = 0;
-                this.maxReconnectAttempts = 3;
-
-                this.elements = {
-                    taskList: document.getElementById('task-list'),
-                    btnStart: document.getElementById('btn-start'),
-                    btnPause: document.getElementById('btn-pause'),
-                    btnResume: document.getElementById('btn-resume'),
-                    btnStop: document.getElementById('btn-stop'),
-                    statusIndicator: document.getElementById('status-indicator'),
-                    curBattles: document.getElementById('cur-battles'),
-                    maxBattles: document.getElementById('max-battles'),
-                    victories: document.getElementById('victories'),
-                    runtime: document.getElementById('runtime'),
-                    logArea: document.getElementById('log-area'),
-                    configBattles: document.getElementById('config-battles'),
-                    configInterval: document.getElementById('config-interval')
-                };
-
-                this.init();
-            }
-
-            init() {
-                this.connectWebSocket();
-                this.bindEvents();
-                this.loadConfig();
-                this.startRuntimeClock();
-            }
-
-            connectWebSocket() {
-                const wsUrl = 'ws://localhost:8000/ws';
-                this.ws = new WebSocket(wsUrl);
-
-                this.ws.onopen = () => {
-                    console.log('WebSocket connected');
-                    this.reconnectAttempts = 0;
-                };
-
-                this.ws.onclose = () => {
-                    console.log('WebSocket disconnected');
-                    this.attemptReconnect();
-                };
-
-                this.ws.onerror = (err) => console.error('WebSocket error:', err);
-
-                this.ws.onmessage = (event) => {
-                    try {
-                        const msg = JSON.parse(event.data);
-                        this.handleMessage(msg);
-                    } catch (e) {
-                        console.error('Failed to parse message:', e);
-                    }
-                };
-            }
-
-            attemptReconnect() {
-                if (this.reconnectAttempts < this.maxReconnectAttempts) {
-                    this.reconnectAttempts++;
-                    setTimeout(() => this.connectWebSocket(), 2000);
-                }
-            }
-
-            handleMessage(msg) {
-                switch (msg.type) {
-                    case 'tasks':
-                        this.renderTaskList(msg.data);
-                        break;
-                    case 'log':
-                        this.appendLog(msg.data, msg.level);
-                        break;
-                    case 'status':
-                        this.updateStatus(msg.data);
-                        break;
-                    case 'ping':
-                        this.ws.send(JSON.stringify({ type: 'pong' }));
-                        break;
-                }
-            }
-
-            renderTaskList(tasks) {
-                this.elements.taskList.innerHTML = '';
-                tasks.forEach(task => {
-                    const div = document.createElement('div');
-                    div.className = 'task-item';
-                    div.dataset.task = task.name;
-                    div.textContent = task.name;
-                    div.addEventListener('click', () => this.selectTask(task.name));
-                    this.elements.taskList.appendChild(div);
-                });
-
-                if (tasks.length > 0 && !this.currentTask) {
-                    this.selectTask(tasks[0].name);
-                }
-            }
-
-            selectTask(taskName) {
-                if (this.status !== 'idle') return;
-                this.currentTask = taskName;
-                this.elements.taskList.querySelectorAll('.task-item').forEach(item => {
-                    item.classList.toggle('active', item.dataset.task === taskName);
-                });
-            }
-
-            updateStatus(status) {
-                this.status = status;
-                const indicator = this.elements.statusIndicator;
-                indicator.className = 'status-indicator ' + status;
-
-                const statusTexts = {
-                    idle: '空闲', running: '运行中', paused: '已暂停',
-                    stopped: '已停止', completed: '已完成', error: '错误'
-                };
-                indicator.querySelector('.status-text').textContent = statusTexts[status] || status;
-
-                this.elements.btnStart.disabled = status !== 'idle';
-                this.elements.btnPause.disabled = status !== 'running';
-                this.elements.btnResume.style.display = status === 'paused' ? 'inline-block' : 'none';
-                this.elements.btnStop.disabled = status === 'idle';
-
-                if (status === 'running' && !this.taskStartTime) {
-                    this.taskStartTime = Date.now();
-                } else if (status === 'idle' || status === 'stopped') {
-                    this.taskStartTime = null;
-                    this.elements.curBattles.textContent = '0';
-                    this.elements.victories.textContent = '0';
-                }
-            }
-
-            appendLog(text, level = 'INFO') {
-                this.logs.push({ text, level, time: new Date() });
-                if (this.logs.length > this.maxLogs) this.logs.shift();
-
-                const line = document.createElement('div');
-                line.className = `log-line ${level}`;
-                line.textContent = text;
-                this.elements.logArea.appendChild(line);
-                this.elements.logArea.scrollTop = this.elements.logArea.scrollHeight;
-
-                this.parseBattleStats(text);
-            }
-
-            parseBattleStats(text) {
-                const battleMatch = text.match(/战斗完成.*?(\d+)\/(\d+)/);
-                if (battleMatch) {
-                    this.elements.curBattles.textContent = battleMatch[1];
-                    this.elements.maxBattles.textContent = battleMatch[2];
-                }
-                const victoryMatch = text.match(/胜利(\d+)次/);
-                if (victoryMatch) {
-                    this.elements.victories.textContent = victoryMatch[1];
-                }
-            }
-
-            startRuntimeClock() {
-                setInterval(() => {
-                    if (this.taskStartTime) {
-                        const elapsed = Math.floor((Date.now() - this.taskStartTime) / 1000);
-                        const mins = Math.floor(elapsed / 60).toString().padStart(2, '0');
-                        const secs = (elapsed % 60).toString().padStart(2, '0');
-                        this.elements.runtime.textContent = `${mins}:${secs}`;
-                    }
-                }, 1000);
-            }
-
-            bindEvents() {
-                this.elements.btnStart.addEventListener('click', () => this.startTask());
-                this.elements.btnPause.addEventListener('click', () => this.pauseTask());
-                this.elements.btnResume.addEventListener('click', () => this.resumeTask());
-                this.elements.btnStop.addEventListener('click', () => this.stopTask());
-            }
-
-            loadConfig() {
-                const saved = localStorage.getItem('yys-ui-config');
-                if (saved) {
-                    const config = JSON.parse(saved);
-                    this.elements.configBattles.value = config.maxBattles || 103;
-                    this.elements.configInterval.value = config.loopInterval || 5;
-                }
-            }
-
-            saveConfig() {
-                const config = {
-                    maxBattles: parseInt(this.elements.configBattles.value),
-                    loopInterval: parseInt(this.elements.configInterval.value)
-                };
-                localStorage.setItem('yys-ui-config', JSON.stringify(config));
-            }
-
-            startTask() {
-                if (!this.currentTask || !this.ws) return;
-
-                const maxBattles = parseInt(this.elements.configBattles.value);
-                const loopInterval = parseInt(this.elements.configInterval.value);
-
-                if (isNaN(maxBattles) || maxBattles < 1 || isNaN(loopInterval) || loopInterval < 1) {
-                    console.error('Invalid config values');
-                    return;
-                }
-
-                this.saveConfig();
-                this.elements.logArea.innerHTML = '';
-                this.logs = [];
-
-                const config = {
-                    max_battle_count: parseInt(this.elements.configBattles.value),
-                    loop_interval: parseInt(this.elements.configInterval.value)
-                };
-
-                this.ws.send(JSON.stringify({
-                    type: 'start_task',
-                    task_name: this.currentTask,
-                    config: config
-                }));
-            }
-
-            pauseTask() {
-                if (this.ws) this.ws.send(JSON.stringify({ type: 'pause_task' }));
-            }
-
-            resumeTask() {
-                if (this.ws) this.ws.send(JSON.stringify({ type: 'resume_task' }));
-            }
-
-            stopTask() {
-                if (this.ws) this.ws.send(JSON.stringify({ type: 'stop_task' }));
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            window.ui = new YYSUI();
-        });
-    </script>
+  </div>
+  <script src="./renderer.js"></script>
 </body>
 </html>

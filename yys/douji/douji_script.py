@@ -19,6 +19,8 @@ class DouJi(YYSBaseScript):
         self._register_image_match_event(ImageMatchConfig("yys/images/battle_end_loss.bmp"), self._on_battle_end)
         self._register_image_match_event(ImageMatchConfig("yys/douji/images/douji_battle_end_victory.bmp", similarity=0.6),
                                          self._on_battle_victory)
+        self._register_image_match_event(ImageMatchConfig("yys/exploration/images/exploration_close.bmp", similarity=0.7), self.bg_left_click)
+        self._register_image_match_event(ImageMatchConfig("yys/images/ready.bmp", similarity=0.7), self.bg_left_click)
 
     def _on_battle_victory(self, point):
         """战斗胜利处理"""
@@ -41,9 +43,11 @@ class DouJi(YYSBaseScript):
         self.bg_left_click(point)
         random_sleep(3, 4)
         # 标记左一
-        self.bg_left_click((906, 811), x_range=5, y_range=5)
-        random_sleep(1, 2)
-        self.bg_left_click((997, 744), x_range=5, y_range=5)
+        # self.bg_left_click((906, 811), x_range=5, y_range=5)
+        # random_sleep(1, 2)
+        # self.bg_left_click((997, 744), x_range=5, y_range=5)
+        # 标记左四
+        self.bg_left_click((746, 361), x_range=5, y_range=5)
 
 
 if __name__ == '__main__':

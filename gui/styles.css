@@ -1,0 +1,828 @@
+:root {
+  --bg: #101417;
+  --rail: #151a1e;
+  --panel: #1b2227;
+  --panel-strong: #20282e;
+  --panel-soft: #172025;
+  --line: #303a41;
+  --line-soft: #263137;
+  --text: #eef3f0;
+  --muted: #91a09b;
+  --subtle: #687773;
+  --green: #35c28d;
+  --green-dark: #1e8d66;
+  --yellow: #d9a441;
+  --red: #e05a5a;
+  --cyan: #58b6c7;
+  --ink: #0b0f11;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+  font-size: 14px;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  border: 0;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 58px minmax(236px, 292px) minmax(0, 1fr) minmax(180px, 240px);
+  height: 100vh;
+  min-width: 800px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 9px;
+  background: var(--rail);
+  border-right: 1px solid var(--line-soft);
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 8px;
+  border: 1px solid #3f544d;
+  border-radius: 8px;
+  color: var(--green);
+  font-weight: 700;
+  background: #101816;
+}
+
+.rail-button {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 7px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.rail-button:hover,
+.rail-button.active {
+  color: var(--text);
+  background: var(--panel-strong);
+}
+
+.rail-button:disabled {
+  color: #4f5b58;
+  background: transparent;
+}
+
+.script-panel,
+.side-panel {
+  min-height: 0;
+  overflow: hidden;
+  background: var(--panel);
+}
+
+.script-panel {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+}
+
+.panel-title {
+  flex: 0 0 auto;
+  padding: 18px 16px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.panel-title p,
+.eyebrow {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.panel-title h1,
+.run-header h2,
+.view h2 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.panel-title h1 {
+  font-size: 20px;
+}
+
+.script-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.script-row {
+  margin-bottom: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  overflow: hidden;
+}
+
+.script-row.selected {
+  border-color: #3f6859;
+}
+
+.script-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px;
+  color: var(--text);
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.script-head strong,
+.script-head small {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.script-head small {
+  margin-top: 4px;
+  color: var(--subtle);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.script-description {
+  margin: 0;
+  padding: 0 12px 11px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.script-params {
+  display: none;
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
+.script-params.active {
+  display: grid;
+}
+
+.field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.field span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  background: #10171b;
+  outline: none;
+}
+
+.field input:focus,
+.field select:focus {
+  border-color: var(--green-dark);
+}
+
+.field.boolean-field {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.field.boolean-field input {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  accent-color: var(--green);
+}
+
+.primary-button,
+.ghost-button,
+.danger-button,
+.log-header button {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 7px;
+  color: var(--text);
+  background: var(--panel-strong);
+  cursor: pointer;
+}
+
+.primary-button {
+  color: var(--ink);
+  font-weight: 700;
+  background: var(--green);
+}
+
+.danger-button {
+  background: #402222;
+  color: #ffd7d7;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.main-panel {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #11171a;
+}
+
+.view {
+  display: none;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.view.active {
+  display: flex;
+  flex-direction: column;
+}
+
+.run-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.run-header h2 {
+  max-width: 46vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 22px;
+}
+
+.run-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--panel-soft);
+}
+
+.status-pill.running,
+.status-pill.success {
+  border-color: #2f6e58;
+  color: #b9f2da;
+}
+
+.status-pill.paused,
+.status-pill.queued {
+  border-color: #69562c;
+  color: #ffe1a1;
+}
+
+.status-pill.error,
+.status-pill.stopped {
+  border-color: #6e3535;
+  color: #ffb8b8;
+}
+
+.run-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 330px);
+  gap: 16px;
+  flex: 0 0 auto;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line-soft);
+  background: #121a1e;
+}
+
+.summary-value {
+  min-height: 20px;
+  margin: 0 0 10px;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-bar {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #263137;
+}
+
+.progress-bar span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--green);
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.metric {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.metric p {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.metric strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.log-panel {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  padding: 14px 20px 20px;
+}
+
+.log-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  color: var(--muted);
+}
+
+.log-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #080c0e;
+  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.log-line {
+  padding: 2px 0;
+  color: #d8e0dd;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log-line.INFO {
+  color: #d8e0dd;
+}
+
+.log-line.WARNING {
+  color: var(--yellow);
+}
+
+.log-line.ERROR {
+  color: #ff8d8d;
+}
+
+.log-line.SUCCESS {
+  color: #9cf0c9;
+}
+
+.side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-left: 1px solid var(--line);
+  background: #161d21;
+}
+
+.side-card {
+  min-height: 96px;
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.side-card div {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+#workflowsView {
+  gap: 12px;
+  padding: 18px 20px 20px;
+  overflow-y: auto;
+}
+
+.workflow-editor,
+.workflow-list,
+.workflow-steps {
+  display: grid;
+  gap: 12px;
+}
+
+.workflow-editor label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.workflow-editor label span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.workflow-editor input,
+.workflow-editor select {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  background: #10171b;
+  outline: none;
+}
+
+.workflow-editor input:focus,
+.workflow-editor select:focus {
+  border-color: var(--green-dark);
+}
+
+.workflow-step,
+.workflow-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 90px 90px 90px;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .035);
+}
+
+.workflow-step > *,
+.workflow-card > * {
+  min-width: 0;
+}
+
+.workflow-card {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.workflow-card strong,
+.workflow-card small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-card small,
+.empty-text {
+  color: var(--muted);
+}
+
+.empty-text {
+  margin: 0;
+}
+
+/* 编排步骤的 fieldset 容器样式 */
+.step-fieldset {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  margin: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .025);
+}
+
+.step-fieldset legend {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.step-dynamic {
+  display: grid;
+  gap: 10px;
+}
+
+.step-script-fields {
+  display: grid;
+  gap: 10px;
+}
+
+/* 正在编辑的编排卡片高亮 */
+.workflow-card.editing {
+  border-color: var(--green-dark);
+  outline: 1px solid var(--green-dark);
+}
+
+.workflow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* 日志头部的下拉过滤器与清空按钮 */
+.log-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#logLevelFilter {
+  height: 28px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel-soft);
+  outline: none;
+  font-size: 12px;
+}
+
+#logLevelFilter:focus {
+  border-color: var(--green-dark);
+}
+
+/* 编排任务列表页顶栏：标题 + 新建按钮 */
+.workflows-view-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.workflows-view-header h2 {
+  margin: 0;
+}
+
+/* 居中 Modal 容器 */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.modal-overlay[hidden] {
+  display: none;
+}
+
+.modal-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 100%);
+  max-height: 90vh;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.modal-close {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.modal-close:hover {
+  color: var(--text);
+  background: var(--panel-strong);
+}
+
+.modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 16px 18px;
+  overflow-y: auto;
+}
+
+.modal-body form {
+  display: grid;
+  gap: 12px;
+}
+
+.modal-footer {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.modal-footer .spacer {
+  flex: 1 1 auto;
+}
+
+/* Modal 内的错误提示条 */
+.modal-error {
+  padding: 8px 12px;
+  border: 1px solid #6e3535;
+  border-radius: 6px;
+  color: #ffb8b8;
+  background: #2a1818;
+  font-size: 13px;
+}
+
+/* 步骤手风琴 */
+.step-accordion-list {
+  display: grid;
+  gap: 8px;
+}
+
+.step-accordion {
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  overflow: hidden;
+}
+
+.step-accordion-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  color: var(--text);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.step-accordion-header .summary {
+  margin-left: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+}
+
+.step-accordion-header .remove-step {
+  margin-left: 8px;
+}
+
+.step-accordion-body {
+  display: none;
+  padding: 12px;
+  border-top: 1px solid var(--line-soft);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.step-accordion.expanded .step-accordion-body {
+  display: grid;
+  gap: 10px;
+}
+
+@media (max-width: 960px) {
+  .app-shell {
+    grid-template-columns: 50px minmax(220px, 250px) minmax(0, 1fr);
+  }
+
+  .side-panel {
+    display: none;
+  }
+
+  .run-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1100px) {
+  .workflow-step {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 840px) {
+  .app-shell {
+    grid-template-columns: 48px 220px minmax(0, 1fr);
+  }
+
+  .run-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .run-header h2 {
+    max-width: 100%;
+  }
+
+  .run-actions {
+    flex-wrap: wrap;
+  }
+
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+}

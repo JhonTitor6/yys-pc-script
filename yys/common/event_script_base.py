@@ -176,7 +176,7 @@ class YYSBaseScript(EventBaseScript):
     def _register_wanted_quest_events(self):
         """注册悬赏封印相关的事件"""
         self._register_image_match_event(
-            ImageMatchConfig(WANTED_QUEST_REJECT_IMAGE),
+            ImageMatchConfig(WANTED_QUEST_REJECT_IMAGE, x0=500),
             self._on_wanted_quests_invited
         )
         self._register_ocr_match_event("悬赏封印", self._on_wanted_quests_invited)
@@ -253,6 +253,15 @@ class YYSBaseScript(EventBaseScript):
         """设置最大战斗次数（支持链式调用）"""
         self._max_battle_count = max_battle_count
         return self
+
+    def get_state_snapshot(self) -> dict[str, object]:
+        """获取脚本当前状态快照，用于 UI 展示和历史记录。"""
+        return {
+            "script_name": self.script_name,
+            "battle_count": self._cur_battle_count,
+            "victory_count": self._cur_battle_victory_count,
+            "max_battle_count": self._max_battle_count,
+        }
 
     def on_run(self):
         """脚本启动时的钩子方法"""

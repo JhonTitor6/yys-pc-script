@@ -10,4 +10,4 @@ class AutoYuling(YYSBaseScript):
 
 
 if __name__ == '__main__':
-    AutoYuling().set_max_battle_count(307).run()
+    AutoYuling().set_max_battle_count(150).run()

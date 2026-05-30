@@ -594,4 +594,4 @@ class Main(YYSBaseScript):
 if __name__ == '__main__':
     main = Main()
     main.run()
-    # main.change_area(main.scene_name_list[1])
+    # main.change_area(main.scene_name_list[3])

@@ -32,6 +32,7 @@ class ExplorationScript(YYSBaseScript):
                                          self.bg_left_click)
         self._register_image_match_event(ImageMatchConfig("yys/exploration/images/exploration_she_zhi.bmp"),
                                          self._on_tansuo_idle)
+        self._register_image_match_event(ImageMatchConfig("yys/common/images/temp_sui_pian.bmp"), self.bg_left_click)
 
         self.logger.info("探索脚本初始化完成")
 
@@ -81,5 +82,5 @@ class ExplorationScript(YYSBaseScript):
 
 if __name__ == '__main__':
     script = ExplorationScript()
-    script.set_max_battle_count(224)
+    script.set_max_battle_count(244)
     script.run()

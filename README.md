@@ -57,6 +57,16 @@ pip install -r requirements.txt
 python xxx.py
 ```
 
+### 桌面工作台
+
+```bash
+cd gui
+npm install
+npm start
+```
+
+工作台会自动启动 Python 后端。关闭主窗口默认隐藏到托盘，选择托盘菜单中的“退出”才会停止后端和调度器。
+
 ## 🤝 贡献指南
 
 欢迎提交Issue和Pull Request来帮助改进项目！

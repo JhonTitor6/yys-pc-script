@@ -218,6 +218,7 @@ class EventBaseScript(ABC):
         """停止脚本执行"""
         logger.info("停止脚本")
         self._stop_threading_event.set()
+        self._pause_threading_event.set()
 
     def pause_point(self) -> None:
         """等待暂停事件（阻塞直到被 resume）"""
@@ -229,6 +230,8 @@ class EventBaseScript(ABC):
 
         while not self._stop_threading_event.is_set():
             self.pause_point()
+            if self._stop_threading_event.is_set():
+                break
             self.before_iteration()
 
             # 更新截图缓存（如有）

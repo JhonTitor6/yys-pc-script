@@ -1,22 +1,92 @@
+from __future__ import annotations
+
 import time
+from typing import Annotated, Any, Optional, TYPE_CHECKING, TypedDict, get_type_hints
 
 from win_util.image import ImageMatchConfig
-from yys.common.event_script_base import YYSBaseScript, random_sleep
+from yys.common.event_script_base import YYSBaseScript, _extract_config_meta, random_sleep
+from yys.common.script_meta import ConfigMeta, ScriptMeta
+
+if TYPE_CHECKING:
+    from tests.common.environment.base import GameEnvironment
 
 """
 结界突破脚本，使用事件驱动模式
 """
 
 
-class RealmRaidScript(YYSBaseScript):
-    def __init__(self):
-        super(RealmRaidScript, self).__init__(
-            "realm_raid"
-        )
+class RealmRaidConfig(TypedDict, total=False):
+    """结界突破脚本的可配置字段。"""
+    max_battle_count: Annotated[int, ConfigMeta(
+        default=9,
+        min_value=1,
+        max_value=99,
+        field_type="number",
+        label="最大战斗次数",
+        group="基础",
+        help="脚本自动停止前执行的最大战斗次数（1-99）",
+        hot_reloadable=True,
+    )]
+    quit_3_times_config: Annotated[bool, ConfigMeta(
+        default=True,
+        field_type="checkbox",
+        label="首次退3次",
+        group="高级",
+        help="打第一个结界时是否先退出3次再挑战",
+        hot_reloadable=False,
+    )]
 
-        # TODO: 加个config类
-        self.quit_3_times_config = True
-        self.attackable_barrier_list = []
+
+class RealmRaidScript(YYSBaseScript):
+    """结界突破脚本：循环攻击可攻击的结界。"""
+    SCRIPT_META = ScriptMeta(
+        display_name="结界突破",
+        category="日常",
+        config_schema=RealmRaidConfig,
+        default_config={"max_battle_count": 9, "quit_3_times_config": True},
+    )
+
+    @classmethod
+    def get_config_schema(cls) -> list[dict[str, Any]]:
+        """从 SCRIPT_META 反射 config_schema 为 wire format list of dict。"""
+        meta = cls.SCRIPT_META
+        if meta is None or meta.config_schema is None:
+            return []
+        try:
+            hints = get_type_hints(meta.config_schema, include_extras=True)
+        except Exception:
+            hints = {}
+        result: list[dict[str, Any]] = []
+        for field_name, annotated_type in hints.items():
+            config_meta = _extract_config_meta(annotated_type)
+            if config_meta is None:
+                continue
+            result.append({
+                "key": field_name,
+                "label": config_meta.label or field_name,
+                "field_type": config_meta.field_type,
+                "default": config_meta.default,
+                "min_value": config_meta.min_value,
+                "max_value": config_meta.max_value,
+                "options": list(config_meta.options or []),
+                "hot_reloadable": config_meta.hot_reloadable,
+            })
+        return result
+
+    def __init__(
+        self,
+        script_name: str = "realm_raid",
+        env: Optional["GameEnvironment"] = None,
+        config: Optional[dict] = None,
+    ) -> None:
+        """初始化结界突破脚本。
+
+        Args:
+            script_name: 脚本名，默认 "realm_raid"。
+            env: GameEnvironment 实例，用于 Mock 测试时注入。
+            config: 配置字典（可选）。
+        """
+        super().__init__(script_name, config=config, env=env)
 
         # 注册结界突破特定的图像匹配事件
         self._register_image_match_event(ImageMatchConfig("yys/realm_raid/images/realm_raid_not_enough.bmp", similarity=0.9),
@@ -31,7 +101,7 @@ class RealmRaidScript(YYSBaseScript):
 
     def _on_ticket_not_enough(self, point):
         """处理结界突破券不足事件"""
-        self._max_battle_count = self._cur_battle_count
+        self.max_battle_count = self._cur_battle_count
         self.logger.info(f"没突破券了")
 
     def _on_attackable_barrier(self, point):

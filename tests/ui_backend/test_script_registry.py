@@ -49,21 +49,40 @@ def test_registry_lists_stable_and_experimental_scripts() -> None:
 def test_default_registry_does_not_import_script_modules(
     monkeypatch: MonkeyPatch,
 ) -> None:
+    """默认 entries 也会尝试反射 SCRIPT_META（auto-registry Step 3 设计）。
+
+    5 个走老路径的子类无 get_config_schema() → 反射失败 → 走 entries fallback。
+    soul_raid 有 get_config_schema() → 反射成功 → 覆盖 entry 的手写 schema。
+    即便 import_module 失败，registry 仍能 list 全部脚本（fallback 路径）。
+    """
     imported_modules: list[str] = []
 
-    def record_import(module_path: str) -> object:
+    def raise_on_import(module_path: str) -> object:
         imported_modules.append(module_path)
-        raise AssertionError(f"不应导入脚本模块: {module_path}")
+        raise RuntimeError(f"反射阶段导入失败: {module_path}")
 
     monkeypatch.setattr(
         "ui_backend.scripts.registry.import_module",
-        record_import,
+        raise_on_import,
     )
 
     scripts = ScriptRegistry().list_scripts()
 
-    assert {item.script_id for item in scripts}
-    assert imported_modules == []
+    script_ids = {item.script_id for item in scripts}
+    # 5 个 entries 都被尝试 import_module（owner 决策"总尝试反射"）
+    assert "yys.soul_raid" in imported_modules
+    assert "yys.realm_raid" in imported_modules
+    # 即便全部反射失败，registry 仍能 list 全部脚本（走 entries fallback）
+    # Step 5 在 default_registry.py 新增 4 个 entry
+    assert script_ids == {
+        "soul_raid", "realm_raid", "exploration_28", "yuling", "abyss_shadows",
+        "loop_challenge", "douji", "fujiwara", "omoikane",
+    }
+    # fallback 时，soul_raid 仍使用 entry 手写的 max_battle_count=103（无 accept_wq_type）
+    soul_raid = next(item for item in scripts if item.script_id == "soul_raid")
+    keys = {field.key for field in soul_raid.config_schema}
+    assert "max_battle_count" in keys
+    assert "accept_wq_type" not in keys  # fallback 路径无 accept_wq_type
 
 
 def test_class_schema_overrides_registry_schema() -> None:
@@ -158,3 +177,105 @@ def test_invalid_class_schema_raises_type_error() -> None:
                 }
             ]
         )
+
+
+# ==================== auto-registry Step 3 新增 case ====================
+
+
+def test_default_registry_soul_raid_uses_script_meta_reflection() -> None:
+    """soul_raid 走 SCRIPT_META 反射路径：config_schema 来自 SCRIPT_META。
+
+    验证点：
+    - 含 max_battle_count/accept_wq_type/loop_interval 三字段
+    - 字段来自 SCRIPT_META 反射（field_type="number"/"select"）
+    - default_config 来自 SCRIPT_META.default_config
+    """
+    registry = ScriptRegistry()
+    soul_raid = registry.get("soul_raid")
+
+    fields = {field.key: field for field in soul_raid.config_schema}
+    # 3 字段都来自 SCRIPT_META 反射（default_registry.py 手写只有 2 字段）
+    assert set(fields.keys()) == {"max_battle_count", "accept_wq_type", "loop_interval"}
+    assert fields["max_battle_count"].field_type == "number"
+    assert fields["accept_wq_type"].field_type == "select"
+    assert fields["loop_interval"].field_type == "number"
+    # accept_wq_type 的 options 来自 SCRIPT_META 反射（3 个值）
+    assert len(fields["accept_wq_type"].options) == 3
+    # default_config 来自 SCRIPT_META.default_config
+    assert soul_raid.default_config == {
+        "max_battle_count": 103,
+        "accept_wq_type": 0,
+        "loop_interval": 300,
+    }
+
+
+def test_default_registry_migrated_scripts_use_script_meta_reflection() -> None:
+    """Step 5：realm_raid/exploration/yuling/abyss_shadows 已迁移到 SCRIPT_META。
+
+    验证点：
+    - 它们都通过 SCRIPT_META 反射返回 config_schema（不再走 entries fallback）
+    - 字段数与 SCRIPT_META 定义一致
+    """
+    registry = ScriptRegistry()
+
+    # realm_raid（SCRIPT_META 含 max_battle_count + quit_3_times_config）
+    realm_raid = registry.get("realm_raid")
+    keys = {field.key for field in realm_raid.config_schema}
+    assert keys == {"max_battle_count", "quit_3_times_config"}
+    assert realm_raid.default_config["max_battle_count"] == 9
+    assert realm_raid.default_config["quit_3_times_config"] is True
+
+    # exploration（SCRIPT_META 含 max_battle_count，默认 244）
+    exploration_28 = registry.get("exploration_28")
+    keys = {field.key for field in exploration_28.config_schema}
+    assert keys == {"max_battle_count"}
+    assert exploration_28.default_config["max_battle_count"] == 244
+
+    # yuling（SCRIPT_META 含 max_battle_count，默认 150）
+    yuling = registry.get("yuling")
+    keys = {field.key for field in yuling.config_schema}
+    assert keys == {"max_battle_count"}
+    assert yuling.default_config["max_battle_count"] == 150
+
+    # abyss_shadows（field 多一些：boss/commander/elite_count）
+    abyss_shadows = registry.get("abyss_shadows")
+    keys = {field.key for field in abyss_shadows.config_schema}
+    assert keys == {"boss_count", "commander_count", "elite_count"}
+    assert abyss_shadows.default_config == {
+        "boss_count": 2,
+        "commander_count": 4,
+        "elite_count": 6,
+    }
+
+
+def test_default_registry_reflection_failure_falls_back_to_entries(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """反射（import_module 或 get_config_schema）失败时回退到 entries。
+
+    验证点：
+    - monkeypatch 让 soul_raid 导入抛错 → 反射失败
+    - soul_raid 仍能 list，使用 default_registry.py 的手写 config_schema
+    - 不抛异常（fallback 路径不阻塞 list_scripts）
+    """
+    def raise_on_import(module_path: str) -> object:
+        raise RuntimeError("反射阶段导入失败")
+
+    monkeypatch.setattr(
+        "ui_backend.scripts.registry.import_module",
+        raise_on_import,
+    )
+
+    # 即便所有反射都失败，仍能 list 全部 9 个脚本（entries fallback）
+    # Step 5 在 default_registry.py 新增 4 个 entry：loop_challenge/douji/fujiwara/omoikane
+    scripts = ScriptRegistry().list_scripts()
+    script_ids = {item.script_id for item in scripts}
+    assert script_ids == {
+        "soul_raid", "realm_raid", "exploration_28", "yuling", "abyss_shadows",
+        "loop_challenge", "douji", "fujiwara", "omoikane",
+    }
+
+    # soul_raid 走 fallback（无 accept_wq_type）
+    soul_raid = next(item for item in scripts if item.script_id == "soul_raid")
+    keys = {field.key for field in soul_raid.config_schema}
+    assert keys == {"max_battle_count", "loop_interval"}  # 仅 default_registry.py 手写的 2 字段

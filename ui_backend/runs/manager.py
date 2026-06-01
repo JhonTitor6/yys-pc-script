@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import threading
 import traceback
 from typing import Any
@@ -49,8 +50,19 @@ class RunManager:
 
         try:
             script_class = self.registry.load_class(request.script_id)
-            script = script_class()
-            self._apply_config(script, merged_config)
+            # 检测脚本类是否接受 config 关键字参数：soul_raid 走新构造注入（auto-registry Step 3）
+            # 5 个走老路径的子类（douji/omoikane/yuling/loop_challenge/script_main 等）无 config 参数 → 老路径
+            sig = inspect.signature(script_class)
+            if "config" in sig.parameters or any(
+                p.kind is inspect.Parameter.VAR_KEYWORD
+                for p in sig.parameters.values()
+            ):
+                # 新签名：构造注入
+                script = script_class(request.script_id, config=merged_config)
+            else:
+                # 老签名：实例化 + setter（保留 _apply_config 作 fallback）
+                script = script_class()
+                self._apply_config(script, merged_config)
             thread = threading.Thread(
                 target=self._run_script,
                 args=(run_id, request.script_id, script),

@@ -1,0 +1,9 @@
+{
+  "last_selected_task": "御魂",
+  "tasks": {
+    "御魂": { "max_battle_count": 103, "loop_interval": 5 },
+    "结界突破": { "max_battle_count": 9, "loop_interval": 3 },
+    "探28": { "max_battle_count": 50, "loop_interval": 3 },
+    "御灵": { "max_battle_count": 50, "loop_interval": 5 }
+  }
+}

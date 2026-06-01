@@ -187,7 +187,13 @@ async function startScript(scriptId, form) {
     }
   }
   try {
-    await apiPatch(`/api/scripts/${encodeURIComponent(scriptId)}/config`, config);
+    const patchResp = await apiPatch(`/api/scripts/${encodeURIComponent(scriptId)}/config`, config);
+    // Step 4: 热重载结果文案（B2 决策：默默落盘 + 当前 run 忽略）
+    if (patchResp?.note) {
+      appendLog({ level: 'INFO', message: patchResp.note });
+    } else if (patchResp?.status === 'ok') {
+      appendLog({ level: 'INFO', message: '配置已保存' });
+    }
   } catch (error) {
     appendLog({ level: 'WARNING', message: `保存配置失败: ${error.message}` });
   }

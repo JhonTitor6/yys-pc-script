@@ -215,7 +215,7 @@ class TestAbyssShadowsSceneReplay(unittest.TestCase):
             n: 迭代次数
         """
         # 设置最大战斗次数
-        script._max_battle_count = n
+        script.max_battle_count = n
         script._cur_battle_count = 0
 
         # 保存原始的 after_iteration
@@ -224,7 +224,7 @@ class TestAbyssShadowsSceneReplay(unittest.TestCase):
         def limited_after_iteration():
             original_after_iteration()
             # 强制停止检查
-            if script._cur_battle_count >= script._max_battle_count:
+            if script._cur_battle_count >= script.max_battle_count:
                 script.stop()
 
         script.after_iteration = limited_after_iteration

@@ -1,9 +1,49 @@
+from __future__ import annotations
+
 import time
 from enum import Enum
-from typing import Optional
+from typing import Annotated, Any, Optional, TYPE_CHECKING, TypedDict, get_type_hints
 
 from win_util.image import ImageMatchConfig, to_project_path
-from yys.common.event_script_base import YYSBaseScript, random_sleep
+from yys.common.event_script_base import YYSBaseScript, _extract_config_meta, random_sleep
+from yys.common.script_meta import ConfigMeta, ScriptMeta
+
+if TYPE_CHECKING:
+    from tests.common.environment.base import GameEnvironment
+
+
+class AbyssShadowsConfig(TypedDict, total=False):
+    """狭间暗域脚本的可配置字段。"""
+    boss_count: Annotated[int, ConfigMeta(
+        default=2,
+        min_value=0,
+        max_value=99,
+        field_type="number",
+        label="首领次数",
+        group="基础",
+        help="每个暗域首领挑战次数（0-99）",
+        hot_reloadable=True,
+    )]
+    commander_count: Annotated[int, ConfigMeta(
+        default=4,
+        min_value=0,
+        max_value=99,
+        field_type="number",
+        label="副将次数",
+        group="基础",
+        help="每个暗域副将挑战次数（0-99）",
+        hot_reloadable=True,
+    )]
+    elite_count: Annotated[int, ConfigMeta(
+        default=6,
+        min_value=0,
+        max_value=99,
+        field_type="number",
+        label="精英次数",
+        group="基础",
+        help="每个暗域精英挑战次数（0-99）",
+        hot_reloadable=True,
+    )]
 
 
 class EnemyType(Enum):
@@ -47,9 +87,58 @@ class Main(YYSBaseScript):
     以战报界面为核心导航中枢的自动化脚本
     完成 2 首领、4 副将、6 精英的挑战
     """
+    SCRIPT_META = ScriptMeta(
+        display_name="狭间暗域",
+        category="副本",
+        config_schema=AbyssShadowsConfig,
+        default_config={
+            "boss_count": 2,
+            "commander_count": 4,
+            "elite_count": 6,
+        },
+    )
 
-    def __init__(self):
-        super().__init__("狭间暗域")
+    @classmethod
+    def get_config_schema(cls) -> list[dict[str, Any]]:
+        """从 SCRIPT_META 反射 config_schema 为 wire format list of dict。"""
+        meta = cls.SCRIPT_META
+        if meta is None or meta.config_schema is None:
+            return []
+        try:
+            hints = get_type_hints(meta.config_schema, include_extras=True)
+        except Exception:
+            hints = {}
+        result: list[dict[str, Any]] = []
+        for field_name, annotated_type in hints.items():
+            config_meta = _extract_config_meta(annotated_type)
+            if config_meta is None:
+                continue
+            result.append({
+                "key": field_name,
+                "label": config_meta.label or field_name,
+                "field_type": config_meta.field_type,
+                "default": config_meta.default,
+                "min_value": config_meta.min_value,
+                "max_value": config_meta.max_value,
+                "options": list(config_meta.options or []),
+                "hot_reloadable": config_meta.hot_reloadable,
+            })
+        return result
+
+    def __init__(
+        self,
+        script_name: str = "abyss_shadows",
+        env: Optional["GameEnvironment"] = None,
+        config: Optional[dict] = None,
+    ) -> None:
+        """初始化狭间暗域脚本。
+
+        Args:
+            script_name: 脚本名，默认 "abyss_shadows"。
+            env: GameEnvironment 实例，用于 Mock 测试时注入。
+            config: 配置字典（可选）。
+        """
+        super().__init__(script_name, config=config, env=env)
 
         # 注册狭间暗域专属场景和跳转
         self.scene_manager.register_scenes_from_directory(
@@ -180,21 +269,6 @@ class Main(YYSBaseScript):
             ImageMatchConfig("yys/images/battle_end.bmp"),
             self._on_battle_end
         )
-        # 新增：战报页面标识
-        # self._register_image_match_event(
-        #     ImageMatchConfig("yys/abyss_shadows/images/map.bmp"),
-        #     self._on_map
-        # )
-        # 新增：战报退出
-        # self._register_image_match_event(
-        #     ImageMatchConfig("yys/abyss_shadows/images/map_exit.bmp"),
-        #     self._on_map_exit
-        # )
-        # 新增：确认框
-        # self._register_image_match_event(
-        #     ImageMatchConfig("yys/abyss_shadows/images/abyss_confirm.bmp"),
-        #     self._on_confirm
-        # )
         # 新增：等待开始
         self._register_image_match_event(
             ImageMatchConfig("yys/abyss_shadows/images/wait_to_start.bmp"),
@@ -208,26 +282,6 @@ class Main(YYSBaseScript):
 
     def _register_battle_report_events(self):
         """注册战报界面相关事件"""
-        # 神龙暗域标识
-        # self._register_image_match_event(
-        #     ImageMatchConfig("yys/abyss_shadows/images/dragon_area.bmp"),
-        #     self._on_dragon_area
-        # )
-        # # 孔雀暗域标识
-        # self._register_image_match_event(
-        #     ImageMatchConfig("yys/abyss_shadows/images/peacock_area.bmp"),
-        #     self._on_peacock_area
-        # )
-        # # 白藏主暗域标识
-        # self._register_image_match_event(
-        #     ImageMatchConfig("yys/abyss_shadows/images/fox_area.bmp"),
-        #     self._on_fox_area
-        # )
-        # # 黑豹暗域标识
-        # self._register_image_match_event(
-        #     ImageMatchConfig("yys/abyss_shadows/images/leopard_area.bmp"),
-        #     self._on_leopard_area
-        # )
 
     # ==================== 场景事件处理 ====================
 
@@ -441,7 +495,7 @@ class Main(YYSBaseScript):
     def _is_current_tab(self) -> bool:
         """
         OCR 判断是否为当前暗域
-        TODO: 暂留后续优化
+        TODO: 暂不实现
         """
         # 暂不实现
         return True

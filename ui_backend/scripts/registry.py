@@ -59,11 +59,10 @@ class ScriptRegistry:
         return definitions
 
     def _schema_items_for(self, entry: dict[str, object]) -> list[dict[str, Any]]:
-        if self._using_default_entries:
-            return cast(list[dict[str, Any]], entry["config_schema"])
-        return self._schema_from_class(entry) or cast(
-            list[dict[str, Any]], entry["config_schema"]
-        )
+        reflected = self._schema_from_class(entry)
+        if reflected:
+            return reflected
+        return cast(list[dict[str, Any]], entry["config_schema"])
 
     def _schema_from_class(
         self, entry: dict[str, object]
@@ -97,4 +96,5 @@ class ScriptRegistry:
             min_value=cast(int | float | None, item.get("min_value")),
             max_value=cast(int | float | None, item.get("max_value")),
             options=cast(list[dict[str, Any]], item.get("options", [])),
+            hot_reloadable=cast(bool, item.get("hot_reloadable", True)),
         )

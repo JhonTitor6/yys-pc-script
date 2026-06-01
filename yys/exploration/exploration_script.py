@@ -1,13 +1,81 @@
+from __future__ import annotations
+
 import random
 import time
+from typing import Annotated, Any, Optional, TYPE_CHECKING, TypedDict, get_type_hints
 
 from win_util.mouse import bg_left_click, bg_left_click_with_range
-from yys.common.event_script_base import YYSBaseScript, ImageMatchConfig, random_sleep
+from yys.common.event_script_base import YYSBaseScript, ImageMatchConfig, _extract_config_meta, random_sleep
+from yys.common.script_meta import ConfigMeta, ScriptMeta
+
+if TYPE_CHECKING:
+    from tests.common.environment.base import GameEnvironment
+
+
+class ExplorationConfig(TypedDict, total=False):
+    """探索脚本的可配置字段。"""
+    max_battle_count: Annotated[int, ConfigMeta(
+        default=244,
+        min_value=1,
+        max_value=9999,
+        field_type="number",
+        label="最大战斗次数",
+        group="基础",
+        help="脚本自动停止前执行的最大战斗次数（1-9999）",
+        hot_reloadable=True,
+    )]
 
 
 class ExplorationScript(YYSBaseScript):
-    def __init__(self):
-        super().__init__("探索")
+    """探索脚本：循环执行探索副本。"""
+    SCRIPT_META = ScriptMeta(
+        display_name="探索",
+        category="日常",
+        config_schema=ExplorationConfig,
+        default_config={"max_battle_count": 244},
+    )
+
+    @classmethod
+    def get_config_schema(cls) -> list[dict[str, Any]]:
+        """从 SCRIPT_META 反射 config_schema 为 wire format list of dict。"""
+        meta = cls.SCRIPT_META
+        if meta is None or meta.config_schema is None:
+            return []
+        try:
+            hints = get_type_hints(meta.config_schema, include_extras=True)
+        except Exception:
+            hints = {}
+        result: list[dict[str, Any]] = []
+        for field_name, annotated_type in hints.items():
+            config_meta = _extract_config_meta(annotated_type)
+            if config_meta is None:
+                continue
+            result.append({
+                "key": field_name,
+                "label": config_meta.label or field_name,
+                "field_type": config_meta.field_type,
+                "default": config_meta.default,
+                "min_value": config_meta.min_value,
+                "max_value": config_meta.max_value,
+                "options": list(config_meta.options or []),
+                "hot_reloadable": config_meta.hot_reloadable,
+            })
+        return result
+
+    def __init__(
+        self,
+        script_name: str = "exploration",
+        env: Optional["GameEnvironment"] = None,
+        config: Optional[dict] = None,
+    ) -> None:
+        """初始化探索脚本。
+
+        Args:
+            script_name: 脚本名，默认 "exploration"。
+            env: GameEnvironment 实例，用于 Mock 测试时注入。
+            config: 配置字典（可选）。
+        """
+        super().__init__(script_name, config=config, env=env)
         self.logger.info("初始化探索脚本")
 
         # 没找到怪次数

@@ -57,6 +57,7 @@ class ConfigField:
     min_value: int | float | None = None
     max_value: int | float | None = None
     options: list[dict[str, Any]] = field(default_factory=list)
+    hot_reloadable: bool = True
 
 
 @dataclass(frozen=True)

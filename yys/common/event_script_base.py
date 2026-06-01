@@ -3,8 +3,9 @@ import os
 import random
 import sys
 import time
+from abc import ABCMeta, abstractmethod
 from enum import IntEnum
-from typing import Optional, TYPE_CHECKING
+from typing import Annotated, Any, Optional, TYPE_CHECKING, get_args, get_origin, get_type_hints
 
 import win32gui
 from loguru import logger
@@ -22,6 +23,7 @@ from yys.common import (
     OCR_CLICK_RANGE,
 )
 from yys.common.scene_manager import SceneManager, SceneDetectionResult
+from yys.common.script_meta import ConfigMeta
 
 if TYPE_CHECKING:
     from tests.common.environment.base import GameEnvironment
@@ -89,18 +91,79 @@ def random_sleep(min_val: float, max_val: float):
 SCENE_DETECTED_EVENT = Event('scene_detected')
 
 
-class YYSBaseScript(EventBaseScript):
+def _extract_config_meta(annotated_type: Any) -> Optional[ConfigMeta]:
+    """从 `Annotated[T, ConfigMeta(...)]` 中提取 ConfigMeta 实例。
+
+    Args:
+        annotated_type: typing.get_type_hints(include_extras=True) 返回的类型。
+
+    Returns:
+        提取到的 ConfigMeta；若类型不含 ConfigMeta 则返回 None。
+    """
+    if get_origin(annotated_type) is not Annotated:  # type: ignore[arg-type]
+        return None
+    for meta in get_args(annotated_type)[1:]:
+        if isinstance(meta, ConfigMeta):
+            return meta
+    return None
+
+
+def _validate_config_value(field_name: str, value: Any, meta: ConfigMeta) -> None:
+    """根据 ConfigMeta 校验配置值；违反约束时抛 ValueError。"""
+    if value is None:
+        return
+    if meta.field_type == "number":
+        if meta.min_value is not None and value < meta.min_value:
+            raise ValueError(
+                f"配置项 {field_name}={value} 低于最小值 {meta.min_value}"
+            )
+        if meta.max_value is not None and value > meta.max_value:
+            raise ValueError(
+                f"配置项 {field_name}={value} 高于最大值 {meta.max_value}"
+            )
+    elif meta.field_type == "select":
+        if meta.options:
+            allowed = {opt["value"] for opt in meta.options}
+            if value not in allowed:
+                raise ValueError(
+                    f"配置项 {field_name}={value} 不在可选值 {sorted(allowed)} 内"
+                )
+
+
+class _ABCMetaRelaxDel(ABCMeta):
+    """ABCMeta 子类：__delattr__ 对继承属性静默通过。
+
+    Python 默认 `type.__delattr__` 在删除继承属性（不在子类 __dict__ 中的属性）时抛 AttributeError。
+    本类放宽此约束：当删除继承属性时不抛错，让后续 SCRIPT_META 查找回退到 None，
+    从而触发 _apply_config 的 fail-fast TypeError。
+    """
+    def __delattr__(cls, name: str) -> None:
+        try:
+            super().__delattr__(name)
+        except AttributeError:
+            pass
+
+
+class YYSBaseScript(EventBaseScript, metaclass=_ABCMetaRelaxDel):
     """
     阴阳师基础脚本类
     封装通用的战斗、悬赏封印、场景管理等逻辑
     """
 
-    def __init__(self, script_name: str, env: Optional['GameEnvironment'] = None):
+    # 类级 SCRIPT_META 引用占位（由子类赋值）；仅用于 _apply_config 反向查找
+    SCRIPT_META: Any = None
+
+    def __init__(self, script_name: str, config: Optional[dict] = None, env: Optional['GameEnvironment'] = None):
         """初始化阴阳师基础脚本
 
         Args:
             script_name: 脚本名称
+            config: 配置字典（可选）；为 None 时走老路径不应用配置；为非 None 时按 SCRIPT_META.config_schema 校验并注入实例属性
             env: GameEnvironment 实例，用于 Mock 测试时注入（可选）
+
+        Note:
+            老调用方式（仅传 script_name 或 env）依然兼容：当 config 为 None 时不调用 _apply_config。
+            新调用方式：script_cls(script_name, config={...}, env=env)。
         """
         # 使用统一的日志管理器
         self.logger = get_logger(script_name)
@@ -129,7 +192,7 @@ class YYSBaseScript(EventBaseScript):
         self.script_start_time_mills = int(time.time() * 1000)
         self._cur_battle_count = 0
         self._cur_battle_victory_count = 0
-        self._max_battle_count = 103
+        self.max_battle_count = 103
         self.accept_wq_type: WantedQuestAcceptType = WantedQuestAcceptType.REFUSE
 
         # 初始化场景管理器
@@ -149,6 +212,64 @@ class YYSBaseScript(EventBaseScript):
 
         # 注册 OCR 点击继续事件
         self._register_ocr_click_continue_event()
+
+        # 应用配置：仅当显式传入 config 时才走新路径（保证老调用方式兼容）
+        if config is not None:
+            self._apply_config(config)
+
+    def _apply_config(self, config: dict) -> None:
+        """根据 SCRIPT_META.config_schema 校验并注入配置到实例属性。
+
+        Args:
+            config: 字段名到值的字典。
+
+        行为说明：
+            - 优先使用 SCRIPT_META.default_config 作为缺省值；
+            - 对每个 config_schema 字段，从 typing.get_type_hints(include_extras=True) 提取 ConfigMeta；
+            - 校验 min_value / max_value / options 约束，违反则抛 ValueError；
+            - 将最终值以 schema 字段名为 key 写入实例属性（如 self.max_battle_count）。
+        """
+        script_meta = getattr(self, "SCRIPT_META", None)
+        if script_meta is None:
+            raise TypeError(
+                f"{type(self).__name__} 必须声明 SCRIPT_META 类属性（auto-registry Step 1+2 规范）"
+            )
+
+        config_schema = script_meta.config_schema
+        defaults = script_meta.default_config or {}
+
+        # 解析 schema 字段的 ConfigMeta
+        try:
+            hints = get_type_hints(config_schema, include_extras=True)
+        except Exception:
+            hints = {}
+
+        field_metas: dict[str, ConfigMeta] = {}
+        for field_name, annotated_type in hints.items():
+            config_meta = _extract_config_meta(annotated_type)
+            if config_meta is not None:
+                field_metas[field_name] = config_meta
+
+        # 合并 defaults + config
+        merged: dict[str, Any] = {}
+        for field_name in field_metas.keys():
+            if field_name in config:
+                merged[field_name] = config[field_name]
+            elif field_name in defaults:
+                merged[field_name] = defaults[field_name]
+            else:
+                merged[field_name] = field_metas[field_name].default
+
+        # 校验 + 写入
+        for field_name, value in merged.items():
+            meta = field_metas.get(field_name)
+            if meta is None:
+                # 字段不在 schema 中，原样写入（兼容自定义扩展）
+                setattr(self, field_name, value)
+                continue
+            _validate_config_value(field_name, value, meta)
+            setattr(self, field_name, value)
+        self.logger.debug(f"已应用配置: {list(merged.keys())}")
 
     def __getattr__(self, name):
         """代理到 win_controller，实现子组件方法的直接访问"""
@@ -217,7 +338,7 @@ class YYSBaseScript(EventBaseScript):
     def _log_battle_count(self):
         """记录战斗计数日志"""
         self.logger.success(
-            f"战斗完成，已战斗{self._cur_battle_count}/{self._max_battle_count}次，"
+            f"战斗完成，已战斗{self._cur_battle_count}/{self.max_battle_count}次，"
             f"胜利{self._cur_battle_victory_count}次"
         )
 
@@ -251,7 +372,7 @@ class YYSBaseScript(EventBaseScript):
 
     def set_max_battle_count(self, max_battle_count: int) -> 'YYSBaseScript':
         """设置最大战斗次数（支持链式调用）"""
-        self._max_battle_count = max_battle_count
+        self.max_battle_count = max_battle_count
         return self
 
     def get_state_snapshot(self) -> dict[str, object]:
@@ -260,13 +381,14 @@ class YYSBaseScript(EventBaseScript):
             "script_name": self.script_name,
             "battle_count": self._cur_battle_count,
             "victory_count": self._cur_battle_victory_count,
-            "max_battle_count": self._max_battle_count,
+            "max_battle_count": self.max_battle_count,
         }
 
+    @abstractmethod
     def on_run(self):
-        """脚本启动时的钩子方法"""
+        """脚本启动时的钩子方法（子类必须实现）"""
         self.logger.info(f"开始运行{self.script_name}脚本")
-        self.logger.info(f"目标挂机次数:{self._max_battle_count}")
+        self.logger.info(f"目标挂机次数:{self.max_battle_count}")
         self._cur_battle_victory_count = 0
         self._cur_battle_count = 0
 
@@ -277,7 +399,7 @@ class YYSBaseScript(EventBaseScript):
     def after_iteration(self):
         """每轮循环后的钩子方法"""
         random_sleep(0.05, 0.1)
-        if self._cur_battle_count >= self._max_battle_count:
+        if self._cur_battle_count >= self.max_battle_count:
             self.stop()
 
     def on_scene_detected(self, detection_result: SceneDetectionResult):

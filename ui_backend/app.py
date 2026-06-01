@@ -77,12 +77,24 @@ def create_app(db_path: Path | str | None = None, api_token: str | None = None) 
         ]
 
     @app.patch("/api/scripts/{script_id}/config")
-    def patch_script_config(script_id: str, payload: dict[str, Any]) -> dict[str, str]:
-        """保存脚本最近一次配置（用户持久化偏好）。"""
+    def patch_script_config(script_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """保存脚本最近一次配置（用户持久化偏好）。
+
+        默默落盘 + 当前 run 忽略（plan §4 B2 决策）：
+        - status: ok / invalid
+        - saved: 是否成功落盘
+        - applied: 是否已注入当前 run（当前为 False，构造注入不支持运行时改）
+        - note: GUI 文案提示
+        """
         if not isinstance(payload, dict):
-            return {"status": "invalid"}
+            return {"status": "invalid", "applied": False}
         app.state.storage.script_user_configs.upsert(script_id, dict(payload))
-        return {"status": "ok"}
+        return {
+            "status": "ok",
+            "saved": True,
+            "applied": False,
+            "note": "配置已保存，下次启动生效",
+        }
 
     @app.get("/api/runs/current")
     def get_current_run() -> dict[str, Any] | None:

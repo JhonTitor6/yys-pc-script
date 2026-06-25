@@ -51,6 +51,8 @@ class RealmRaidScript(YYSBaseScript):
         config_schema=RealmRaidConfig,
         default_config={"max_battle_count": 30, "quit_3_times_config": True},
     )
+    # 入口场景：结界突破界面
+    entry_scene: Optional[str] = "barrier_breakthrough"
 
     @classmethod
     def get_config_schema(cls) -> list[dict[str, Any]]:

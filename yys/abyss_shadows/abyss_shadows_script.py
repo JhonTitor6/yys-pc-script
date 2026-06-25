@@ -97,6 +97,8 @@ class Main(YYSBaseScript):
             "elite_count": 6,
         },
     )
+    # 入口场景：狭间暗域入口界面
+    entry_scene: Optional[str] = "abyss_shadows_entry"
 
     @classmethod
     def get_config_schema(cls) -> list[dict[str, Any]]:

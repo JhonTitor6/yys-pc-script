@@ -57,6 +57,8 @@ class SoulRaidScript(YYSBaseScript):
             "loop_interval": 300,
         },
     )
+    # 入口场景：御魂副本选择界面
+    entry_scene: Optional[str] = "soul_selection"
 
     @classmethod
     def get_config_schema(cls) -> list[dict[str, Any]]:

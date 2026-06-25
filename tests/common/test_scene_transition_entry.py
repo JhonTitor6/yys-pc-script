@@ -65,3 +65,30 @@ def test_entry_scene_goto_fails_does_not_enter_main_loop() -> None:
 
     script.scene_manager.goto_scene.assert_called_once_with("barrier_breakthrough")
     script.on_run.assert_not_called()
+
+
+def test_business_scripts_declare_entry_scene() -> None:
+    """4 个核心脚本必须声明非空、非 None 的 entry_scene。
+
+    防止：基类默认值被反向改、entry_scene 字面量被误改。
+    """
+    from yys.exploration.exploration_script import ExplorationScript
+    from yys.realm_raid.realm_raid_script import RealmRaidScript
+    from yys.abyss_shadows.abyss_shadows_script import Main
+    from yys.soul_raid.soul_raid_script import SoulRaidScript
+
+    expected_map = {
+        ExplorationScript: "exploration_chapter_28",
+        RealmRaidScript: "barrier_breakthrough",
+        Main: "abyss_shadows_entry",
+        SoulRaidScript: "soul_selection",
+    }
+    for cls, expected in expected_map.items():
+        # 字面量匹配
+        assert cls.entry_scene == expected, (
+            f"{cls.__name__}.entry_scene 期望 {expected!r}，实际 {cls.entry_scene!r}"
+        )
+        # 非空（防止空字符串/空集合等 falsy 值）
+        assert cls.entry_scene, f"{cls.__name__}.entry_scene 为空"
+        # 非 None（基类默认 None，覆盖后必须非 None）
+        assert cls.entry_scene is not None, f"{cls.__name__}.entry_scene 为 None"

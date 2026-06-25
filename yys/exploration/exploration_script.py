@@ -34,6 +34,8 @@ class ExplorationScript(YYSBaseScript):
         config_schema=ExplorationConfig,
         default_config={"max_battle_count": 244},
     )
+    # 入口场景：探索地图-28 章已选中状态
+    entry_scene: Optional[str] = "exploration_chapter_28"
 
     @classmethod
     def get_config_schema(cls) -> list[dict[str, Any]]:

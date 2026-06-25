@@ -3,7 +3,13 @@ from __future__ import annotations
 import time
 from typing import Annotated, Any, Optional, TYPE_CHECKING, TypedDict, get_type_hints
 
+# 仅在本脚本作为 __main__ 进程运行时生效：在父类 from-import 之前修改包级属性，
+# 让 YYSBaseScript 的 BATTLE_END_CLICK_SLEEP 绑定为 2。其他独立脚本进程不受影响。
+import yys.common as _yys_common
 from win_util.image import ImageMatchConfig
+
+_yys_common.BATTLE_END_CLICK_SLEEP = 2
+
 from yys.common.event_script_base import YYSBaseScript, _extract_config_meta, random_sleep
 from yys.common.script_meta import ConfigMeta, ScriptMeta
 
@@ -18,7 +24,7 @@ if TYPE_CHECKING:
 class RealmRaidConfig(TypedDict, total=False):
     """结界突破脚本的可配置字段。"""
     max_battle_count: Annotated[int, ConfigMeta(
-        default=9,
+        default=30,
         min_value=1,
         max_value=99,
         field_type="number",
@@ -43,7 +49,7 @@ class RealmRaidScript(YYSBaseScript):
         display_name="结界突破",
         category="日常",
         config_schema=RealmRaidConfig,
-        default_config={"max_battle_count": 9, "quit_3_times_config": True},
+        default_config={"max_battle_count": 30, "quit_3_times_config": True},
     )
 
     @classmethod
@@ -88,11 +94,15 @@ class RealmRaidScript(YYSBaseScript):
         """
         super().__init__(script_name, config=config, env=env)
 
+        # 初始化为 lazy 创建的属性——_on_attack 会读取此属性判断"是否打第一个结界"，
+        # 若 _on_attackable_barrier 还没触发过则属性不存在，会抛 AttributeError。
+        self.attackable_barrier_list: list = []
+
         # 注册结界突破特定的图像匹配事件
-        self._register_image_match_event(ImageMatchConfig("yys/realm_raid/images/realm_raid_not_enough.bmp", similarity=0.9),
+        self._register_image_match_event(ImageMatchConfig("yys/realm_raid/images/realm_raid_not_enough.bmp", similarity=0.85),
                                          self._on_ticket_not_enough)
         # 注册挑战相关的事件
-        self._register_image_match_event(ImageMatchConfig("yys/realm_raid/images/realm_raid_jingong.bmp"), self._on_attack)
+        self._register_image_match_event(ImageMatchConfig("yys/realm_raid/images/realm_raid_jingong.bmp"), self._on_attack) 
         self._register_image_match_event(ImageMatchConfig("yys/realm_raid/images/realm_raid_user_realm.bmp"),
                                          self._on_attackable_barrier)
         # 检测是不是没有可以挑战的了

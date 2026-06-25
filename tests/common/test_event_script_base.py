@@ -61,8 +61,25 @@ def test_soul_raid_script_instantiate_with_mock_env(mock_env) -> None:
     """已实现 on_run 与 SCRIPT_META 的子类可用 Mock 环境实例化。"""
     script = SoulRaidScript(env=mock_env)
     assert script.script_name == "soul_raid"
-    # 默认值未传 config 时不应用，应保持 YYSBaseScript.__init__ 中的初值 103
+    # 未传 config 但 SoulRaidScript 有 SCRIPT_META，会自动 _apply_config({}) 兜底注入；
+    # SoulRaidConfig.max_battle_count 默认 103（与父类硬编码初值巧合一致）
     assert script.max_battle_count == 103
+
+
+# ==================== 测试 2b: 回归保护 - 老路径下 schema 字段也注入默认值 ====================
+
+def test_legacy_invoke_applies_schema_defaults(mock_env) -> None:
+    """老路径（config=None）但子类有 SCRIPT_META 时，schema 字段也应有默认值。
+
+    回归保护：commit 07a8768 重构后，RealmRaidScript 直接 RealmRaidScript().run() 时
+    quit_3_times_config 缺失导致 AttributeError。修复后应自动从 default_config 注入。
+    """
+    from yys.realm_raid.realm_raid_script import RealmRaidScript
+    script = RealmRaidScript(env=mock_env)
+    # quit_3_times_config 来自 RealmRaidConfig.default_config
+    assert script.quit_3_times_config is True
+    # max_battle_count 来自 RealmRaidConfig.default_config（覆盖父类硬编码 103）
+    assert script.max_battle_count == 30
 
 
 # ==================== 测试 3: _apply_config 空 config（仅 default 生效） ====================

@@ -213,9 +213,16 @@ class YYSBaseScript(EventBaseScript, metaclass=_ABCMetaRelaxDel):
         # 注册 OCR 点击继续事件
         self._register_ocr_click_continue_event()
 
-        # 应用配置：仅当显式传入 config 时才走新路径（保证老调用方式兼容）
+        # 应用配置：
+        # - 显式传 config 时按传入值合并默认；
+        # - 老调用方式（config is None）但子类声明了 SCRIPT_META 时，也基于 default_config 兜底注入，
+        #   避免新增的 schema 字段在老路径下变成 AttributeError；
+        # - 既无 config 也无 SCRIPT_META：保持父类硬编码初值（兼容 Kuzunoha 等老脚本）。
+        script_meta = getattr(self, "SCRIPT_META", None)
         if config is not None:
             self._apply_config(config)
+        elif script_meta is not None:
+            self._apply_config({})
 
     def _apply_config(self, config: dict) -> None:
         """根据 SCRIPT_META.config_schema 校验并注入配置到实例属性。

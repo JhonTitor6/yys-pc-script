@@ -107,8 +107,10 @@ class DouJi(YYSBaseScript):
     def _on_change_to_auto_battle(self, point):
         self.bg_left_click(point)
         random_sleep(3, 4)
+        # 标记左三
+        self.bg_left_click((590, 301), x_range=5, y_range=5)
         # 标记左四
-        self.bg_left_click((746, 361), x_range=5, y_range=5)
+        # self.bg_left_click((746, 361), x_range=5, y_range=5)
 
     def on_run(self):
         """脚本启动钩子（实现抽象基类要求）"""

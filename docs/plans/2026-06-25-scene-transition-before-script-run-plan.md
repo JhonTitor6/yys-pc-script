@@ -52,16 +52,23 @@ from yys.common.scene_manager import SceneManager
 
 
 class _ProbeScript(YYSBaseScript):
-    """探针脚本：entry_scene 和 on_run 由测试用例设置；on_run 空实现避免父类 abstract。"""
+    """探针脚本：on_run 空实现避免父类 abstract；不声明 SCRIPT_META 走老路径。"""
+
+    SCRIPT_META = None  # 显式置 None：避免 _apply_config 触发 TypeError
 
     def on_run(self) -> None:  # type: ignore[override]
         pass
 
 
 def _make_script(env: MockEnvironment, entry_scene: str = "") -> _ProbeScript:
-    """构造一个绑定到 MockEnvironment 的 _ProbeScript 实例。"""
-    # 关闭父类构造中的 find_window：env 存在时走 mock 路径
-    return _ProbeScript(script_name="probe", env=env, config={"entry_scene": entry_scene})
+    """构造一个绑定到 MockEnvironment 的 _ProbeScript 实例。
+
+    注意：不传 config，避免 _apply_config 因缺 SCRIPT_META 抛 TypeError。
+    entry_scene 通过实例属性直接设置（不走 _apply_config 路径）。
+    """
+    script = _ProbeScript(script_name="probe", env=env)
+    script.entry_scene = entry_scene
+    return script
 
 
 def test_entry_scene_empty_skips_goto_scene() -> None:
@@ -90,14 +97,12 @@ def test_entry_scene_set_calls_goto_scene_with_correct_arg() -> None:
 
 
 def test_entry_scene_goto_fails_does_not_enter_main_loop() -> None:
-    """goto_scene 返回 False 时，run() 不调用父类 on_run()，主循环不启动。"""
+    """goto_scene 返回 False 时，run() 不调用 on_run()，主循环不启动。"""
     log = ActionLog()
     env = MockEnvironment(action_log=log)
     script = _make_script(env, entry_scene="barrier_breakthrough")
     script.scene_manager = MagicMock(spec=SceneManager)
     script.scene_manager.goto_scene.return_value = False
-    # 监听父类 run() 的副作用：on_run 是 abstract 但子类实现为 noop；
-    # 验证方式是断言 stop_threading_event 被设置、且不进入 while 循环
     script.on_run = MagicMock()  # type: ignore[method-assign]
 
     script.run()
@@ -113,11 +118,7 @@ Run:
 D:/ProgramData/anaconda3/envs/win_macro/python.exe -m pytest tests/common/test_scene_transition_entry.py -v
 ```
 
-Expected: 3 个测试**全部失败**（因为 YYSBaseScript 还没有 entry_scene 类属性，且 run() 没有跳转逻辑）。
-
-错误应为 `AttributeError: type object 'YYSBaseScript' has no attribute 'entry_scene'`（实例化时 `__init__` 不会失败，因为 entry_scene 缺省即空，但 Step 1 的脚本走 config 路径会触发 `_apply_config`，传入不存在的字段会被 setattr 到实例，**不会**失败——预期是前两个测试都失败的原因是 `script.scene_manager = MagicMock()` 注入时和后续调用期望不符，导致 on_run 不会跑但 goto_scene 也不会跑）。
-
-> **注意**：如果测试报 `TypeError: Can't instantiate abstract class _ProbeScript with abstract method on_run`，说明测试用例需要确保 `_ProbeScript` 重写 `on_run`（已写）。若仍报，检查 `_ProbeScript.on_run` 是否带 `pass` 主体。
+Expected: 至少 2 个测试失败（`scene_manager.goto_scene` 行为尚未实现）。`_ProbeScript.SCRIPT_META = None` 显式声明，绕开 `_apply_config` 的 TypeError。
 
 - [ ] **Step 3: 修改 YYSBaseScript，加 entry_scene 类属性 + 覆盖 run()**
 
@@ -252,16 +253,9 @@ Expected: **全部通过**（这些脚本的现有测试不应被破坏，因为
 2. 测试用 MockEnvironment 注入，scene_manager 不会被实际调用
 3. 测试用例不调用 run()，所以 run() 覆盖不会触发）
 
-- [ ] **Step 6: 跑新增的单元测试，确认 entry_scene 属性生效**
+- [ ] **Step 6: 加 smoke 测试 + 跑全部 entry_scene 单元测试**
 
-Run:
-```bash
-D:/ProgramData/anaconda3/envs/win_macro/python.exe -m pytest tests/common/test_scene_transition_entry.py -v
-```
-
-Expected: 3 个测试**全部通过**。
-
-> **可选增强**：可以在 `tests/common/test_scene_transition_entry.py` 末尾加一个"smoke 测试"，验证 4 个新声明的脚本类都有非空 entry_scene：
+在 `tests/common/test_scene_transition_entry.py` 末尾添加 smoke 测试，防止 4 个业务脚本的 `entry_scene` 声明被意外删除：
 
 ```python
 def test_business_scripts_declare_entry_scene() -> None:
@@ -277,7 +271,12 @@ def test_business_scripts_declare_entry_scene() -> None:
     assert SoulRaidScript.entry_scene == "soul_selection"
 ```
 
-把这个测试加到 `tests/common/test_scene_transition_entry.py` 末尾，然后重跑 Step 6 确认 4 个测试全部通过。
+Run:
+```bash
+D:/ProgramData/anaconda3/envs/win_macro/python.exe -m pytest tests/common/test_scene_transition_entry.py -v
+```
+
+Expected: 4 个测试**全部通过**（3 个原行为测试 + 1 个 smoke 测试）。
 
 - [ ] **Step 7: 提交**
 
@@ -318,7 +317,17 @@ EOF
 
 读 `yys/abyss_shadows/config/scene_transitions_abyss_shadows.json` 了解场景重放配置文件结构。
 
-- [ ] **Step 2: 创建场景重放配置文件**
+- [ ] **Step 2: 创建场景重放目录和配置文件**
+
+先创建 fixture 目录（fixture 图片在 Task 4 采集后才填充）：
+
+```bash
+mkdir -p "yys/exploration/images/test/scenes/"
+```
+
+> Task 3 集成测试在 Task 4 完成前会 **skip**（依赖 fixture），不会阻塞 Task 1/2 合并。
+
+创建 `yys/exploration/config/scene_transitions_exploration.json`：
 
 创建 `yys/exploration/config/scene_transitions_exploration.json`：
 
@@ -382,30 +391,37 @@ def _scene_assets_available() -> bool:
 )
 def test_exploration_full_flow_via_scene_replay() -> None:
     """验证：home → 探索地图 → 28 章已选状态 → 战斗 → 停止 完整流程。"""
-    from tests.common.environment.scene_replay_environment import SceneReplayEnvironment
+    # 参考 test_abyss_shadows_scene_replay.py 头部，预先 mock Windows 相关模块
+    # 避免 import 时触发 win32gui 等
+    with patch("win32gui.FindWindow", return_value=12345):
+        from tests.common.environment.scene_replay_environment import SceneReplayEnvironment
 
-    env = SceneReplayEnvironment(
-        scene_config_path=SCENE_CONFIG,
-        scene_dir=SCENE_DIR,
-    )
+        env = SceneReplayEnvironment(
+            scene_config_path=SCENE_CONFIG,
+            scene_dir=SCENE_DIR,
+        )
+        env.scene_manager.register_scenes_from_directory(
+            scene_dir="yys/common/images/scene/",
+            control_dir="yys/common/images/scene_control/",
+        )
 
-    # 注册场景图（参考 abyss_shadows 集成测试的实现）
-    env.scene_manager.register_scenes_from_directory(
-        scene_dir="yys/common/images/scene/",
-        control_dir="yys/common/images/scene_control/",
-    )
+        script = ExplorationScript(
+            script_name="exploration_replay",
+            env=env,
+            config={"max_battle_count": 1},
+        )
 
-    script = ExplorationScript(
-        script_name="exploration_replay",
-        env=env,
-        config={"max_battle_count": 1},
-    )
+        # 验证 entry_scene 声明
+        assert script.entry_scene == "exploration_chapter_28"
 
-    # 模拟 run() 行为：先调 entry_scene 跳转，然后跑业务
-    # 由于 SceneReplayEnvironment 不直接驱动 run()，手动调用
-    assert script.entry_scene == "exploration_chapter_28"
-    assert script.scene_manager.is_reachable("home", "exploration_chapter_28")
+        # 验证 BFS 路径可达
+        assert script.scene_manager.is_reachable("home", "exploration_chapter_28")
+
+        # 验证场景图已注册
+        assert "exploration_chapter_28" in script.scene_manager.scene_images
 ```
+
+> **注意**：`with patch("win32gui.FindWindow", ...)` 必须在 import 模块**之前**生效（参考 `test_abyss_shadows_scene_replay.py:24-31` 的 mock 模式）。如果 `import` 已经触发，测试会因找不到游戏窗口而失败——确保 patch 在 import 行之前。
 
 - [ ] **Step 4: 跑测试**
 
@@ -509,11 +525,16 @@ D:/ProgramData/anaconda3/envs/win_macro/python.exe -m pytest tests/ yys/ -v
 
 Expected: **全部通过**。如果存在预先失败（`test_config_persistence`、`test_ocr`、`test_yuhun`，见 `MEMORY.md` 记录），它们不属于本次改动范围，跳过即可。
 
-- [ ] **Step 3: 文档同步更新**
+- [ ] **Step 3: 文档同步更新（持久化到 .claude 记忆，不入 git）**
 
-更新 `MEMORY.md`（`C:\Users\56440\.claude\projects\F--Users-56440-PythonProjects-yys-pc-script\memory\MEMORY.md`），在「## 场景跳转前置依赖」新增章节：
+MEMORY.md 路径：`C:\Users\56440\.claude\projects\F--Users-56440-PythonProjects-yys-pc-script\memory\MEMORY.md`
+
+**该文件不在 git 仓库中**，使用 Write 工具直接写，不需 `git add` / `git commit`。
+
+在 MEMORY.md 末尾追加：
 
 ```markdown
+
 ## 场景跳转前置依赖（已完成）
 
 ### 改动概述
@@ -533,14 +554,9 @@ Expected: **全部通过**。如果存在预先失败（`test_config_persistence
 - `docs/plans/2026-06-25-scene-transition-before-script-run-plan.md`
 ```
 
-- [ ] **Step 4: 提交文档更新**
+- [ ] **Step 4: 不需要 git 提交（MEMORY.md 不在仓库）**
 
-```bash
-git add MEMORY.md
-git commit -m "docs(memory): 记录场景跳转前置依赖改动"
-```
-
-> **注意**：MEMORY.md 路径在 `C:\Users\56440\.claude\projects\F--Users-56440-PythonProjects-yys-pc-script\memory\MEMORY.md`，**不在** git 仓库中。如果要持久化记忆，使用 Write 工具直接写即可，不需 git commit。
+MEMORY.md 的更新在 `C:\Users\56440\.claude\projects\...` 路径下，自动持久化。
 
 ---
 

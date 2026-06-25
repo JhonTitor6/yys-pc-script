@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import time
 from typing import TYPE_CHECKING, Optional, Tuple
 
@@ -39,7 +41,21 @@ class WinController:
         self.image_finder: ImageFinder = ImageFinder(env=env, hwnd=hwnd)
         self.keyboard: KeyboardController = KeyboardController(hwnd)
         self.mouse: MouseController = MouseController(env=env, hwnd=hwnd)
-        self.ocr: CommonOcr = CommonOcr()
+        self._ocr: CommonOcr | None = None
+
+    @property
+    def ocr(self) -> CommonOcr:
+        """OCR 入口（只读 lazy property，无 setter）。
+
+        首次访问 `ocr` 时才实例化 `CommonOcr`；这会延迟 backend 初始化（包括
+        torch/onnxruntime 的按需导入）到真正需要 OCR 的时刻。
+
+        测试注入请用 `CommonOcr.set_reader(...)`，不要直接对 controller 实例赋值
+        （`@property` 无 setter，赋值会 AttributeError）。
+        """
+        if self._ocr is None:
+            self._ocr = CommonOcr()
+        return self._ocr
 
     # 前缀 -> 组件映射（按优先级排序）
     _PREFIX_MAP = [

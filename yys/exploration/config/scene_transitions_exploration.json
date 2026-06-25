@@ -1,0 +1,20 @@
+{
+  "_comment": "探索脚本场景重放配置：从 home 出发，模拟进入探索-28章流程",
+  "scenes": {
+    "home": ["yys/common/images/scene/home.bmp"],
+    "exploration": ["yys/common/images/scene/exploration.bmp"],
+    "exploration_chapter_28": ["yys/common/images/scene/exploration_chapter_28.bmp"]
+  },
+  "transitions": [
+    {
+      "from": "home",
+      "to": "exploration",
+      "button": "yys/common/images/scene_control/home_to_exploration.bmp"
+    },
+    {
+      "from": "exploration",
+      "to": "exploration_chapter_28",
+      "button": "yys/common/images/scene_control/exploration_to_chapter_28.bmp"
+    }
+  ]
+}

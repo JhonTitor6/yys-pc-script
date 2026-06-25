@@ -1,10 +1,10 @@
-aircv==1.4.6
 loguru==0.7.3
 mss==10.0.0
 numpy==1.26.4
 Pillow==11.1.0
 pywin32==308
-easyocr~=1.7.2
+rapidocr-onnxruntime>=1.3,<2.0
+onnxruntime>=1.15,<2.0
 fastapi>=0.115.0,<1.0.0
 httpx>=0.27.0,<1.0.0
 uvicorn[standard]>=0.30.0,<1.0.0

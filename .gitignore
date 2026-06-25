@@ -216,3 +216,11 @@ __marimo__/
 
 # 本地 SQLite 数据库（如工作台运行时生成的 ui_workbench.db）
 config/*.db
+
+# 预下载的 OCR 模型（每个 backend 单独目录；spec/build_release 不入仓）
+/assets/ocr_models_rapid/
+/assets/ocr_models_easy/
+/assets/ocr_models/
+
+# 显式豁免项目根的 PyInstaller spec 文件（被上面 *.spec 误伤）
+!/build_backend.spec

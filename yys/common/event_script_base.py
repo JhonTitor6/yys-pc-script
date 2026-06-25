@@ -153,6 +153,11 @@ class YYSBaseScript(EventBaseScript, metaclass=_ABCMetaRelaxDel):
     # 类级 SCRIPT_META 引用占位（由子类赋值）；仅用于 _apply_config 反向查找
     SCRIPT_META: Any = None
 
+    # 入口场景：脚本启动时必须先到达的场景名。
+    # 子类覆盖此属性声明自己需要在哪个场景启动。
+    # 为空字符串或 None 时跳过入口跳转（兼容 Kuzunoha 等老脚本）。
+    entry_scene: Optional[str] = None
+
     def __init__(self, script_name: str, config: Optional[dict] = None, env: Optional['GameEnvironment'] = None):
         """初始化阴阳师基础脚本
 
@@ -390,6 +395,21 @@ class YYSBaseScript(EventBaseScript, metaclass=_ABCMetaRelaxDel):
             "victory_count": self._cur_battle_victory_count,
             "max_battle_count": self.max_battle_count,
         }
+
+    def run(self) -> None:
+        """主循环：先做入口场景跳转，再进入父类的主循环逻辑。
+
+        Returns:
+            无返回值。跳转失败时直接 return，**不**进入主循环，
+            RunManager 会检测到脚本未进入 RUNNING 状态而标记 ERROR。
+        """
+        if self.entry_scene:
+            self.logger.info(f"执行入口场景跳转: {self.entry_scene}")
+            if not self.scene_manager.goto_scene(self.entry_scene):
+                self.logger.error(f"入口场景跳转失败，停止脚本: {self.entry_scene}")
+                self._stop_threading_event.clear()  # 防御性清理，允许重新 run
+                return
+        super().run()
 
     @abstractmethod
     def on_run(self):

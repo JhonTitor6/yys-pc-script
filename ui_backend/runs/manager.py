@@ -154,6 +154,8 @@ class RunManager:
 
     def _run_script(self, run_id: int, script_id: str, script: Any) -> None:
         sink_id = self._install_loguru_sink(run_id)
+        stop_event = threading.Event()
+        snapshot_thread = self._start_snapshot_pusher(run_id, script_id, script, stop_event)
         try:
             script.run()
             state = self._snapshot(script)
@@ -175,8 +177,56 @@ class RunManager:
             if self._mark_error_if_not_stopped(run_id, traceback_text):
                 self._publish_status(run_id, RunStatus.ERROR, error_message=traceback_text)
         finally:
+            stop_event.set()
+            if snapshot_thread is not None:
+                snapshot_thread.join(timeout=2.0)
             self._remove_loguru_sink(sink_id)
             self._clear_active(run_id)
+
+    def _start_snapshot_pusher(
+        self,
+        run_id: int,
+        script_id: str,
+        script: Any,
+        stop_event: threading.Event,
+        interval: float = 1.0,
+    ) -> threading.Thread | None:
+        """启动后台线程，周期性推送 state_snapshot，使 UI 可观察战斗计数等实时进度。"""
+        if not callable(getattr(script, "get_state_snapshot", None)):
+            return None
+        # 用列表保存 [state]，避免在闭包内重复调用 _snapshot
+        holder: list[dict[str, Any]] = [{}]
+
+        def _pusher() -> None:
+            try:
+                while not stop_event.wait(interval):
+                    try:
+                        holder[0] = self._snapshot(script) or {}
+                    except Exception:
+                        # 业务脚本在某些时机短暂异常时不应让 pusher 退出
+                        continue
+                    state = holder[0]
+                    if not state:
+                        continue
+                    try:
+                        self._publish(
+                            {
+                                "type": "state_snapshot",
+                                "run_id": run_id,
+                                "script_id": script_id,
+                                "state": state,
+                            }
+                        )
+                    except Exception:
+                        # 推送失败不应让 pusher 退出，下一轮再试
+                        continue
+            except Exception:
+                # 守护线程内任何未预期异常吞掉
+                return
+
+        thread = threading.Thread(target=_pusher, daemon=True)
+        thread.start()
+        return thread
 
     def _install_loguru_sink(self, run_id: int) -> int:
         """安装一个 loguru sink，把业务脚本的日志桥接到 storage 与 event_hub。"""

@@ -43,7 +43,9 @@ class LoggerManager:
             return
 
         self.script_name = script_name
-        self.log_dir = Path("../logs") / script_name
+        # 日志落到 exe 同目录下的 yys/logs/<script_name>/，
+        # 与 .gitignore 中 /yys/logs/ 保持一致，dev / pack 行为统一。
+        self.log_dir = Path("yys/logs") / script_name
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
         # 创建基础 logger，绑定 script_name

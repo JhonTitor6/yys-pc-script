@@ -1,3 +1,4 @@
+import sys
 import time
 from ctypes import windll
 from dataclasses import dataclass
@@ -19,7 +20,12 @@ if TYPE_CHECKING:
 
 debug_img_base_dir = Path("yys/images/debug")
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# PyInstaller 打包后 __file__ 指向 _MEIPASS 内的归档路径，
+# 需使用 _MEIPASS 重新计算项目根目录。
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    PROJECT_ROOT = Path(sys._MEIPASS)
+else:
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 def to_project_path(path: str) -> str:
     p = Path(path)

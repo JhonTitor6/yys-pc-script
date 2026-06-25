@@ -1,6 +1,7 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 const http = require('http');
 const net = require('net');
 const crypto = require('crypto');
@@ -13,9 +14,86 @@ let pythonProcess = null;
 let tray = null;
 let isQuitting = false;
 
+const DEFAULT_BOUNDS = { width: 900, height: 650 };
+const MIN_WIDTH = 800;
+const MIN_HEIGHT = 600;
+
+// 把窗口大小持久化到 userData/window-state.json；启动时恢复
+function getWindowStatePath() {
+  return path.join(app.getPath('userData'), 'window-state.json');
+}
+
+function loadWindowBounds() {
+  try {
+    const raw = fs.readFileSync(getWindowStatePath(), 'utf8');
+    const parsed = JSON.parse(raw);
+    const width = Number(parsed.width);
+    const height = Number(parsed.height);
+    if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
+    if (width < MIN_WIDTH || height < MIN_HEIGHT) return null;
+    // 仅当记录的屏幕位置仍可见时，才使用上次的 x/y
+    let x = Number(parsed.x);
+    let y = Number(parsed.y);
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      const displays = screen.getAllDisplays();
+      const visible = displays.some((d) => {
+        const b = d.bounds;
+        return x >= b.x && y >= b.y && x < b.x + b.width && y < b.y + b.height;
+      });
+      if (!visible) {
+        x = undefined;
+        y = undefined;
+      }
+    } else {
+      x = undefined;
+      y = undefined;
+    }
+    return { width, height, x, y };
+  } catch (err) {
+    return null;
+  }
+}
+
+function saveWindowBounds(win) {
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized() || win.isMaximized() || win.isFullScreen()) return;
+  const bounds = win.getNormalBounds();
+  try {
+    fs.mkdirSync(path.dirname(getWindowStatePath()), { recursive: true });
+    fs.writeFileSync(
+      getWindowStatePath(),
+      JSON.stringify({
+        width: bounds.width,
+        height: bounds.height,
+        x: bounds.x,
+        y: bounds.y
+      }, null, 2),
+      'utf8'
+    );
+  } catch (err) {
+    console.error('保存窗口尺寸失败:', err);
+  }
+}
+
 function resolvePythonExecutable() {
+  // 打包模式：使用随产品分发的 yys-backend.exe（PyInstaller --onedir 产物）。
+  // Windows 上固定名称，路径由 electron-builder 的 extraResources 注入。
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'backend', 'yys-backend.exe');
+  }
+  // 开发模式：YYS_PYTHON 环境变量优先，否则用项目默认 conda 环境。
   if (process.env.YYS_PYTHON) return process.env.YYS_PYTHON;
   return 'D:/ProgramData/anaconda3/envs/win_macro/python.exe';
+}
+
+function resolveBackendCwd(backendExe) {
+  // dev 模式：cwd = 项目根（__dirname 上一级），保证 Path("config")/.. 落点不变。
+  // pack 模式：cwd = exe 同目录，使相对路径 Path("config")、Path("yys/logs")
+  //            自然落到用户安装目录的同级，而不是 _internal 内。
+  if (app.isPackaged) {
+    return path.dirname(backendExe);
+  }
+  return path.join(__dirname, '..');
 }
 
 function isPortOpen({ port = PYTHON_PORT, host = PYTHON_HOST, timeout = 1000 } = {}) {
@@ -140,9 +218,12 @@ async function startPythonBackend() {
 
   return new Promise((resolve, reject) => {
     let settled = false;
-    const pythonArgs = ['-m', 'ui_backend.main'];
-    pythonProcess = spawn(resolvePythonExecutable(), pythonArgs, {
-      cwd: path.join(__dirname, '..'),
+    const isPackaged = app.isPackaged;
+    // dev: 走 `python -m ui_backend.main`；pack: yys-backend.exe 是 PyInstaller 引导器，直接执行。
+    const pythonArgs = isPackaged ? [] : ['-m', 'ui_backend.main'];
+    const backendExe = resolvePythonExecutable();
+    pythonProcess = spawn(backendExe, pythonArgs, {
+      cwd: resolveBackendCwd(backendExe),
       env: { ...process.env, YYS_UI_TOKEN: UI_TOKEN },
       stdio: ['pipe', 'pipe', 'pipe']
     });
@@ -216,20 +297,41 @@ function createTray() {
 }
 
 function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 900,
-    height: 650,
-    minWidth: 800,
-    minHeight: 600,
+  const saved = loadWindowBounds();
+  const opts = {
+    width: saved?.width ?? DEFAULT_BOUNDS.width,
+    height: saved?.height ?? DEFAULT_BOUNDS.height,
+    minWidth: MIN_WIDTH,
+    minHeight: MIN_HEIGHT,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js')
     }
-  });
+  };
+  if (saved?.x !== undefined && saved?.y !== undefined) {
+    opts.x = saved.x;
+    opts.y = saved.y;
+  }
+  mainWindow = new BrowserWindow(opts);
 
   mainWindow.loadFile(path.join(__dirname, 'index.html'), {
     query: { token: UI_TOKEN }
+  });
+
+  // 监听尺寸/位置变化：debounce 后写盘，避免拖动时频繁 IO
+  let saveTimer = null;
+  const scheduleSave = () => {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => saveWindowBounds(mainWindow), 400);
+  };
+  mainWindow.on('resize', scheduleSave);
+  mainWindow.on('move', scheduleSave);
+  mainWindow.on('maximize', scheduleSave);
+  mainWindow.on('unmaximize', scheduleSave);
+  mainWindow.on('close', () => {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveWindowBounds(mainWindow);
   });
 
   mainWindow.on('close', (event) => {

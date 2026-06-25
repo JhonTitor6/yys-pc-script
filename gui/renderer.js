@@ -105,6 +105,21 @@ function findScript(scriptId) {
   return state.scripts.find((script) => script.script_id === scriptId) || null;
 }
 
+// 判断脚本是否处于正在运行/排队/暂停等活跃状态
+function isScriptActive(scriptId) {
+  const run = state.currentRun;
+  if (!run || run.script_id !== scriptId) return false;
+  return ['queued', 'running', 'paused'].includes(run.status);
+}
+
+// 运行中状态文案
+function activeStatusText(status) {
+  if (status === 'running') return '运行中';
+  if (status === 'paused') return '已暂停';
+  if (status === 'queued') return '排队中';
+  return status;
+}
+
 function renderScripts() {
   const container = document.getElementById('scriptList');
   container.innerHTML = '';
@@ -114,26 +129,54 @@ function renderScripts() {
     return;
   }
 
-  for (const script of state.scripts) {
+  // 活跃脚本（运行/暂停/排队）置顶，保持其它脚本原顺序
+  const sorted = [...state.scripts].sort((a, b) => {
+    const aActive = isScriptActive(a.script_id) ? 1 : 0;
+    const bActive = isScriptActive(b.script_id) ? 1 : 0;
+    return bActive - aActive;
+  });
+
+  for (const script of sorted) {
     const selected = state.selectedScriptId === script.script_id;
+    const active = isScriptActive(script.script_id);
     const row = document.createElement('article');
-    row.className = `script-row${selected ? ' selected' : ''}`;
+    row.className = `script-row${selected ? ' selected' : ''}${active ? ' active' : ''}`;
+    const activeBadge = active
+      ? `<span class="active-badge" data-script-active="${escapeHtml(script.script_id)}">${escapeHtml(activeStatusText(state.currentRun?.status))}</span>`
+      : '';
+    // 运行中卡片：把启动按钮替换为控制按钮组
+    const controlButtons = active ? renderActiveControls(state.currentRun?.status) : '';
+    const startButton = active
+      ? ''
+      : `<button type="submit" class="primary-button">启动</button>`;
     row.innerHTML = `
       <button class="script-head" data-script-id="${escapeHtml(script.script_id)}" type="button">
         <span>
           <strong>${escapeHtml(script.display_name || script.script_id)}</strong>
           <small>${script.category === 'experimental' ? '实验脚本' : '稳定脚本'}</small>
         </span>
-        <span>${selected ? '⌄' : '›'}</span>
+        <span class="script-head-right">${activeBadge}<span class="caret">${selected ? '⌄' : '›'}</span></span>
       </button>
       ${script.description ? `<p class="script-description">${escapeHtml(script.description)}</p>` : ''}
       <form class="script-params${selected ? ' active' : ''}" data-script-form="${escapeHtml(script.script_id)}">
-        ${(script.config_schema || []).map((field) => renderField(field, script.default_config || {})).join('')}
-        <button type="submit" class="primary-button">启动</button>
+        ${active ? '' : (script.config_schema || []).map((field) => renderField(field, script.default_config || {})).join('')}
+        <div class="script-actions">${controlButtons}${startButton}</div>
       </form>
     `;
     container.appendChild(row);
   }
+}
+
+// 渲染运行中卡片的控制按钮组（暂停/恢复/停止）
+function renderActiveControls(status) {
+  const canPause = status === 'running';
+  const canResume = status === 'paused';
+  const canStop = ['running', 'paused', 'queued'].includes(status);
+  return `
+    <button type="button" class="ghost-button" data-run-control="pause"${canPause ? '' : ' disabled'}>暂停</button>
+    <button type="button" class="ghost-button" data-run-control="resume"${canResume ? '' : ' disabled'}>恢复</button>
+    <button type="button" class="danger-button" data-run-control="stop"${canStop ? '' : ' disabled'}>停止</button>
+  `;
 }
 
 function renderField(field, defaults = {}) {
@@ -575,6 +618,7 @@ async function runWorkflowNow(workflowId) {
 async function refreshCurrentRun() {
   state.currentRun = await apiGet('/api/runs/current');
   renderCurrentRun();
+  renderScripts();
 }
 
 function statusText(status) {
@@ -595,11 +639,45 @@ function sourceText(sourceType) {
   return sourceType || '-';
 }
 
+// 将单个 config 字段值转成可读字符串，遵循 config_schema 渲染规则
+function formatConfigValue(value, field) {
+  if (value === true || value === 'true') return '是';
+  if (value === false || value === 'false') return '否';
+  if (field?.field_type === 'select' && Array.isArray(field.options)) {
+    const match = field.options.find(
+      (opt) => String(opt.value ?? opt.label ?? '') === String(value)
+    );
+    if (match) return match.label ?? String(match.value ?? '');
+  }
+  if (value === null || value === undefined || value === '') return '—';
+  return String(value);
+}
+
+// 根据脚本的 config_schema 把 config 渲染为「标签：值」列表 HTML
+function renderConfigSummary(config, script) {
+  if (!config || Object.keys(config).length === 0) return '未配置';
+  const schema = script?.config_schema || [];
+  const schemaByKey = new Map(schema.map((f) => [f.key, f]));
+  // 先按 schema 顺序输出 schema 中存在的字段，再追加自定义 key
+  const orderedKeys = [
+    ...schema.map((f) => f.key).filter((k) => k in config),
+    ...Object.keys(config).filter((k) => !schemaByKey.has(k))
+  ];
+  if (orderedKeys.length === 0) return '未配置';
+  return orderedKeys
+    .map((key) => {
+      const field = schemaByKey.get(key);
+      const label = field?.label || key;
+      const value = formatConfigValue(config[key], field);
+      return `<span class="config-pair"><span class="config-key">${escapeHtml(label)}</span><span class="config-value">${escapeHtml(value)}</span></span>`;
+    })
+    .join('');
+}
+
 function renderCurrentRun() {
   const run = state.currentRun;
   const script = run ? findScript(run.script_id) : null;
   const status = run ? run.status : 'idle';
-  const activeStatuses = ['queued', 'running', 'paused'];
   const runStatus = document.getElementById('runStatus');
 
   document.getElementById('currentRunTitle').textContent = run
@@ -607,11 +685,15 @@ function renderCurrentRun() {
     : '暂无运行脚本';
   runStatus.textContent = run ? statusText(run.status) : '空闲';
   runStatus.className = `status-pill ${status}`;
-  document.getElementById('pauseButton').disabled = !run || run.status !== 'running';
-  document.getElementById('resumeButton').disabled = !run || run.status !== 'paused';
-  document.getElementById('stopButton').disabled = !run || !activeStatuses.includes(run.status);
   document.getElementById('runSource').textContent = run ? sourceText(run.source_type) : '-';
-  document.getElementById('runConfigText').textContent = run ? JSON.stringify(run.config || {}) : '未启动';
+  const runConfigEl = document.getElementById('runConfigText');
+  if (run) {
+    runConfigEl.classList.add('config-summary');
+    runConfigEl.innerHTML = renderConfigSummary(run.config || {}, script);
+  } else {
+    runConfigEl.classList.remove('config-summary');
+    runConfigEl.textContent = '未启动';
+  }
 
   if (!run) {
     renderSnapshot({});
@@ -628,12 +710,18 @@ function shouldShowLog(level) {
   return cur >= min;
 }
 
+// 格式化当前时间为 HH:MM:SS 字符串
+function formatLogTime(date = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
 // 将单条日志写入指定容器
 function appendLogLine(body, event) {
   const level = String(event.level || 'INFO').toUpperCase();
   const line = document.createElement('div');
   line.className = `log-line ${level}`;
-  line.textContent = `[${level}] ${event.message || event.data || JSON.stringify(event)}`;
+  line.textContent = `[${formatLogTime()}] [${level}] ${event.message || event.data || JSON.stringify(event)}`;
   body.appendChild(line);
 }
 
@@ -727,6 +815,14 @@ function switchView(viewName) {
 
 function bindEvents() {
   document.getElementById('scriptList').addEventListener('click', (event) => {
+    // 运行中卡片的控制按钮（暂停/恢复/停止）优先处理
+    const controlBtn = event.target.closest('[data-run-control]');
+    if (controlBtn) {
+      if (controlBtn.disabled) return;
+      const action = controlBtn.dataset.runControl;
+      controlCurrentRun(action).catch((error) => appendLog({ level: 'ERROR', message: error.message }));
+      return;
+    }
     const button = event.target.closest('[data-script-id]');
     if (!button) return;
     state.selectedScriptId = button.dataset.scriptId;
@@ -736,6 +832,9 @@ function bindEvents() {
   document.getElementById('scriptList').addEventListener('submit', (event) => {
     event.preventDefault();
     const form = event.target;
+    // 运行中的卡片没有启动按钮（不渲染），此分支仅对其它卡片生效
+    const controlBtn = event.submitter?.closest('[data-run-control]');
+    if (controlBtn) return;
     startScript(form.dataset.scriptForm, form).catch((error) => {
       appendLog({ level: 'ERROR', message: error.message });
     });
@@ -852,16 +951,6 @@ function bindEvents() {
 
   document.getElementById('closeWorkflowModalButton').addEventListener('click', () => closeWorkflowModal());
   document.getElementById('cancelWorkflowModalButton').addEventListener('click', () => closeWorkflowModal());
-
-  document.getElementById('pauseButton').addEventListener('click', () => {
-    controlCurrentRun('pause').catch((error) => appendLog({ level: 'ERROR', message: error.message }));
-  });
-  document.getElementById('resumeButton').addEventListener('click', () => {
-    controlCurrentRun('resume').catch((error) => appendLog({ level: 'ERROR', message: error.message }));
-  });
-  document.getElementById('stopButton').addEventListener('click', () => {
-    controlCurrentRun('stop').catch((error) => appendLog({ level: 'ERROR', message: error.message }));
-  });
 
   document.querySelectorAll('.rail-button').forEach((button) => {
     button.addEventListener('click', () => switchView(button.dataset.view));

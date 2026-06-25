@@ -106,6 +106,32 @@ def test_run_manager_publishes_state_snapshot_event(run_manager: RunManager) -> 
     assert any(event["type"] == "state_snapshot" for event in events)
 
 
+def test_run_manager_publishes_live_state_snapshots_during_run(tmp_path: Path) -> None:
+    """运行尚未结束时也应收到 state_snapshot，使 UI 可观察战斗计数。"""
+    manager = create_run_manager(tmp_path)
+    # 用足够大的 battle_count 让脚本不会在 pusher 首次推送前自然结束
+    run_id = manager.start(RunRequest(script_id="fake", config={"max_battle_count": 5000}))
+    # 不调用 wait()，直接轮询事件以验证运行期间也有推送
+    deadline = time.time() + 3.0
+    saw_intermediate = False
+    while time.time() < deadline:
+        events = manager.event_hub.recent_events()
+        snapshots = [
+            e for e in events
+            if e.get("type") == "state_snapshot" and e.get("run_id") == run_id
+        ]
+        # 至少 2 次且其中至少一次 battle_count 在 (0, 5000) 之间（即非终态）
+        if len(snapshots) >= 2 and any(
+            0 < s.get("state", {}).get("battle_count", 0) < 5000
+            for s in snapshots
+        ):
+            saw_intermediate = True
+            break
+        time.sleep(0.05)
+    manager.stop(run_id, timeout=2.0)
+    assert saw_intermediate, "运行中应持续推送 state_snapshot"
+
+
 def test_stop_does_not_call_script_stop_while_holding_manager_lock(tmp_path: Path) -> None:
     manager_ref: dict[str, RunManager] = {}
 

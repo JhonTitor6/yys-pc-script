@@ -5,19 +5,72 @@
   "main": "main.js",
   "scripts": {
     "start": "electron main.js",
-    "dev": "electron main.js --dev"
+    "dev": "electron main.js --dev",
+    "prepare:ocr": "node ../scripts/run-python.js ../scripts/download_ocr_models.py",
+    "build:backend": "node ../scripts/run-python.js -m PyInstaller ../build_backend.spec --clean --noconfirm",
+    "sync:backend": "node ../scripts/sync-backend.js",
+    "build:win": "npm run sync:backend && electron-builder --win",
+    "build:nsis": "npm run sync:backend && electron-builder --win nsis",
+    "build:portable": "npm run sync:backend && electron-builder --win portable",
+    "build": "npm run sync:backend && electron-builder"
   },
-  "dependencies": {
+  "devDependencies": {
     "electron": "latest",
-    "electron-devtools-installer": "^4.0.0",
-    "element-plus": "^2.13.1",
-    "ws": "^8.19.0"
+    "electron-builder": "^25.0.0",
+    "electron-devtools-installer": "^4.0.0"
   },
-  "keywords": [
-    "python",
-    "automation",
-    "game"
-  ],
   "author": "YYS Script Manager",
-  "license": "MIT"
+  "license": "MIT",
+  "build": {
+    "appId": "com.yys.script-manager",
+    "productName": "阴阳师脚本工作台",
+    "directories": {
+      "output": "../dist-electron",
+      "buildResources": "."
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "renderer.js",
+      "styles.css",
+      "package.json",
+      "icon.ico"
+    ],
+    "extraResources": [
+      {
+        "from": "build/backend",
+        "to": "backend"
+      }
+    ],
+    "win": {
+      "icon": "icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "阴阳师脚本工作台"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}"
+    }
+  }
 }

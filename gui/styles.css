@@ -150,10 +150,65 @@ button {
   border-radius: 8px;
   background: var(--panel-soft);
   overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .script-row.selected {
   border-color: #3f6859;
+}
+
+.script-row.active {
+  border-color: var(--green);
+  box-shadow: 0 0 0 1px var(--green-dark) inset, 0 0 12px rgba(53, 194, 141, 0.18);
+  background: linear-gradient(180deg, rgba(53, 194, 141, 0.08) 0%, var(--panel-soft) 60%);
+}
+
+.script-row.active .script-head strong {
+  color: var(--green);
+}
+
+.script-row.active .active-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--green-dark);
+  border-radius: 999px;
+  background: rgba(53, 194, 141, 0.12);
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.script-row.active .active-badge::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  animation: active-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes active-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.85); }
+}
+
+.script-head-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.script-head-right .caret {
+  display: inline-block;
+  width: 12px;
+  text-align: center;
 }
 
 .script-head {
@@ -271,6 +326,19 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.script-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.script-row.active .script-actions {
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(53, 194, 141, 0.3);
+}
+
 .main-panel {
   min-width: 0;
   min-height: 0;
@@ -361,6 +429,35 @@ button:disabled {
   color: var(--text);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.summary-value.config-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  overflow: visible;
+  white-space: normal;
+}
+
+.config-pair {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.config-key {
+  color: var(--muted);
+}
+
+.config-value {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .progress-bar {

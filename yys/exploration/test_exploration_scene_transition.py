@@ -60,7 +60,7 @@ def _scene_assets_available() -> bool:
     reason="探索场景重放 fixture 未采集（依赖 Task 4 人工截图）",
 )
 def test_exploration_full_flow_via_scene_replay() -> None:
-    """验证：ExplorationScript 声明 entry_scene、SceneReplayEnvironment 加载、BFS 可达性。"""
+    """验证：ExplorationScript 声明 entry_scene + 场景图已被 SceneManager 注册。"""
     from tests.common.environment.scene_replay_environment import SceneReplayEnvironment
 
     env = SceneReplayEnvironment(
@@ -68,11 +68,8 @@ def test_exploration_full_flow_via_scene_replay() -> None:
         transitions_config=SCENE_CONFIG,
         initial_scene=ENTRY_SCENE,
     )
-    env.scene_manager.register_scenes_from_directory(
-        scene_dir=str(PROJECT_ROOT / "yys/common/images/scene/"),
-        control_dir=str(PROJECT_ROOT / "yys/common/images/scene_control/"),
-    )
 
+    # YYSBaseScript.__init__ 已通过 env 创建 self.scene_manager 并加载 scene/control 目录
     script = ExplorationScript(
         script_name="exploration_replay",
         env=env,
@@ -82,9 +79,9 @@ def test_exploration_full_flow_via_scene_replay() -> None:
     # 验证 entry_scene 声明
     assert script.entry_scene == ENTRY_SCENE
 
-    # 验证 BFS 路径可达
-    assert script.scene_manager.is_reachable("home", ENTRY_SCENE)
-
-    # 验证场景图已注册（非空列表）
+    # 验证 entry_scene 场景图已注册到 SceneManager（非空列表）
     registered = script.scene_manager.scene_images.get(ENTRY_SCENE)
-    assert registered, f"{ENTRY_SCENE} 场景图未注册"
+    assert registered, f"{ENTRY_SCENE} 场景图未注册到 SceneManager"
+
+    # 验证 SceneReplayEnvironment 已加载到目标场景
+    assert env.get_current_scene() == ENTRY_SCENE

@@ -68,19 +68,17 @@ def test_entry_scene_goto_fails_does_not_enter_main_loop() -> None:
 
 
 def test_business_scripts_declare_entry_scene() -> None:
-    """4 个核心脚本必须声明非空、非 None 的 entry_scene。
+    """3 个可稳定定位入口的核心脚本必须声明 entry_scene。
 
     防止：基类默认值被反向改、entry_scene 字面量被误改。
     """
     from yys.exploration.exploration_script import ExplorationScript
     from yys.realm_raid.realm_raid_script import RealmRaidScript
-    from yys.abyss_shadows.abyss_shadows_script import Main
     from yys.soul_raid.soul_raid_script import SoulRaidScript
 
     expected_map = {
         ExplorationScript: "exploration_chapter_28",
         RealmRaidScript: "barrier_breakthrough",
-        Main: "abyss_shadows_entry",
         SoulRaidScript: "soul_selection",
     }
     for cls, expected in expected_map.items():
@@ -92,3 +90,10 @@ def test_business_scripts_declare_entry_scene() -> None:
         assert cls.entry_scene, f"{cls.__name__}.entry_scene 为空"
         # 非 None（基类默认 None，覆盖后必须非 None）
         assert cls.entry_scene is not None, f"{cls.__name__}.entry_scene 为 None"
+
+
+def test_abyss_shadows_entry_scene_is_disabled() -> None:
+    """当前版本不为狭间暗域声明统一入口场景。"""
+    from yys.abyss_shadows.abyss_shadows_script import Main
+
+    assert Main.entry_scene is None

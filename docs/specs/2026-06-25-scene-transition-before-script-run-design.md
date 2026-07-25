@@ -1,7 +1,7 @@
 # 场景跳转前置依赖设计
 
 **日期**：2026-06-25
-**状态**：Draft (post spec review)
+**状态**：Updated（范围收缩为 3 个稳定入口脚本）
 **作者**：Claude + 用户
 
 ## 背景与目标
@@ -11,8 +11,8 @@
 当前 `yys-pc-script` 的工作流编排系统（`SchedulerService` + `workflow_steps` 表）已经支持多脚本顺序执行，但**每个脚本启动前缺少「先到达目标场景」的前置步骤**。典型场景：
 
 1. **探索 30 次 → 结界突破 → 探索 30 次**：脚本 A 跑完时停在探索地图，脚本 B 必须自己处理"如何在结界突破界面登录"。当前各脚本在 `on_run` 开头各自硬编码跳转逻辑，缺少统一抽象。
-2. **晚间 21:03 切换到狭间暗域**：跨脚本状态切换没有标准化入口。
-3. **复用入口路径**：探索副本有多个章节（28/29/30），每次升级章节都要修改多个脚本的硬编码路径。
+2. **复用入口路径**：探索脚本需要固定进入已存在的第 28 章入口，避免在多个脚本中重复硬编码路径。
+3. **狭间暗域入口不稳定**：当前游戏版本没有稳定的统一入口路径，暂不纳入本次自动入口场景范围。
 
 ### 现有资源
 
@@ -25,7 +25,7 @@
 ### 目标
 
 1. **统一入口场景跳转**：在 YYSBaseScript 层提供"启动前先到达目标场景"的统一调用点。
-2. **场景归属脚本**：跳转目标由脚本类自己声明（不存到 workflow 配置），保证"场景和业务耦合"+"编排配置保持简洁"。
+2. **场景归属脚本**：由 3 个入口稳定的脚本类自己声明目标场景（不存到 workflow 配置），保证"场景和业务耦合"+"编排配置保持简洁"。
 3. **不破坏现有架构**：不改数据库、不改 workflow 模型、不改 SchedulerService、不改 GUI。
 4. **失败即停止**：跳转失败时脚本不进入主循环，workflow 按现有 `failure_policy` 处理。
 
@@ -48,7 +48,7 @@
 理由：
 - 场景归属业务：跳转目标是最纯粹的业务信息（"我必须在探索-28 章才能跑"），不属于编排范畴。
 - 编排器零耦合：SchedulerService 不知道 scene 的存在，符合单一职责。
-- 现有架构最小改动：只改一个文件（`event_script_base.py`），加一个类属性约定。
+- 现有架构最小改动：只改一个文件（`event_script_base.py`），加一个类属性约定；暂不为狭间暗域声明入口。
 - GUI 不变：用户在 GUI 编排 workflow 时不感知 scene 概念，编排结果与跳转完全正交。
 
 ## 设计
@@ -64,7 +64,7 @@ class YYSBaseScript(EventBaseScript, metaclass=_ABCMetaRelaxDel):
     # 入口场景：脚本启动时必须先到达的场景名。
     # 子类覆盖此属性声明自己需要在哪个场景启动。
     # 为空字符串或 None 时跳过入口跳转（兼容 Kuzunoha 等老脚本）。
-    entry_scene: str = ""
+    entry_scene: Optional[str] = None
 ```
 
 子类示例：
@@ -110,22 +110,20 @@ def run(self) -> None:
 
 ### 3. 场景图资产
 
-`yys/common/images/scene/` 目录补充细分场景图（探索副本多章节入口）：
+`yys/common/images/scene/` 目录补充稳定入口所需的场景图：
 
 | 文件 | 描述 |
 |------|------|
 | `exploration_chapter_28.bmp` | 探索地图，28 章已选中状态 |
-| `exploration_chapter_29.bmp` | 探索地图，29 章已选中状态 |
-| `abyss_shadows_entry.bmp` | 狭间暗域入口界面 |
 
 `yys/common/images/scene_control/` 目录补充跳转按钮：
 
 | 文件 | 描述 |
 |------|------|
 | `exploration_to_chapter_28.bmp` | 探索地图上的"第二十八章"入口按钮 |
-| `exploration_to_chapter_29.bmp` | 探索地图上的"第二十九章"入口按钮 |
 | `exploration_chapter_28_to_battle.bmp` | 28 章界面上的"探索"按钮（进入战斗）|
-| `soul_to_abyss_shadows.bmp` | 御魂选择界面的"狭间暗域"按钮 |
+
+狭间暗域相关图片不属于本次入口前置依赖：当前游戏版本中御魂选择界面没有狭间暗域入口，探索地图也没有第 29 章；已有的 `abyss_shadows_entry.bmp` 保留为现有资源，但不作为本方案的自动入口验收项。
 
 **场景图注册**：
 场景图通过现有 `SceneManager.register_scenes_from_directory()` 自动加载（`YYSBaseScript.__init__` 已调用，见 `event_script_base.py:201-204`），无需手动注册。
@@ -146,11 +144,11 @@ def run(self) -> None:
 |--------|-------------|------|
 | `ExplorationScript` | `"exploration_chapter_28"` | 默认 28 章；可由子类或 config 覆盖 |
 | `RealmRaidScript` | `"barrier_breakthrough"` | |
-| `AbyssShadowsScript` | `"abyss_shadows_entry"` | |
 | `SoulRaidScript` | `"soul_selection"` | |
+| `Main`（狭间暗域） | `None` | 当前版本没有稳定统一入口，本次不纳入 |
 | `KuzunohaScript` | `""`（默认）| 老脚本，保持兼容 |
 
-**注意**：`ExplorationScript` 的章节由 `entry_scene` 固定写死。如果未来要支持"运行时选择章节"，需要让 `entry_scene` 由 `config.chapter` 派生（不在本 spec 范围）。
+**注意**：`ExplorationScript` 的章节由 `entry_scene` 固定为第 28 章。如果未来要支持运行时选择章节，需要让 `entry_scene` 由 `config.chapter` 派生（不在本 spec 范围）。
 
 ### 6. 与现有架构的兼容
 
@@ -196,7 +194,7 @@ def test_exploration_full_flow_with_entry_scene():
 
 ### 回归测试
 
-确认现有 `yys/exploration/test_exploration_*.py` 和 `yys/abyss_shadows/test_abyss_shadows_*.py` 全部通过（这些脚本 `entry_scene` 默认空字符串，行为不变）。
+确认探索、结界突破和御魂脚本的入口声明测试通过；狭间暗域继续保持 `entry_scene=None`，其现有业务测试不作为本次入口前置依赖的验收条件。
 
 ## 实施步骤
 
@@ -204,8 +202,8 @@ def test_exploration_full_flow_with_entry_scene():
 |------|------|----------|
 | 1 | 在 `YYSBaseScript` 加 `entry_scene: str = ""` 类属性 | 现有所有脚本不破坏 |
 | 2 | 在 `YYSBaseScript.run()` 注入入口跳转逻辑 | 单元测试验证调和不调两种情况 |
-| 3 | 补充场景图和跳转按钮图（`scene/` 和 `scene_control/` 目录）| 视觉检查（人工）|
-| 4 | 给 5 个核心脚本类加 `entry_scene` 类属性 | 单元测试通过 |
+| 3 | 补充第 28 章场景图和跳转按钮图（`scene/` 和 `scene_control/` 目录）| 视觉检查（人工）|
+| 4 | 给 3 个稳定入口脚本类加 `entry_scene` 类属性 | 单元测试通过 |
 | 5 | 新增单元测试和集成测试 | 全部测试通过 |
 
 ## 风险与缓解
@@ -215,6 +213,7 @@ def test_exploration_full_flow_with_entry_scene():
 | SceneManager BFS 找不到路径 | goto_scene 返回 False，run() 直接 return，工作流停止（人介入）|
 | 场景图识别失败 | 现有 BFS 已有重试机制（`scene_manager.py:344-353`），行为一致 |
 | 老脚本（Kuzunoha）兼容性 | `entry_scene = ""` 默认值，兼容现有调用 |
+| 狭间暗域入口不稳定 | `Main` 保持 `entry_scene=None`，未来单独设计真实入口路径 |
 | 跳转动画耗时 | 复用现有 `time.sleep(3.0)`（`scene_manager.py:338`） |
 
 ## 未来扩展

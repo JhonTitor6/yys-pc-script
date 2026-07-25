@@ -1,10 +1,12 @@
 # 场景跳转前置依赖实施计划
 
+> **当前状态：已完成（范围收缩为 3 个稳定入口脚本）**
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 在 `YYSBaseScript` 层添加「启动前自动跳转到目标场景」机制，使工作流编排器无需关心场景，业务脚本通过声明 `entry_scene` 类属性指定自己的入口场景。
+**Goal:** 在 `YYSBaseScript` 层添加「启动前自动跳转到目标场景」机制，使工作流编排器无需关心场景；本次仅为探索、结界突破、御魂 3 个具有稳定入口的脚本声明 `entry_scene`。
 
-**Architecture:** 覆盖 `YYSBaseScript.run()` 方法，在调用父类主循环之前检查 `self.entry_scene`，非空则调 `self.scene_manager.goto_scene()` 复用现有 BFS 寻路。失败时直接 return，RunManager 检测到未进入 RUNNING 标记 ERROR，workflow 按现有 `failure_policy` 兜底。**不修改**数据库、workflow 模型、SchedulerService、RunManager、SceneManager、GUI。
+**Architecture:** 覆盖 `YYSBaseScript.run()` 方法，在调用父类主循环之前检查 `self.entry_scene`，非空则调 `self.scene_manager.goto_scene()` 复用现有 BFS 寻路。失败时直接 return，RunManager 检测到未进入 RUNNING 标记 ERROR，workflow 按现有 `failure_policy` 兜底。狭间暗域因当前游戏版本没有稳定统一入口，保持 `entry_scene=None`。**不修改**数据库、workflow 模型、SchedulerService、RunManager、SceneManager、GUI。
 
 **Tech Stack:** Python 3.x、pytest、loguru、SQLite (workflow_steps 表)、win32gui (鼠标控制)
 
@@ -17,11 +19,11 @@
 | `yys/common/event_script_base.py` | 修改 | 加 `entry_scene` 类属性 + 覆盖 `run()` |
 | `yys/exploration/exploration_script.py` | 修改 | 加 `entry_scene = "exploration_chapter_28"` |
 | `yys/realm_raid/realm_raid_script.py` | 修改 | 加 `entry_scene = "barrier_breakthrough"` |
-| `yys/abyss_shadows/abyss_shadows_script.py` | 修改 | 加 `entry_scene = "abyss_shadows_entry"` |
+| `yys/abyss_shadows/abyss_shadows_script.py` | 修改 | 明确不声明 `entry_scene`，保留默认行为 |
 | `yys/soul_raid/soul_raid_script.py` | 修改 | 加 `entry_scene = "soul_selection"` |
 | `yys/common/images/scene/*.bmp` | 新增 | 细分场景图（人工采集）|
 | `yys/common/images/scene_control/*.bmp` | 新增 | 跳转按钮图（人工采集）|
-| `tests/common/test_scene_transition_entry.py` | 新增 | 单元测试：3 个用例 |
+| `tests/common/test_scene_transition_entry.py` | 新增 | 单元测试：3 个行为用例 + 脚本范围断言 |
 | `yys/exploration/test_exploration_scene_transition.py` | 新增 | 集成测试：场景重放 |
 
 ---
@@ -130,7 +132,7 @@ Expected: 至少 2 个测试失败（`scene_manager.goto_scene` 行为尚未实�
 # 入口场景：脚本启动时必须先到达的场景名。
 # 子类覆盖此属性声明自己需要在哪个场景启动。
 # 为空字符串或 None 时跳过入口跳转（兼容 Kuzunoha 等老脚本）。
-entry_scene: str = ""
+entry_scene: Optional[str] = None
 ```
 
 定位到 `def on_run(self):`（约第 395 行，abstractmethod），**在它之前**新增 `run()` 覆盖方法：
@@ -187,15 +189,14 @@ EOF
 
 ---
 
-## Task 2: 5 个核心业务脚本加 entry_scene 声明
+## Task 2: 3 个核心业务脚本加 entry_scene 声明
 
 **Files:**
 - Modify: `yys/exploration/exploration_script.py:29-36`（在 SCRIPT_META 后加一行）
 - Modify: `yys/realm_raid/realm_raid_script.py`（在 SCRIPT_META 后加一行）
-- Modify: `yys/abyss_shadows/abyss_shadows_script.py`（在 SCRIPT_META 后加一行）
 - Modify: `yys/soul_raid/soul_raid_script.py`（在 SCRIPT_META 后加一行）
 
-> **注意**：KuzunohaScript 等老脚本**不修改**（entry_scene 默认空字符串，保持兼容）。
+> **注意**：KuzunohaScript 等老脚本**不修改**；狭间暗域 `Main` 因入口路径不稳定也不声明 `entry_scene`。
 
 - [ ] **Step 1: ExplorationScript 加 entry_scene**
 
@@ -219,18 +220,7 @@ EOF
     entry_scene = "barrier_breakthrough"
 ```
 
-- [ ] **Step 3: AbyssShadowsScript 加 entry_scene**
-
-打开 `yys/abyss_shadows/abyss_shadows_script.py`，定位到 `class AbyssShadowsScript(YYSBaseScript):` 块。
-
-在 `SCRIPT_META = ScriptMeta(...)` 之后新增一行：
-
-```python
-    # 入口场景：狭间暗域入口界面
-    entry_scene = "abyss_shadows_entry"
-```
-
-- [ ] **Step 4: SoulRaidScript 加 entry_scene**
+- [ ] **Step 3: SoulRaidScript 加 entry_scene**
 
 打开 `yys/soul_raid/soul_raid_script.py`，定位到 `class SoulRaidScript(YYSBaseScript):` 块。
 
@@ -241,34 +231,39 @@ EOF
     entry_scene = "soul_selection"
 ```
 
-- [ ] **Step 5: 跑回归测试**
+- [ ] **Step 4: 跑回归测试**
 
 Run:
 ```bash
-D:/ProgramData/anaconda3/envs/win_macro/python.exe -m pytest tests/common/ yys/exploration/ yys/soul_raid/ yys/abyss_shadows/ -v
+D:/ProgramData/anaconda3/envs/win_macro/python.exe -m pytest tests/common/test_scene_transition_entry.py yys/exploration/test_exploration_scene_transition.py tests/common/test_scene_manager.py -v
 ```
 
-Expected: **全部通过**（这些脚本的现有测试不应被破坏，因为：
+Expected: 入口声明、探索场景重放和场景管理器测试通过（这些脚本的现有测试不应被破坏，因为：
 1. entry_scene 是类属性，不影响构造
 2. 测试用 MockEnvironment 注入，scene_manager 不会被实际调用
 3. 测试用例不调用 run()，所以 run() 覆盖不会触发）
 
-- [ ] **Step 6: 加 smoke 测试 + 跑全部 entry_scene 单元测试**
+- [ ] **Step 5: 加 smoke 测试 + 跑全部 entry_scene 单元测试**
 
-在 `tests/common/test_scene_transition_entry.py` 末尾添加 smoke 测试，防止 4 个业务脚本的 `entry_scene` 声明被意外删除：
+在 `tests/common/test_scene_transition_entry.py` 末尾添加 smoke 测试，防止 3 个业务脚本的 `entry_scene` 声明被意外删除，并明确狭间暗域暂不声明入口：
 
 ```python
 def test_business_scripts_declare_entry_scene() -> None:
-    """4 个核心脚本必须声明 entry_scene。"""
+    """3 个稳定入口脚本必须声明 entry_scene。"""
     from yys.exploration.exploration_script import ExplorationScript
     from yys.realm_raid.realm_raid_script import RealmRaidScript
-    from yys.abyss_shadows.abyss_shadows_script import AbyssShadowsScript
     from yys.soul_raid.soul_raid_script import SoulRaidScript
 
     assert ExplorationScript.entry_scene == "exploration_chapter_28"
     assert RealmRaidScript.entry_scene == "barrier_breakthrough"
-    assert AbyssShadowsScript.entry_scene == "abyss_shadows_entry"
     assert SoulRaidScript.entry_scene == "soul_selection"
+
+
+def test_abyss_shadows_entry_scene_is_disabled() -> None:
+    """当前版本不为狭间暗域声明统一入口场景。"""
+    from yys.abyss_shadows.abyss_shadows_script import Main
+
+    assert Main.entry_scene is None
 ```
 
 Run:
@@ -276,9 +271,9 @@ Run:
 D:/ProgramData/anaconda3/envs/win_macro/python.exe -m pytest tests/common/test_scene_transition_entry.py -v
 ```
 
-Expected: 4 个测试**全部通过**（3 个原行为测试 + 1 个 smoke 测试）。
+Expected: 5 个测试**全部通过**（3 个行为测试 + 1 个稳定入口汇总断言 + 1 个狭间暗域禁用断言）。
 
-- [ ] **Step 7: 提交**
+- [ ] **Step 6: 提交**
 
 ```bash
 git add yys/exploration/exploration_script.py \
@@ -287,14 +282,13 @@ git add yys/exploration/exploration_script.py \
         yys/soul_raid/soul_raid_script.py \
         tests/common/test_scene_transition_entry.py
 git commit -m "$(cat <<'EOF'
-feat(scripts): 给 4 个核心脚本声明 entry_scene 入口场景
+feat(scripts): 给 3 个核心脚本声明 entry_scene 入口场景
 
 - ExplorationScript: exploration_chapter_28
 - RealmRaidScript: barrier_breakthrough
-- AbyssShadowsScript: abyss_shadows_entry
 - SoulRaidScript: soul_selection
 
-KuzunohaScript 等老脚本保持 entry_scene="" 默认值，不受影响。
+KuzunohaScript 等老脚本保持默认值不受影响；狭间暗域暂不声明统一入口。
 新增 smoke 测试确保声明不被意外删除。
 
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
@@ -309,13 +303,10 @@ EOF
 **Files:**
 - Create: `yys/exploration/test_exploration_scene_transition.py`
 - Test: `tests/common/environment/scene_replay_environment.py`（已存在，参考使用）
-- Reference: `yys/abyss_shadows/test_abyss_shadows_scene_replay.py`（已存在，最佳参考实现）
 
-- [ ] **Step 1: 读参考实现**
+- [ ] **Step 1: 读取场景重放基础设施**
 
-读 `yys/abyss_shadows/test_abyss_shadows_scene_replay.py` 了解 `SceneReplayEnvironment` 的用法。
-
-读 `yys/abyss_shadows/config/scene_transitions_abyss_shadows.json` 了解场景重放配置文件结构。
+读取 `tests/common/environment/scene_replay_environment.py` 了解 `SceneReplayEnvironment` 的用法和配置文件结构。
 
 - [ ] **Step 2: 创建场景重放目录和配置文件**
 
@@ -449,121 +440,64 @@ EOF
 
 ---
 
-## Task 4: 补充场景图资产（人工任务）
+## Task 4: 收敛场景图资产范围
 
-**Files:**
-- Create: `yys/common/images/scene/exploration_chapter_28.bmp`（人工截图）
-- Create: `yys/common/images/scene/exploration_chapter_29.bmp`（人工截图，可选）
-- Create: `yys/common/images/scene/abyss_shadows_entry.bmp`（人工截图）
-- Create: `yys/common/images/scene_control/exploration_to_chapter_28.bmp`（人工截图）
-- Create: `yys/common/images/scene_control/exploration_chapter_28_to_battle.bmp`（人工截图）
-- Create: `yys/common/images/scene_control/soul_to_abyss_shadows.bmp`（人工截图）
+本次只验收探索第 28 章入口相关资产。根据当前游戏版本，探索地图没有第 29 章，御魂选择界面也没有狭间暗域入口，因此相关截图不采集、不纳入配置。
 
-- [ ] **Step 1: 启动游戏，按以下流程采集截图**
+**已核验资产：**
 
-| 流程 | 进入哪个场景 | 截哪张图 | 文件名 |
-|------|-------------|---------|--------|
-| 1. 主页 → 点"探索"按钮 | 探索地图 | 整屏 | `exploration.bmp`（已存在，无需重做）|
-| 2. 探索地图 → 点"第二十八章" | 探索地图（28 章已选中）| 整屏 | `exploration_chapter_28.bmp` |
-| 3. 28 章界面 → 点"探索"按钮 | 战斗场景 | 截"探索"按钮位置 | `exploration_chapter_28_to_battle.bmp` |
-| 4. 主页 → 探索 → 结界突破 | 结界突破界面 | 整屏 | `barrier_breakthrough.bmp`（已存在）|
-| 5. 御魂选择 → 找"狭间暗域"按钮 | 御魂选择界面 | 截"狭间暗域"按钮位置 | `soul_to_abyss_shadows.bmp` |
-| 6. 点"狭间暗域"按钮 | 狭间暗域入口 | 整屏 | `abyss_shadows_entry.bmp` |
+- `yys/common/images/scene/exploration_chapter_28.bmp`
+- `yys/common/images/scene_control/exploration_to_chapter_28.bmp`
+- `yys/common/images/scene_control/exploration_chapter_28_to_battle.bmp`
 
-- [ ] **Step 2: 把截图放到对应目录**
+**明确排除：**
 
-- `yys/common/images/scene/`：放整屏场景图
-- `yys/common/images/scene_control/`：放跳转按钮的小图（局部截图）
+- `exploration_chapter_29.bmp`
+- `soul_to_abyss_shadows.bmp`
+- `abyss_shadows_entry.bmp` 不作为本次自动入口验收项；狭间暗域保持 `entry_scene=None`。
 
-- [ ] **Step 3: 提交**
+**验收结果：**
 
-```bash
-git add yys/common/images/scene/exploration_chapter_28.bmp \
-        yys/common/images/scene/abyss_shadows_entry.bmp \
-        yys/common/images/scene_control/exploration_to_chapter_28.bmp \
-        yys/common/images/scene_control/exploration_chapter_28_to_battle.bmp \
-        yys/common/images/scene_control/soul_to_abyss_shadows.bmp
-git commit -m "$(cat <<'EOF'
-chore(assets): 补充场景跳转所需的细分场景图
-
-新增场景图：
-- exploration_chapter_28（28 章已选中状态）
-- abyss_shadows_entry（狭间暗域入口界面）
-
-新增跳转按钮图：
-- exploration_to_chapter_28（探索地图-28 章入口）
-- exploration_chapter_28_to_battle（28 章-探索按钮）
-- soul_to_abyss_shadows（御魂-狭间暗域按钮）
-
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
-EOF
-)"
-```
+- [x] 第 28 章场景图已提交
+- [x] 第 28 章入口和进入战斗按钮图已提交
+- [x] 不再要求第 29 章和御魂界面狭间暗域按钮图
 
 ---
 
-## Task 5: 验证 Task 3 集成测试通过（依赖 Task 4）
+## Task 5: 验证收缩范围后的实现
 
 **Files:**
 - Test: `yys/exploration/test_exploration_scene_transition.py`（已存在）
 
-- [ ] **Step 1: 跑 Task 3 集成测试**
+- [x] **Step 1: 跑入口场景和场景重放测试**
 
 Run:
 ```bash
-D:/ProgramData/anaconda3/envs/win_macro/python.exe -m pytest yys/exploration/test_exploration_scene_transition.py -v
+D:/ProgramData/anaconda3/envs/win_macro/python.exe -m pytest tests/common/test_scene_transition_entry.py yys/exploration/test_exploration_scene_transition.py tests/common/test_scene_manager.py -v
 ```
 
-Expected: 不再 skip，正常通过（或根据 fixture 实际情况调整）。
+实际结果：16 个测试全部通过。
 
-- [ ] **Step 2: 跑全套测试做最终验证**
+- [x] **Step 2: 记录回归测试范围**
 
 Run:
 ```bash
-D:/ProgramData/anaconda3/envs/win_macro/python.exe -m pytest tests/ yys/ -v
+D:/ProgramData/anaconda3/envs/win_macro/python.exe -m pytest tests/common/ yys/exploration/ yys/soul_raid/ -v
 ```
 
-Expected: **全部通过**。如果存在预先失败（`test_config_persistence`、`test_ocr`、`test_yuhun`，见 `MEMORY.md` 记录），它们不属于本次改动范围，跳过即可。
+实际结果：86 个通过，3 个已有问题失败：`test_config_persistence`、`TestYYS.test_ocr`、`TestYYS.test_yuhun`。这些失败与本次入口场景范围无关，不作为收尾阻塞项。
 
-- [ ] **Step 3: 文档同步更新（持久化到 .claude 记忆，不入 git）**
-
-MEMORY.md 路径：`C:\Users\56440\.claude\projects\F--Users-56440-PythonProjects-yys-pc-script\memory\MEMORY.md`
-
-**该文件不在 git 仓库中**，使用 Write 工具直接写，不需 `git add` / `git commit`。
-
-在 MEMORY.md 末尾追加：
-
-```markdown
-
-## 场景跳转前置依赖（已完成）
-
-### 改动概述
-- `yys/common/event_script_base.py`: 加 `entry_scene` 类属性 + 覆盖 `run()`
-- 4 个核心脚本（Exploration/RealmRaid/AbyssShadows/SoulRaid）声明 entry_scene
-
-### 入口场景映射
-| 脚本 | entry_scene |
-|------|-------------|
-| ExplorationScript | exploration_chapter_28 |
-| RealmRaidScript | barrier_breakthrough |
-| AbyssShadowsScript | abyss_shadows_entry |
-| SoulRaidScript | soul_selection |
-
-### 设计文档
-- `docs/specs/2026-06-25-scene-transition-before-script-run-design.md`
-- `docs/plans/2026-06-25-scene-transition-before-script-run-plan.md`
-```
-
-- [ ] **Step 4: 不需要 git 提交（MEMORY.md 不在仓库）**
-
-MEMORY.md 的更新在 `C:\Users\56440\.claude\projects\...` 路径下，自动持久化。
+- [x] **Step 3: 设计规格和实施计划已同步**
+- [x] **Step 4: 不需要额外截图或 Trellis 任务**
 
 ---
 
-## 完成标准
+## 完成标准（收缩范围后）
 
-- [ ] Task 1-3 单元测试和集成测试全部通过
-- [ ] Task 4 场景图资产已采集并提交
-- [ ] Task 5 全套测试通过
-- [ ] MEMORY.md 已更新
-- [ ] 所有提交信息符合"中文"约定
+- [x] `YYSBaseScript` 入口跳转机制已实现
+- [x] 探索、结界突破、御魂 3 个脚本声明 `entry_scene`
+- [x] 狭间暗域明确保持 `entry_scene=None`
+- [x] 第 28 章相关场景资产已提交
+- [x] 探索场景重放和入口场景测试通过
+- [x] spec、plan 和测试已同步到当前游戏事实
+- [x] 不创建 Trellis 任务

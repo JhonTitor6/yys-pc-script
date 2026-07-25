@@ -97,8 +97,7 @@ class Main(YYSBaseScript):
             "elite_count": 6,
         },
     )
-    # 入口场景：狭间暗域入口界面
-    entry_scene: Optional[str] = "abyss_shadows_entry"
+    # 当前游戏版本没有稳定的统一入口路径，暂不声明 entry_scene。
 
     @classmethod
     def get_config_schema(cls) -> list[dict[str, Any]]:

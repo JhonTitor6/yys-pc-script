@@ -27,6 +27,7 @@ mock replay, observe-only mode, action limits, or emergency stop.
 - `python tools/build_replay_fixture.py build <recording> <confirmation> <output>`
 - `build_confirmed_fixture(recording_dir: Path, confirmation_path: Path, output_dir: Path) -> Path`
 - `python tools/run_guarded_script.py realm_raid [--execute]`
+- `RealmRaidScript._on_battling(point: tuple[int, int]) -> None`
 
 ### 3. Contracts
 
@@ -48,6 +49,13 @@ mock replay, observe-only mode, action limits, or emergency stop.
 - Realm-raid automatic group change requires both a victory-count increase since the
   current round started and a real match for `realm_raid_record_zero.bmp`. Either signal
   alone is insufficient.
+- Every long-lived runtime state must own at least one registered image event. A real
+  frame is considered known by `RunGuard` only when `_trigger_event_from_screenshot_cache`
+  returns a registered event; adding a fixture scene or a `SceneManager` template alone
+  does not satisfy this contract.
+- A battle-running marker callback must be input-free unless the business flow explicitly
+  requires an action. Its purpose is to reset the unknown-frame counter while waiting for
+  an independently registered battle-end event.
 - On Windows, video creation must try `cv2.CAP_MSMF` before OpenCV's default backend.
   Some project environments report GStreamer as enabled while its plugin DLL
   dependencies are incomplete.
@@ -86,6 +94,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
 | Search rectangle is narrower or shorter than its template placement | Fix the bounds and add a real-fixture regression |
 | Realm-raid record is zero but no victory was gained this round | Keep the current round; this can be the quit-three sequence |
 | Victory increased but record-zero template is absent | Keep the current round and wait for reliable visual evidence |
+| Battle frame matches no registered image event | Count as unknown and stop at `unknown_limit`; add a confirmed state marker rather than increasing the limit |
+| Battle-running marker matches | Return a known event, reset the unknown counter, and send no input |
 | MSMF opens the MP4 writer | Use it without probing GStreamer |
 | MSMF cannot open the MP4 writer | Release it, try the default backend once, then fail through `isOpened()` |
 | Action number would exceed `max_actions` | Block the action and set `action_limit` |
@@ -106,6 +116,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
   `{"event_seq": 17, "frame_phase": "after"}` confirmation.
 - Good: the production `SceneManager` is run from a sanitized recorded home frame through
   the real exploration and realm-raid templates.
+- Good: realm raid registers a confirmed “结界加成” battle marker with a no-op callback,
+  while victory/loss templates remain responsible for settlement actions.
 - Base: ordinary scripts without an injected environment keep the legacy Win32 behavior.
 - Base: background automation continues to use `PrintWindow`; foreground capture is an
   explicit recorder-only choice.
@@ -122,6 +134,11 @@ mock replay, observe-only mode, action limits, or emergency stop.
   matching cannot place an image outside the supplied search buffer.
 - Bad: treating “攻略记录 0” alone as a new realm-raid group. The first target's
   quit-three sequence also occurs while the record is zero.
+- Bad: assuming that a scene present in a replay fixture is automatically known to the
+  event loop. `SceneReplayEnvironment`, `SceneManager`, and registered image events are
+  separate layers.
+- Bad: raising `unknown_limit` to hide a deterministic, long-lived unregistered battle
+  state. This weakens the safety fuse for genuinely unknown screens.
 
 ### 6. Tests Required
 
@@ -139,6 +156,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
   the exact production search rectangle.
 - Realm raid: record zero without a new victory does not reset a round; record zero plus
   a new victory resets before selecting the next target.
+- Guarded real-frame regression: each long-lived state marker must be triggered through
+  the production event loop, and its no-op callback must leave the action log empty.
 - CLI: non-interactive startup and a mismatched confirmation phrase fail before window
   construction.
 - Recorder: on Windows, assert the first writer call includes `cv2.CAP_MSMF`; if it is
@@ -243,3 +262,25 @@ if (
 
 The state signal and visual signal jointly distinguish an actual automatic group change
 from the initial zero-record screen seen during the quit-three sequence.
+
+#### Wrong (guarded battle recognition)
+
+```python
+# 回放夹具里有 battling 场景，所以误以为保险丝会自动识别
+fixture.scenes["battling"] = "scenes/battling.png"
+```
+
+#### Correct (guarded battle recognition)
+
+```python
+self._register_image_match_event(
+    ImageMatchConfig("yys/realm_raid/images/realm_raid_battling.bmp"),
+    self._on_battling,
+)
+
+def _on_battling(self, _point: tuple[int, int]) -> None:
+    """确认战斗仍在进行，不发送输入。"""
+```
+
+The event registration, not the fixture scene name, is what makes
+`RunGuard.note_iteration(triggered_event is not None)` reset its unknown counter.

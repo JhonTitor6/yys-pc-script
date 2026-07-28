@@ -121,6 +121,9 @@ After implementation:
       real frame and verified the search rectangle fully contains the template
 - [ ] For visual state transitions, combined the screenshot signal with the minimum
       business-state evidence needed to reject look-alike intermediate screens
+- [ ] For guarded event loops, verified every long-lived real state has a production
+      registered event; fixture scenes and scene-navigation templates do not count
+- [ ] Verified passive “still running” state callbacks produce no mouse or keyboard input
 - [ ] For long-running collection, performed a cheap representative preflight before
       accepting user input or consuming significant time
 - [ ] Checked data survives round-trip

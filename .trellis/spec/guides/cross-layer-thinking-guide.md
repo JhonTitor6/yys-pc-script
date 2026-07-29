@@ -117,6 +117,10 @@ After implementation:
 - [ ] Verified error handling at each boundary
 - [ ] For external capture/codec APIs, validated output content rather than trusting only
       a success flag or opened handle
+- [ ] Validated each capture backend on representative static and hardware-accelerated
+      phases; did not infer battle support from a successful menu or settlement frame
+- [ ] For interactive execute versus passive observe workflows, selected capture mode and
+      focus behavior explicitly and tested both branches
 - [ ] For image-template changes, replayed the production matcher against a confirmed
       real frame and verified the search rectangle fully contains the template
 - [ ] For visual state transitions, combined the screenshot signal with the minimum

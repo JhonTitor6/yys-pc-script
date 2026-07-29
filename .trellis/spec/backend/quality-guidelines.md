@@ -73,10 +73,13 @@ mock replay, observe-only mode, action limits, or emergency stop.
   OpenCV's default backend. The session's existing `isOpened()` check remains the final
   failure boundary.
 - `WindowsEnvironment` defaults to `capture_mode="print_window"` so ordinary background
-  automation retains its existing behavior. The interactive recorder alone selects
-  `capture_mode="foreground"`.
-- After terminal confirmation, the recorder restores and activates the target window,
-  waits briefly for composition, and only then captures the first frame.
+  automation retains its existing behavior. The interactive recorder and guarded
+  `--execute` path select `capture_mode="foreground"` because hardware-accelerated battle
+  rendering is not semantically reliable through `PrintWindow`.
+- After terminal confirmation, the recorder and guarded execute path restore and activate
+  the target window, wait briefly for composition, and only then capture the first frame.
+- Guarded observe mode remains on `print_window` and never activates the target window.
+  Observation must not steal focus or send input.
 - Foreground capture converts both client-rectangle corners with `ClientToScreen`, uses
   `ImageGrab.grab(..., all_screens=True)`, and refuses to capture unless the target
   window is the foreground window.
@@ -98,6 +101,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
 | Foreground capture target is not the active window | Raise `RuntimeError`; never capture unrelated desktop content |
 | First frame is empty or has standard deviation below `1.0` | Preserve failed metadata and abort before video/input startup |
 | Unknown `capture_mode` | Raise `ValueError` during environment construction |
+| Guarded `--execute` starts after exact confirmation | Construct `foreground` capture, activate the game, then start recognition |
+| Guarded observe mode starts | Construct `print_window` capture and do not activate the game |
 | Confirmed scene uses an unknown `frame_phase` | Raise `ValueError`; allow only `before` or `after` |
 | Confirmed `source_path` escapes the recording directory | Raise `ValueError`; copy nothing |
 | Transition references a scene absent from confirmed `scenes` | Raise `ValueError` |
@@ -128,6 +133,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
 - Good: Windows MP4 creation explicitly passes `cv2.CAP_MSMF`.
 - Good: the recorder activates the game, captures its visible client rectangle, and
   validates visual variance before listening for input.
+- Good: guarded execute uses foreground capture after confirmation, while guarded observe
+  keeps `PrintWindow` and does not change focus.
 - Good: a scene that exists only after a later event uses an explicit
   `{"event_seq": 17, "frame_phase": "after"}` confirmation.
 - Good: the production `SceneManager` is run from a sanitized recorded home frame through
@@ -147,6 +154,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
   it can select a broken GStreamer installation even when MSMF works.
 - Bad: treating a successful `PrintWindow` return value as proof that the game content
   was captured. Hardware-accelerated windows may return a uniform white image.
+- Bad: because `PrintWindow` captures a static grid or reward screen correctly, assuming
+  it also captures the hardware-accelerated battle phase correctly.
 - Bad: forcing every scene to come from the same event as a transition. Recorded state
   machines often need a stable frame from a later event.
 - Bad: cropping a template through `x=245` and searching only through `x1=230`; template
@@ -191,6 +200,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
   while failed retry does not.
 - CLI: non-interactive startup and a mismatched confirmation phrase fail before window
   construction.
+- Guarded CLI: execute constructs `foreground` capture and activates once; observe
+  constructs `print_window` capture and never activates.
 - Recorder: on Windows, assert the first writer call includes `cv2.CAP_MSMF`; if it is
   closed, assert it is released before one default-backend fallback call.
 - Recorder: foreground capture must assert the exact desktop bounding box, foreground
@@ -234,6 +245,28 @@ if not writer.isOpened():
 
 This avoids a broken GStreamer plugin chain when the same OpenCV build can write MP4
 successfully through Windows Media Foundation.
+
+#### Wrong (guarded hardware-accelerated execution)
+
+```python
+env = WindowsEnvironment(window_title="阴阳师")
+run_guarded_execute(env)
+```
+
+#### Correct (guarded hardware-accelerated execution)
+
+```python
+env = WindowsEnvironment(
+    window_title="阴阳师",
+    capture_mode="foreground",
+)
+env.activate_window()
+time.sleep(0.5)
+run_guarded_execute(env)
+```
+
+Capture validity is a contract of the backend and rendering phase together. A static
+screen match cannot validate a hardware-accelerated battle frame.
 
 #### Wrong (game recording capture)
 

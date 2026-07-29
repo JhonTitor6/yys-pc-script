@@ -6,6 +6,7 @@ from typing import Callable, Optional
 
 from loguru import logger
 
+from win_util.environment.guarded import RunGuard
 from win_util.image import ImageFinder, ImageMatchConfig
 from win_util.ocr import CommonOcr
 
@@ -129,6 +130,7 @@ class EventBaseScript(ABC):
         self._pause_threading_event = threading.Event()
         self._pause_threading_event.set()  # 初始状态为运行
         self._stop_threading_event = threading.Event()
+        self._run_guard: Optional[RunGuard] = None
 
         # 未知事件处理器（默认空实现，避免每次迭代都触发噪音日志）
         self._event_manager.register_event_handler(
@@ -224,11 +226,18 @@ class EventBaseScript(ABC):
         """等待暂停事件（阻塞直到被 resume）"""
         self._pause_threading_event.wait()
 
+    def set_run_guard(self, guard: Optional[RunGuard]) -> None:
+        """设置真实运行保险丝；传入 None 可恢复普通运行。"""
+        self._run_guard = guard
+
     def run(self) -> None:
         """主循环：执行初始化后持续运行直到被 stop"""
         self.on_run()
 
         while not self._stop_threading_event.is_set():
+            if self._run_guard is not None and not self._run_guard.before_iteration():
+                self.stop()
+                break
             self.pause_point()
             if self._stop_threading_event.is_set():
                 break
@@ -239,7 +248,11 @@ class EventBaseScript(ABC):
                 self.image_finder.update_screenshot_cache()
 
             # 触发图像匹配事件
-            self._trigger_event_from_screenshot_cache()
+            triggered_event = self._trigger_event_from_screenshot_cache()
+            if self._run_guard is not None:
+                self._run_guard.note_iteration(triggered_event is not None)
+                if self._run_guard.is_stopped:
+                    self.stop()
 
             # 随机休眠，避免 CPU 占用过高
             random_sleep(LOOP_SLEEP_MIN, LOOP_SLEEP_MAX)

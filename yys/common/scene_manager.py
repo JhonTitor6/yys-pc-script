@@ -6,7 +6,6 @@ from typing import Dict, List, Optional, Tuple, Set, TYPE_CHECKING, overload, An
 
 from loguru import logger
 
-from win_util.mouse import bg_left_click_with_range
 from win_util.image import to_project_path
 
 if TYPE_CHECKING:
@@ -332,7 +331,11 @@ class SceneManager:
                 return False
             
             # 点击跳转按钮
-            bg_left_click_with_range(self.hwnd, button_pos, x_range=5, y_range=5)
+            self.win_controller.mouse.bg_left_click_with_range(
+                button_pos,
+                x_range=5,
+                y_range=5,
+            )
 
             # 等待场景切换完成（可适当延时等待动画）
             time.sleep(3.0)
@@ -368,7 +371,11 @@ class SceneManager:
             logger.error("未找到返回按钮")
             return False
 
-        bg_left_click_with_range(self.hwnd, button_pos, x_range=5, y_range=5)
+        self.win_controller.mouse.bg_left_click_with_range(
+            button_pos,
+            x_range=5,
+            y_range=5,
+        )
         return True
     
     def get_available_scenes(self) -> Set[str]:

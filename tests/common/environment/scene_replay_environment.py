@@ -5,7 +5,6 @@
 只需 mock 截图返回（返回预设的场景图片），其余逻辑使用生产代码。
 """
 
-import json
 import logging
 import time
 from pathlib import Path
@@ -14,6 +13,10 @@ from typing import Optional, Tuple, Callable
 from PIL import Image
 
 from .base import ActionRecord, ActionType, GameEnvironment
+from yys.common.recording.fixture_builder import (
+    ReplayFixture,
+    load_replay_fixture,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,33 +30,6 @@ class SceneReplayEnvironment(GameEnvironment):
     - 场景转换由场景状态机控制
     - 点击后自动根据配置触发场景流转
     """
-
-    # 默认按钮位置区域定义（x1, y1, x2, y2），来自 abyss_shadows_script.py 的敌人位置配置
-    _DEFAULT_CLICK_REGIONS = {
-        "战报界面_当前": [
-            # 首领位置 (554, 120, 688, 210)
-            {"region": (554, 120, 688, 210), "next_scene": "战斗画面", "button": "boss_label"},
-            # 副将位置 (424, 250, 558, 335) 和 (700, 250, 833, 335)
-            {"region": (424, 250, 558, 335), "next_scene": "战斗画面", "button": "commander_label"},
-            {"region": (700, 250, 833, 335), "next_scene": "战斗画面", "button": "commander_label"},
-            # 精英位置 (342, 360, 480, 435), (554, 360, 691, 435), (766, 360, 905, 435)
-            {"region": (342, 360, 480, 435), "next_scene": "战斗画面", "button": "elite_label"},
-            {"region": (554, 360, 691, 435), "next_scene": "战斗画面", "button": "elite_label"},
-            {"region": (766, 360, 905, 435), "next_scene": "战斗画面", "button": "elite_label"},
-        ],
-        "狭间暗域_选择界面": [
-            # 战报按钮区域（约在中间位置）
-            {"region": (500, 300, 700, 500), "next_scene": "战报界面_当前", "button": "abyss_navigation"},
-        ],
-        "战斗画面": [
-            # 等待开始位置（整个屏幕区域）
-            {"region": (0, 0, 1154, 680), "next_scene": "战斗结束后", "button": "wait_to_start"},
-        ],
-        "战斗结束后": [
-            # 战报按钮区域
-            {"region": (500, 300, 700, 500), "next_scene": "战报界面_当前", "button": "abyss_navigation"},
-        ],
-    }
 
     def __init__(
         self,
@@ -74,6 +50,7 @@ class SceneReplayEnvironment(GameEnvironment):
         """
         self._scene_dir = Path(scene_dir)
         self._transitions_config = Path(transitions_config)
+        self._fixture: ReplayFixture
         self._current_scene: str = initial_scene
         self._screenshot_cache: Optional[Image.Image] = None
         self._auto_transition = auto_transition
@@ -99,9 +76,17 @@ class SceneReplayEnvironment(GameEnvironment):
         """从 JSON 文件加载场景转换配置"""
         if not self._transitions_config.exists():
             raise FileNotFoundError(f"场景转换配置文件不存在: {self._transitions_config}")
-
-        with open(self._transitions_config, "r", encoding="utf-8") as f:
-            self._transitions = json.load(f)
+        self._fixture = load_replay_fixture(
+            self._transitions_config,
+            fallback_initial_scene=self._current_scene,
+        )
+        self._transitions: dict[str, dict[str, str]] = {}
+        for transition in self._fixture.transitions:
+            if transition.button is None:
+                continue
+            self._transitions.setdefault(transition.from_scene, {})[
+                transition.button
+            ] = transition.to_scene
 
     # ==================== GameEnvironment 接口实现 ====================
 
@@ -133,15 +118,17 @@ class SceneReplayEnvironment(GameEnvironment):
             x: 点击的 x 坐标
             y: 点击的 y 坐标
         """
-        # 获取当前场景的点击区域配置
-        regions = self._DEFAULT_CLICK_REGIONS.get(self._current_scene, [])
-        for region_config in regions:
-            x1, y1, x2, y2 = region_config["region"]
-            if x1 <= x <= x2 and y1 <= y <= y2:
-                next_scene = region_config["next_scene"]
+        for transition in self._fixture.transitions:
+            if transition.matches_click(
+                self._current_scene,
+                x,
+                y,
+                ActionType.LEFT_CLICK.value,
+            ):
                 old_scene = self._current_scene
-                self.set_scene(next_scene)
-                print(f"  [场景转换] {old_scene} --[{region_config['button']}]--> {next_scene}")
+                self.set_scene(transition.to_scene)
+                label = transition.button or transition.action
+                print(f"  [场景转换] {old_scene} --[{label}]--> {transition.to_scene}")
                 return
 
     def set_post_click_callback(self, callback: Optional[Callable]) -> None:
@@ -182,8 +169,8 @@ class SceneReplayEnvironment(GameEnvironment):
 
     def get_window_client_rect(self) -> Tuple[int, int, int, int]:
         """获取窗口客户区矩形"""
-        # 返回一个标准的游戏窗口尺寸
-        return (0, 0, 1154, 680)
+        width, height = self._fixture.client_size
+        return (0, 0, width, height)
 
     def find_window(self, title_part: str) -> Optional[int]:
         """查找窗口句柄（Mock 返回固定值）"""
@@ -205,15 +192,54 @@ class SceneReplayEnvironment(GameEnvironment):
             self._screenshot_cache = Image.open(scene_path)
         else:
             # 如果找不到场景图片，创建一个空白图片
-            self._screenshot_cache = Image.new("RGB", (1154, 680), color=(0, 0, 0))
+            self._screenshot_cache = Image.new(
+                "RGB",
+                self._fixture.client_size,
+                color=(0, 0, 0),
+            )
 
     def _find_scene_image(self, scene_name: str) -> Optional[Path]:
-        """查找场景图片路径"""
+        """在夹具目录或显式场景目录内查找场景图片。"""
+        fixture_root = self._transitions_config.parent.resolve()
+        scene_root = self._scene_dir.resolve()
+        configured_path = self._fixture.scenes.get(scene_name)
+        if configured_path:
+            configured = Path(configured_path)
+            candidates = (
+                [configured.resolve()]
+                if configured.is_absolute()
+                else [
+                    (fixture_root / configured).resolve(),
+                    (Path.cwd() / configured).resolve(),
+                    (scene_root / configured).resolve(),
+                ]
+            )
+            safe_candidate_found = False
+            for candidate in candidates:
+                if self._is_path_within(candidate, fixture_root, scene_root):
+                    safe_candidate_found = True
+                    if candidate.is_file():
+                        return candidate
+            if not safe_candidate_found:
+                raise ValueError(f"场景图片路径越界: {configured_path}")
         for ext in [".png", ".bmp", ".jpg", ".jpeg"]:
-            path = self._scene_dir / f"{scene_name}{ext}"
-            if path.exists():
+            path = (scene_root / f"{scene_name}{ext}").resolve()
+            if not self._is_path_within(path, scene_root):
+                raise ValueError(f"场景图片路径越界: {path}")
+            if path.is_file():
                 return path
         return None
+
+    @staticmethod
+    def _is_path_within(path: Path, *roots: Path) -> bool:
+        """判断路径是否位于任一允许目录中。"""
+        for root in roots:
+            try:
+                path.relative_to(root)
+                return True
+            except ValueError:
+                continue
+        return False
 
     def get_current_scene(self) -> str:
         """获取当前场景名称"""
@@ -255,6 +281,12 @@ class SceneReplayEnvironment(GameEnvironment):
 
         # 查找该按钮对应的转换
         next_scene = scene_transitions.get(image_path)
+        if next_scene is None:
+            image_name = Path(image_path).name
+            for button, candidate in scene_transitions.items():
+                if Path(button).name == image_name:
+                    next_scene = candidate
+                    break
         if next_scene:
             old_scene = self._current_scene
             self.set_scene(next_scene)

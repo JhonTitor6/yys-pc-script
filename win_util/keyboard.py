@@ -1,5 +1,11 @@
+from __future__ import annotations
+
+from typing import Optional
+
 import win32api
 import win32con
+
+from win_util.environment.base import GameEnvironment
 
 KEY_MAP = {
     "0": 49, "1": 50, "2": 51, "3": 52, "4": 53, "5": 54, "6": 55, "7": 56, "8": 57, "9": 58,
@@ -21,34 +27,52 @@ KEY_MAP = {
 class KeyboardController:
     """键盘操作封装类，支持前台按键、后台按键及各种按键操作"""
 
-    def __init__(self, hwnd: int):
+    def __init__(
+        self,
+        hwnd: Optional[int] = None,
+        env: Optional[GameEnvironment] = None,
+    ) -> None:
         """
         :param hwnd: 可选，目标窗口句柄，用于后台按键
         """
         self.hwnd = hwnd
+        self._env = env
 
-    def bg_key_down(self, key_code):
+    @staticmethod
+    def _resolve_key_code(key_code: int | str) -> int:
+        """将按键名称转换为虚拟键码。"""
+        if isinstance(key_code, str):
+            return KEY_MAP[key_code.upper()]
+        return key_code
+
+    def bg_key_down(self, key_code: int | str) -> None:
+        key_code = self._resolve_key_code(key_code)
+        if self._env is not None:
+            self._env.key_down(key_code)
+            return
         if self.hwnd is None:
             raise ValueError("请在初始化时传入目标窗口句柄用于后台按键")
-        if isinstance(key_code, str):
-            key_code = KEY_MAP[key_code.upper()]
         win32api.SendMessage(self.hwnd, win32con.WM_KEYDOWN, key_code, 0)
 
-    def bg_key_up(self, key_code):
+    def bg_key_up(self, key_code: int | str) -> None:
+        key_code = self._resolve_key_code(key_code)
+        if self._env is not None:
+            self._env.key_up(key_code)
+            return
         if self.hwnd is None:
             raise ValueError("请在初始化时传入目标窗口句柄用于后台按键")
-        if isinstance(key_code, str):
-            key_code = KEY_MAP[key_code.upper()]
         win32api.SendMessage(self.hwnd, win32con.WM_KEYUP, key_code, 0)
 
-    def bg_press_key(self, key_code):
+    def bg_press_key(self, key_code: int | str) -> None:
         """
         按一下按键
         :param key_code: 按键值，如91,代表WIN windows系统的系统按键，弹出开始菜单
         :return:
         """
-        if isinstance(key_code, str):
-            key_code = KEY_MAP[key_code.upper()]
+        key_code = self._resolve_key_code(key_code)
+        if self._env is not None:
+            self._env.key_press(key_code)
+            return
         self.bg_key_down(key_code)
         self.bg_key_up(key_code)
 

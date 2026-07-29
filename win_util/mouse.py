@@ -102,25 +102,8 @@ class MouseController:
         import time
 
         if self._env is not None:
-            # 使用 GameEnvironment 接口的贝塞尔滑动
-            points = self._generate_bezier_points(
-                start_x, start_y, end_x, end_y,
-                steps, curve_factor
-            )
-            for i, (x, y) in enumerate(points):
-                self._env.left_click(int(x), int(y))
-                if i < len(points) - 1:
-                    # 渐变延迟：开始和结束稍慢，中间稍快
-                    t = i / (len(points) - 1)
-                    # 使用缓动函数使开始和结束更自然
-                    if t < 0.2:
-                        delay = duration * 0.08  # 开始稍慢
-                    elif t > 0.8:
-                        delay = duration * 0.06  # 结束稍慢
-                    else:
-                        delay = duration * 0.03  # 中间稍快
-                    delay *= random.uniform(0.8, 1.2)  # 添加随机因子
-                    time.sleep(delay)
+            # 环境层记录一个逻辑拖拽，避免回放与动作预算把路径点误计为多次点击。
+            self._env.drag(start_x, start_y, end_x, end_y)
             return True
 
         # 向后兼容：使用原生 win32 调用

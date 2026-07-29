@@ -1,29 +1,99 @@
 {
-  "狭间暗域_选择界面": {
-    "yys/abyss_shadows/images/abyss_navigation.bmp": "战报界面_当前"
-  },
-  "战报界面_当前": {
-    "yys/abyss_shadows/images/boss_label.bmp": "战斗画面",
-    "yys/abyss_shadows/images/commander_label.bmp": "战斗画面",
-    "yys/abyss_shadows/images/elite_label.bmp": "战斗画面",
-    "yys/abyss_shadows/images/abyss_navigation.bmp": "战报界面_当前"
-  },
-  "战报界面_已击破": {
-    "yys/abyss_shadows/images/abyss_navigation.bmp": "战报界面_当前",
-    "yys/abyss_shadows/images/change_area.bmp": "战报界面_其他暗域"
-  },
-  "战报界面_其他暗域": {
-    "yys/abyss_shadows/images/abyss_navigation.bmp": "战报界面_当前",
-    "yys/abyss_shadows/images/change_area.bmp": "战报界面_其他暗域"
-  },
-  "战斗画面": {
-    "yys/abyss_shadows/images/wait_to_start.bmp": "战斗结束后",
-    "yys/abyss_shadows/images/confirm.bmp": "战斗结束后"
-  },
-  "战斗结束后": {
-    "yys/abyss_shadows/images/abyss_navigation.bmp": "战报界面_当前"
-  },
-  "战斗结束": {
-    "yys/abyss_shadows/images/confirm.bmp": "战斗结束后"
-  }
+  "schema_version": 1,
+  "scenario_id": "abyss_shadows-flow",
+  "client_size": [1154, 680],
+  "initial_scene": "狭间暗域_选择界面",
+  "scenes": {},
+  "transitions": [
+    {
+      "from_scene": "狭间暗域_选择界面",
+      "to_scene": "战报界面_当前",
+      "button": "yys/abyss_shadows/images/abyss_navigation.bmp",
+      "region": [500, 300, 700, 500]
+    },
+    {
+      "from_scene": "战报界面_当前",
+      "to_scene": "战斗画面",
+      "button": "yys/abyss_shadows/images/boss_label.bmp",
+      "region": [554, 120, 688, 210]
+    },
+    {
+      "from_scene": "战报界面_当前",
+      "to_scene": "战斗画面",
+      "button": "yys/abyss_shadows/images/commander_label.bmp",
+      "region": [424, 250, 558, 335]
+    },
+    {
+      "from_scene": "战报界面_当前",
+      "to_scene": "战斗画面",
+      "button": "yys/abyss_shadows/images/commander_label.bmp",
+      "region": [700, 250, 833, 335]
+    },
+    {
+      "from_scene": "战报界面_当前",
+      "to_scene": "战斗画面",
+      "button": "yys/abyss_shadows/images/elite_label.bmp",
+      "region": [342, 360, 480, 435]
+    },
+    {
+      "from_scene": "战报界面_当前",
+      "to_scene": "战斗画面",
+      "button": "yys/abyss_shadows/images/elite_label.bmp",
+      "region": [554, 360, 691, 435]
+    },
+    {
+      "from_scene": "战报界面_当前",
+      "to_scene": "战斗画面",
+      "button": "yys/abyss_shadows/images/elite_label.bmp",
+      "region": [766, 360, 905, 435]
+    },
+    {
+      "from_scene": "战报界面_当前",
+      "to_scene": "战报界面_当前",
+      "button": "yys/abyss_shadows/images/abyss_navigation.bmp"
+    },
+    {
+      "from_scene": "战报界面_已击破",
+      "to_scene": "战报界面_当前",
+      "button": "yys/abyss_shadows/images/abyss_navigation.bmp"
+    },
+    {
+      "from_scene": "战报界面_已击破",
+      "to_scene": "战报界面_其他暗域",
+      "button": "yys/abyss_shadows/images/change_area.bmp"
+    },
+    {
+      "from_scene": "战报界面_其他暗域",
+      "to_scene": "战报界面_当前",
+      "button": "yys/abyss_shadows/images/abyss_navigation.bmp"
+    },
+    {
+      "from_scene": "战报界面_其他暗域",
+      "to_scene": "战报界面_其他暗域",
+      "button": "yys/abyss_shadows/images/change_area.bmp"
+    },
+    {
+      "from_scene": "战斗画面",
+      "to_scene": "战斗结束后",
+      "button": "yys/abyss_shadows/images/wait_to_start.bmp",
+      "region": [0, 0, 1153, 679]
+    },
+    {
+      "from_scene": "战斗画面",
+      "to_scene": "战斗结束后",
+      "button": "yys/abyss_shadows/images/confirm.bmp"
+    },
+    {
+      "from_scene": "战斗结束后",
+      "to_scene": "战报界面_当前",
+      "button": "yys/abyss_shadows/images/abyss_navigation.bmp",
+      "region": [500, 300, 700, 500]
+    },
+    {
+      "from_scene": "战斗结束",
+      "to_scene": "战斗结束后",
+      "button": "yys/abyss_shadows/images/confirm.bmp"
+    }
+  ],
+  "expected_actions": []
 }

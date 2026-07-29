@@ -3,7 +3,7 @@ import time
 from ctypes import windll
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Tuple, Union, Any, Optional
+from typing import List, Tuple, Union, Any, Optional
 
 import cv2
 import numpy as np
@@ -12,11 +12,7 @@ import win32ui
 from PIL import ImageGrab
 from loguru import logger
 
-if TYPE_CHECKING:
-    try:
-        from tests.common.environment.base import GameEnvironment
-    except ImportError:
-        GameEnvironment = None  # type: ignore
+from win_util.environment.base import GameEnvironment
 
 debug_img_base_dir = Path("yys/images/debug")
 

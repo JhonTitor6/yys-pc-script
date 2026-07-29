@@ -1,20 +1,13 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import Optional, Tuple
 
+from win_util.environment.base import GameEnvironment
 from win_util.image import ImageFinder, ImageMatchConfig
 from win_util.keyboard import KeyboardController
 from win_util.mouse import MouseController
 from win_util.ocr import CommonOcr
-
-if TYPE_CHECKING:
-    # GameEnvironment 是可选的抽象接口，仅用于类型标注
-    # 运行时如果未安装 tests 模块，使用字符串避免 ImportError
-    try:
-        from tests.common.environment.base import GameEnvironment
-    except ImportError:
-        GameEnvironment = None  # type: ignore
 
 
 class WinController:
@@ -26,7 +19,11 @@ class WinController:
     2. hwnd 模式（向后兼容）：传入 hwnd 参数，使用原生 win32 调用
     """
 
-    def __init__(self, hwnd: Optional[int] = None, env: Optional['GameEnvironment'] = None):
+    def __init__(
+        self,
+        hwnd: Optional[int] = None,
+        env: Optional[GameEnvironment] = None,
+    ) -> None:
         """
         初始化控制器
 
@@ -37,9 +34,8 @@ class WinController:
         self._env = env
 
         # 优先使用 GameEnvironment，否则使用 hwnd
-        # 注意：keyboard 暂不支持 GameEnvironment，仅传入 hwnd
         self.image_finder: ImageFinder = ImageFinder(env=env, hwnd=hwnd)
-        self.keyboard: KeyboardController = KeyboardController(hwnd)
+        self.keyboard: KeyboardController = KeyboardController(hwnd=hwnd, env=env)
         self.mouse: MouseController = MouseController(env=env, hwnd=hwnd)
         self._ocr: CommonOcr | None = None
 

@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "scenario_id": "realm-raid-recorded-main-v1",
+  "client_size": [
+    1136,
+    640
+  ],
+  "initial_scene": "home",
+  "scenes": {
+    "home": "scenes/home.png",
+    "exploration": "scenes/exploration.png",
+    "barrier_breakthrough": "scenes/barrier_breakthrough.png",
+    "attack_dialog": "scenes/attack_dialog.png",
+    "battling": "scenes/battling.png",
+    "battle_loss": "scenes/battle_loss.png",
+    "retry_dialog": "scenes/retry_dialog.png",
+    "grid_after_first_win": "scenes/grid_after_first_win.png"
+  },
+  "transitions": [
+    {
+      "from_scene": "home",
+      "to_scene": "exploration",
+      "action": "left_click",
+      "region": [598, 128, 622, 152]
+    },
+    {
+      "from_scene": "exploration",
+      "to_scene": "barrier_breakthrough",
+      "action": "left_click",
+      "region": [241, 580, 265, 604]
+    },
+    {
+      "from_scene": "barrier_breakthrough",
+      "to_scene": "attack_dialog",
+      "action": "left_click",
+      "region": [555, 288, 579, 312]
+    },
+    {
+      "from_scene": "attack_dialog",
+      "to_scene": "battling",
+      "action": "left_click",
+      "region": [658, 459, 682, 483]
+    },
+    {
+      "from_scene": "battle_loss",
+      "to_scene": "retry_dialog",
+      "action": "left_click",
+      "region": [745, 454, 769, 478]
+    },
+    {
+      "from_scene": "retry_dialog",
+      "to_scene": "battling",
+      "action": "left_click",
+      "region": [680, 375, 704, 399]
+    },
+    {
+      "from_scene": "grid_after_first_win",
+      "to_scene": "attack_dialog",
+      "action": "left_click",
+      "region": [868, 279, 892, 303]
+    }
+  ],
+  "expected_actions": [
+    {
+      "action": "left_click",
+      "region": [598, 128, 622, 152]
+    },
+    {
+      "action": "left_click",
+      "region": [241, 580, 265, 604]
+    },
+    {
+      "action": "key_press",
+      "key": "VK_27"
+    },
+    {
+      "action": "key_press",
+      "key": "VK_13"
+    }
+  ]
+}

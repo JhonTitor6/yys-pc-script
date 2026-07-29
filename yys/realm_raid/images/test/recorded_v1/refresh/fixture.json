@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "scenario_id": "realm-raid-recorded-auto-refresh-v1",
+  "client_size": [
+    1136,
+    640
+  ],
+  "initial_scene": "last_attack_dialog",
+  "scenes": {
+    "last_attack_dialog": "scenes/last_attack_dialog.png",
+    "last_battle": "scenes/last_battle.png",
+    "settlement_reward": "scenes/settlement_reward.png",
+    "new_grid": "scenes/new_grid.png"
+  },
+  "transitions": [
+    {
+      "from_scene": "last_attack_dialog",
+      "to_scene": "last_battle",
+      "action": "left_click",
+      "region": [907, 575, 931, 599]
+    },
+    {
+      "from_scene": "settlement_reward",
+      "to_scene": "new_grid",
+      "action": "left_click",
+      "region": [839, 459, 863, 483]
+    }
+  ],
+  "expected_actions": [
+    {
+      "action": "left_click",
+      "region": [907, 575, 931, 599]
+    },
+    {
+      "action": "left_click",
+      "region": [839, 459, 863, 483]
+    }
+  ]
+}

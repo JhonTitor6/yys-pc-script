@@ -125,7 +125,8 @@ After implementation:
       registered event; fixture scenes and scene-navigation templates do not count
 - [ ] Verified passive “still running” state callbacks produce no mouse or keyboard input
 - [ ] If a confirmed action has an animation/loading gap, scoped grace to that action,
-      ended it on first recognition, and kept timeout/action/F12 fuses active
+      preserved it through the arming event's own recognition receipt, ended it on the
+      next recognized event, and kept timeout/action/F12 fuses active
 - [ ] Did not increase a global unknown threshold to compensate for one known transition
 - [ ] For long-running collection, performed a cheap representative preflight before
       accepting user input or consuming significant time

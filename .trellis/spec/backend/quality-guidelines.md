@@ -59,7 +59,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
   an independently registered battle-end event.
 - A deterministic transition may request a short unknown-frame grace period only after a
   confirmed business action. Grace suppresses unknown counting, not timeout, action limit,
-  or emergency stop. The first recognized event ends grace immediately.
+  or emergency stop. When grace is armed inside a recognized event callback, that event's
+  later `note_iteration(True)` receipt preserves grace; the next recognized event ends it.
 - On Windows, video creation must try `cv2.CAP_MSMF` before OpenCV's default backend.
   Some project environments report GStreamer as enabled while its plugin DLL
   dependencies are incomplete.
@@ -101,7 +102,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
 | Battle frame matches no registered image event | Count as unknown and stop at `unknown_limit`; add a confirmed state marker rather than increasing the limit |
 | Battle-running marker matches | Return a known event, reset the unknown counter, and send no input |
 | Unknown frame occurs inside an action-scoped grace period | Keep `consecutive_unknown=0`; continue checking all other fuses |
-| Any event is recognized during grace | Reset unknown count and terminate grace immediately |
+| The same recognized event that armed grace reaches `note_iteration(True)` | Reset unknown count but preserve grace for the following transition |
+| A later event is recognized during grace | Reset unknown count and terminate grace immediately |
 | Grace seconds are zero or negative | Raise `ValueError` |
 | MSMF opens the MP4 writer | Use it without probing GStreamer |
 | MSMF cannot open the MP4 writer | Release it, try the default backend once, then fail through `isOpened()` |
@@ -316,4 +318,6 @@ guard.allow_unknown_for(12.0)
 ```
 
 The correct form keeps the global three-frame fuse intact and scopes tolerance to a
-confirmed action. Timeout, action budget, and emergency stop remain active throughout.
+confirmed action. The event-loop receipt for this attack event preserves the newly armed
+grace; a later recognized battle or settlement event ends it. Timeout, action budget, and
+emergency stop remain active throughout.

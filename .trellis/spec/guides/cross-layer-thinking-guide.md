@@ -123,6 +123,8 @@ After implementation:
       business-state evidence needed to reject look-alike intermediate screens
 - [ ] For guarded event loops, verified every long-lived real state has a production
       registered event; fixture scenes and scene-navigation templates do not count
+- [ ] Verified a long-lived visual marker across early/middle/late recorded timestamps,
+      rejected auto-hiding panels, and checked that the following state does not match
 - [ ] Verified passive “still running” state callbacks produce no mouse or keyboard input
 - [ ] If a confirmed action has an animation/loading gap, scoped grace to that action,
       preserved it through the arming event's own recognition receipt, ended it on the

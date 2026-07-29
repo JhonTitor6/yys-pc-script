@@ -57,6 +57,11 @@ mock replay, observe-only mode, action limits, or emergency stop.
 - A battle-running marker callback must be input-free unless the business flow explicitly
   requires an action. Its purpose is to reset the unknown-frame counter while waiting for
   an independently registered battle-end event.
+- A long-lived state marker must remain visible through the early, middle, and late parts
+  of that state. Auto-hiding entrance panels, buff banners, and tutorial overlays are not
+  valid state markers even if one confirmed frame matches them. When a recording is
+  available, measure timeline coverage and also reject the following state as a negative
+  fixture.
 - A deterministic transition may request a short unknown-frame grace period only after a
   confirmed business action. Grace suppresses unknown counting, not timeout, action limit,
   or emergency stop. When grace is armed inside a recognized event callback, that event's
@@ -101,6 +106,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
 | Victory increased but record-zero template is absent | Keep the current round and wait for reliable visual evidence |
 | Battle frame matches no registered image event | Count as unknown and stop at `unknown_limit`; add a confirmed state marker rather than increasing the limit |
 | Battle-running marker matches | Return a known event, reset the unknown counter, and send no input |
+| Candidate marker matches only an entrance panel or a short prefix of a long-lived state | Reject it; select a persistent control and verify early/middle/late coverage |
+| Candidate battle-running marker also matches the recorded battle summary | Reject it; the passive running event must not mask battle-end handling |
 | Unknown frame occurs inside an action-scoped grace period | Keep `consecutive_unknown=0`; continue checking all other fuses |
 | The same recognized event that armed grace reaches `note_iteration(True)` | Reset unknown count but preserve grace for the following transition |
 | A later event is recognized during grace | Reset unknown count and terminate grace immediately |
@@ -125,8 +132,9 @@ mock replay, observe-only mode, action limits, or emergency stop.
   `{"event_seq": 17, "frame_phase": "after"}` confirmation.
 - Good: the production `SceneManager` is run from a sanitized recorded home frame through
   the real exploration and realm-raid templates.
-- Good: realm raid registers a confirmed “结界加成” battle marker with a no-op callback,
-  while victory/loss templates remain responsible for settlement actions.
+- Good: realm raid registers the persistent bottom-left “自动” control with a no-op
+  callback, matches complete recorded battle intervals, and does not match the recorded
+  post-battle summary; victory/loss templates remain responsible for settlement actions.
 - Good: clicking a confirmed attack button grants 12 seconds for loading/entry animation;
   the battle marker cancels the remaining grace as soon as it appears.
 - Base: ordinary scripts without an injected environment keep the legacy Win32 behavior.
@@ -150,6 +158,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
   separate layers.
 - Bad: raising `unknown_limit` to hide a deterministic, long-lived unregistered battle
   state. This weakens the safety fuse for genuinely unknown screens.
+- Bad: using the auto-hiding “结界加成” panel as the only battle-running marker because it
+  matches one early frame; after the panel closes, the guard sees the same battle as unknown.
 - Bad: granting grace at process startup or after an unrecognized frame. Grace must be
   causally attached to an action whose expected transition is known.
 - Bad: allowing grace to postpone total timeout or F12 emergency stop.
@@ -172,6 +182,9 @@ mock replay, observe-only mode, action limits, or emergency stop.
   a new victory resets before selecting the next target.
 - Guarded real-frame regression: each long-lived state marker must be triggered through
   the production event loop, and its no-op callback must leave the action log empty.
+- Marker persistence regression: verify representative early/middle/late recorded frames
+  match the long-lived state marker, and verify the following summary/settlement frame
+  does not match it.
 - Guard unit: unknown frames inside grace do not accumulate; recognized events end grace;
   timeout remains effective; non-positive grace is rejected.
 - Business integration: direct attack and successful quit-three completion request grace,
@@ -302,6 +315,25 @@ def _on_battling(self, _point: tuple[int, int]) -> None:
 
 The event registration, not the fixture scene name, is what makes
 `RunGuard.note_iteration(triggered_event is not None)` reset its unknown counter.
+
+#### Wrong (long-lived battle marker)
+
+```python
+# “结界加成”只在入场后的短时间内可见
+template = crop(early_battle_frame, temporary_buff_panel)
+```
+
+#### Correct (long-lived battle marker)
+
+```python
+# “自动”控件覆盖完整战斗，且战后总结画面中不存在
+template = crop(confirmed_battle_frame, persistent_auto_control)
+assert matches_early_middle_late_frames(template)
+assert not matches_battle_summary(template)
+```
+
+A single positive screenshot proves only local recognizability. A long-lived runtime
+state requires temporal coverage plus a negative assertion at the next state boundary.
 
 #### Wrong (transition safety)
 

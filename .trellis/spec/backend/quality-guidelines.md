@@ -28,6 +28,7 @@ mock replay, observe-only mode, action limits, or emergency stop.
 - `build_confirmed_fixture(recording_dir: Path, confirmation_path: Path, output_dir: Path) -> Path`
 - `python tools/run_guarded_script.py realm_raid [--execute]`
 - `RealmRaidScript._on_battling(point: tuple[int, int]) -> None`
+- `RunGuard.allow_unknown_for(seconds: float) -> None`
 
 ### 3. Contracts
 
@@ -56,6 +57,9 @@ mock replay, observe-only mode, action limits, or emergency stop.
 - A battle-running marker callback must be input-free unless the business flow explicitly
   requires an action. Its purpose is to reset the unknown-frame counter while waiting for
   an independently registered battle-end event.
+- A deterministic transition may request a short unknown-frame grace period only after a
+  confirmed business action. Grace suppresses unknown counting, not timeout, action limit,
+  or emergency stop. The first recognized event ends grace immediately.
 - On Windows, video creation must try `cv2.CAP_MSMF` before OpenCV's default backend.
   Some project environments report GStreamer as enabled while its plugin DLL
   dependencies are incomplete.
@@ -96,6 +100,9 @@ mock replay, observe-only mode, action limits, or emergency stop.
 | Victory increased but record-zero template is absent | Keep the current round and wait for reliable visual evidence |
 | Battle frame matches no registered image event | Count as unknown and stop at `unknown_limit`; add a confirmed state marker rather than increasing the limit |
 | Battle-running marker matches | Return a known event, reset the unknown counter, and send no input |
+| Unknown frame occurs inside an action-scoped grace period | Keep `consecutive_unknown=0`; continue checking all other fuses |
+| Any event is recognized during grace | Reset unknown count and terminate grace immediately |
+| Grace seconds are zero or negative | Raise `ValueError` |
 | MSMF opens the MP4 writer | Use it without probing GStreamer |
 | MSMF cannot open the MP4 writer | Release it, try the default backend once, then fail through `isOpened()` |
 | Action number would exceed `max_actions` | Block the action and set `action_limit` |
@@ -118,6 +125,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
   the real exploration and realm-raid templates.
 - Good: realm raid registers a confirmed “结界加成” battle marker with a no-op callback,
   while victory/loss templates remain responsible for settlement actions.
+- Good: clicking a confirmed attack button grants 12 seconds for loading/entry animation;
+  the battle marker cancels the remaining grace as soon as it appears.
 - Base: ordinary scripts without an injected environment keep the legacy Win32 behavior.
 - Base: background automation continues to use `PrintWindow`; foreground capture is an
   explicit recorder-only choice.
@@ -139,6 +148,9 @@ mock replay, observe-only mode, action limits, or emergency stop.
   separate layers.
 - Bad: raising `unknown_limit` to hide a deterministic, long-lived unregistered battle
   state. This weakens the safety fuse for genuinely unknown screens.
+- Bad: granting grace at process startup or after an unrecognized frame. Grace must be
+  causally attached to an action whose expected transition is known.
+- Bad: allowing grace to postpone total timeout or F12 emergency stop.
 
 ### 6. Tests Required
 
@@ -158,6 +170,10 @@ mock replay, observe-only mode, action limits, or emergency stop.
   a new victory resets before selecting the next target.
 - Guarded real-frame regression: each long-lived state marker must be triggered through
   the production event loop, and its no-op callback must leave the action log empty.
+- Guard unit: unknown frames inside grace do not accumulate; recognized events end grace;
+  timeout remains effective; non-positive grace is rejected.
+- Business integration: direct attack and successful quit-three completion request grace,
+  while failed retry does not.
 - CLI: non-interactive startup and a mismatched confirmation phrase fail before window
   construction.
 - Recorder: on Windows, assert the first writer call includes `cv2.CAP_MSMF`; if it is
@@ -284,3 +300,20 @@ def _on_battling(self, _point: tuple[int, int]) -> None:
 
 The event registration, not the fixture scene name, is what makes
 `RunGuard.note_iteration(triggered_event is not None)` reset its unknown counter.
+
+#### Wrong (transition safety)
+
+```python
+# 全局放宽所有未知画面，掩盖真正异常
+guard = RunGuard(unknown_limit=15)
+```
+
+#### Correct (transition safety)
+
+```python
+self.bg_left_click(attack_point)
+guard.allow_unknown_for(12.0)
+```
+
+The correct form keeps the global three-frame fuse intact and scopes tolerance to a
+confirmed action. Timeout, action budget, and emergency stop remain active throughout.

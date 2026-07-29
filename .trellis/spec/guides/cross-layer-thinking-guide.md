@@ -124,6 +124,9 @@ After implementation:
 - [ ] For guarded event loops, verified every long-lived real state has a production
       registered event; fixture scenes and scene-navigation templates do not count
 - [ ] Verified passive “still running” state callbacks produce no mouse or keyboard input
+- [ ] If a confirmed action has an animation/loading gap, scoped grace to that action,
+      ended it on first recognition, and kept timeout/action/F12 fuses active
+- [ ] Did not increase a global unknown threshold to compensate for one known transition
 - [ ] For long-running collection, performed a cheap representative preflight before
       accepting user input or consuming significant time
 - [ ] Checked data survives round-trip

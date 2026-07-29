@@ -27,6 +27,7 @@ mock replay, observe-only mode, action limits, or emergency stop.
 - `python tools/build_replay_fixture.py build <recording> <confirmation> <output>`
 - `build_confirmed_fixture(recording_dir: Path, confirmation_path: Path, output_dir: Path) -> Path`
 - `python tools/run_guarded_script.py realm_raid [--execute]`
+- `python tools/run_guarded_script.py realm_raid [--execute] [--confirmation-phrase <exact>]`
 - `RealmRaidScript._on_battling(point: tuple[int, int]) -> None`
 - `RunGuard.allow_unknown_for(seconds: float) -> None`
 
@@ -57,6 +58,10 @@ mock replay, observe-only mode, action limits, or emergency stop.
 - A battle-running marker callback must be input-free unless the business flow explicitly
   requires an action. Its purpose is to reset the unknown-frame counter while waiting for
   an independently registered battle-end event.
+- A persistent battle marker may refresh a short trailing unknown-frame grace period on
+  every match. This bridges the deterministic interval after the marker disappears and
+  before a settlement template appears. The callback must remain input-free, and the
+  grace must not bypass timeout, action budget, or emergency stop.
 - A long-lived state marker must remain visible through the early, middle, and late parts
   of that state. Auto-hiding entrance panels, buff banners, and tutorial overlays are not
   valid state markers even if one confirmed frame matches them. When a recording is
@@ -88,7 +93,10 @@ mock replay, observe-only mode, action limits, or emergency stop.
 - All runtime input must pass through the injected `GameEnvironment`, including scene
   navigation and `ESC`/`ENTER`.
 - Observe-only mode records planned logical actions and sends no input to the delegate.
-- Real execution requires an interactive terminal and the exact confirmation phrase.
+- Real execution requires the exact mode-and-script confirmation phrase. The default path
+  reads it from an interactive terminal. While a user has explicitly authorized the
+  active task to self-debug, `--confirmation-phrase` may supply the same exact phrase to
+  one non-interactive process. This is not a generic `--yes` bypass.
 - One run never starts another run automatically.
 
 ### 4. Validation & Error Matrix
@@ -111,6 +119,7 @@ mock replay, observe-only mode, action limits, or emergency stop.
 | Victory increased but record-zero template is absent | Keep the current round and wait for reliable visual evidence |
 | Battle frame matches no registered image event | Count as unknown and stop at `unknown_limit`; add a confirmed state marker rather than increasing the limit |
 | Battle-running marker matches | Return a known event, reset the unknown counter, and send no input |
+| Battle marker disappears before a settlement template appears | Keep unknown count at zero only for the marker-refreshed trailing grace; recognize settlement normally when it appears |
 | Candidate marker matches only an entrance panel or a short prefix of a long-lived state | Reject it; select a persistent control and verify early/middle/late coverage |
 | Candidate battle-running marker also matches the recorded battle summary | Reject it; the passive running event must not mask battle-end handling |
 | Unknown frame occurs inside an action-scoped grace period | Keep `consecutive_unknown=0`; continue checking all other fuses |
@@ -123,7 +132,9 @@ mock replay, observe-only mode, action limits, or emergency stop.
 | Runtime reaches `timeout_seconds` | Set `timeout` and stop the event loop |
 | Consecutive unknown frames reach `unknown_limit` | Set `unknown_scene` and stop |
 | F12 is pressed | Set `emergency_stop`; later reasons must not overwrite it |
-| Non-interactive real-run request | Return exit code `2` before resolving a window |
+| Non-interactive real-run request without `--confirmation-phrase` | Return exit code `2` before resolving a window |
+| Supplied confirmation phrase differs from the exact mode-and-script phrase | Return exit code `1` before resolving a window |
+| User-authorized non-interactive run supplies the exact phrase | Start one guarded process with the same capture and fuse configuration as the interactive path |
 | Retry or refresh confirmation is missing | Stop the business flow; do not guess-click |
 
 ### 5. Good / Base / Bad Cases
@@ -144,6 +155,11 @@ mock replay, observe-only mode, action limits, or emergency stop.
   post-battle summary; victory/loss templates remain responsible for settlement actions.
 - Good: clicking a confirmed attack button grants 12 seconds for loading/entry animation;
   the battle marker cancels the remaining grace as soon as it appears.
+- Good: each persistent battle-marker match refreshes a five-second, input-free trailing
+  grace; the victory template appears during that interval and ends grace normally.
+- Good: an explicitly authorized debugging process passes
+  `--confirmation-phrase "RUN realm_raid"` and still uses foreground capture, action
+  limits, timeout, unknown limits, F12, and one-process-one-run behavior.
 - Base: ordinary scripts without an injected environment keep the legacy Win32 behavior.
 - Base: background automation continues to use `PrintWindow`; foreground capture is an
   explicit recorder-only choice.
@@ -171,6 +187,9 @@ mock replay, observe-only mode, action limits, or emergency stop.
   matches one early frame; after the panel closes, the guard sees the same battle as unknown.
 - Bad: granting grace at process startup or after an unrecognized frame. Grace must be
   causally attached to an action whose expected transition is known.
+- Bad: using a generic `--yes` flag or accepting a partial confirmation such as `RUN`;
+  non-interactive authorization must carry the complete expected phrase.
+- Bad: adding a click to a passive battle marker merely to keep the event loop alive.
 - Bad: allowing grace to postpone total timeout or F12 emergency stop.
 
 ### 6. Tests Required
@@ -198,8 +217,11 @@ mock replay, observe-only mode, action limits, or emergency stop.
   timeout remains effective; non-positive grace is rejected.
 - Business integration: direct attack and successful quit-three completion request grace,
   while failed retry does not.
-- CLI: non-interactive startup and a mismatched confirmation phrase fail before window
-  construction.
+- Business integration: a real battle marker produces no input and refreshes a bounded
+  settlement-transition grace; three unknown observations during that grace do not stop.
+- CLI: non-interactive startup without a phrase and any mismatched phrase fail before
+  window construction; an exact authorized phrase reaches the same guarded execute
+  orchestration without calling interactive input.
 - Guarded CLI: execute constructs `foreground` capture and activates once; observe
   constructs `print_window` capture and never activates.
 - Recorder: on Windows, assert the first writer call includes `cv2.CAP_MSMF`; if it is
@@ -386,3 +408,41 @@ The correct form keeps the global three-frame fuse intact and scopes tolerance t
 confirmed action. The event-loop receipt for this attack event preserves the newly armed
 grace; a later recognized battle or settlement event ends it. Timeout, action budget, and
 emergency stop remain active throughout.
+
+#### Wrong (battle-to-settlement transition)
+
+```python
+def _on_battling(self, _point: tuple[int, int]) -> None:
+    pass
+```
+
+#### Correct (battle-to-settlement transition)
+
+```python
+def _on_battling(self, _point: tuple[int, int]) -> None:
+    if self._run_guard is not None:
+        self._run_guard.allow_unknown_for(
+            self.BATTLE_SETTLEMENT_GRACE_SECONDS,
+        )
+```
+
+The marker remains input-free. Refreshing a short grace while the marker is visible
+covers only its deterministic trailing transition; the next victory or reward event
+terminates grace and retains responsibility for all clicks and counters.
+
+#### Wrong (authorized non-interactive execution)
+
+```powershell
+python tools/run_guarded_script.py realm_raid --execute --yes
+```
+
+#### Correct (authorized non-interactive execution)
+
+```powershell
+python tools/run_guarded_script.py realm_raid --execute `
+  --confirmation-phrase "RUN realm_raid"
+```
+
+The exact phrase couples authorization to both mode and script. A missing or mismatched
+phrase fails before the game window is resolved, and the process still executes only one
+guarded run.

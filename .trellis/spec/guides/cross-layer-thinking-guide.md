@@ -133,6 +133,12 @@ After implementation:
 - [ ] If a confirmed action has an animation/loading gap, scoped grace to that action,
       preserved it through the arming event's own recognition receipt, ended it on the
       next recognized event, and kept timeout/action/F12 fuses active
+- [ ] If a persistent passive marker disappears before the next registered state appears,
+      considered a short marker-refreshed trailing grace; kept its callback input-free
+      and verified the next registered event ends grace
+- [ ] If a non-interactive real-run path was authorized, required the complete
+      mode-and-script confirmation phrase and routed it through the same capture mode,
+      fuses, and one-process-one-run orchestration as interactive execution
 - [ ] Did not increase a global unknown threshold to compensate for one known transition
 - [ ] For long-running collection, performed a cheap representative preflight before
       accepting user input or consuming significant time

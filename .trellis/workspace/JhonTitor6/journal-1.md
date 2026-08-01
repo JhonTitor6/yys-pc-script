@@ -45,3 +45,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: 初始化 Trellis 并完成狭间暗域首领伤害配置
+
+**Date**: 2026-08-01
+**Task**: 初始化 Trellis 并完成狭间暗域首领伤害配置
+**Branch**: `master`
+
+### Summary
+
+初始化项目 Trellis/Codex 工作流；将狭间暗域首领伤害限制暴露为界面配置；修复单元测试对真实图像回放的全局模块污染，并完成相关验收。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `30febdd` | (see git log) |
+| `eff420e` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

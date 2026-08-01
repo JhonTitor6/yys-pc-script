@@ -8,13 +8,14 @@
 - 伤害退出机制
 - 战报界面导航
 
-注意：此测试文件通过 Mock 所有系统级依赖（cv2, win32api, easyocr 等）
-来实现在无游戏环境下的单元测试。
+注意：此测试文件仅 Mock 游戏窗口和 OCR 等系统级依赖。
+cv2、numpy 和 PIL 保持真实模块，避免污染同一进程中的场景回放测试。
 """
 
 import os
 import sys
 import unittest
+from typing import Any, Optional
 from unittest.mock import Mock, patch, MagicMock, PropertyMock
 from pathlib import Path
 
@@ -24,20 +25,12 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 # ==================== 在导入任何项目模块之前，先 Mock 所有系统级依赖 ====================
 
-# Mock cv2 和 numpy（图像处理依赖）
-_mock_cv2 = MagicMock()
-_mock_numpy = MagicMock()
-sys.modules['cv2'] = _mock_cv2
-sys.modules['numpy'] = _mock_numpy
-
 # Mock win32gui, win32ui, win32con, win32api 等（Windows GUI 依赖）
 for _mod in ['win32gui', 'win32ui', 'win32con', 'win32api',
              'win32clipboard', 'win32process']:
     sys.modules[_mod] = MagicMock()
 
-# Mock PIL (图像依赖)
-_mock_pil = MagicMock()
-sys.modules['PIL'] = _mock_pil
+# Mock 截图入口，但保留真实 PIL 包供场景回放加载夹具图片
 sys.modules['PIL.ImageGrab'] = MagicMock()
 
 # Mock easyocr (OCR 依赖)
@@ -61,7 +54,10 @@ from yys.common.event_script_base import YYSBaseScript
 class TestAbyssShadowsFlow(unittest.TestCase):
     """狭间暗域脚本流程测试"""
 
-    def _create_mock_script_instance(self):
+    def _create_mock_script_instance(
+        self,
+        config: Optional[dict[str, Any]] = None,
+    ) -> Main:
         """创建一个带有完全 Mock 依赖的脚本实例"""
         mock_hwnd = 199268
 
@@ -98,10 +94,10 @@ class TestAbyssShadowsFlow(unittest.TestCase):
         with patch('yys.common.event_script_base.find_window', return_value=mock_hwnd), \
              patch('yys.common.event_script_base.WinController', return_value=mock_win_controller), \
              patch('yys.common.event_script_base.SceneManager', return_value=mock_scene_manager), \
-             patch('yys.common.event_script_base.ImageFinder', return_value=mock_image_finder), \
-             patch('yys.common.event_script_base.CommonOcr', return_value=mock_ocr):
+             patch('yys.common.event_script_base.ImageFinder', return_value=mock_image_finder, create=True), \
+             patch('yys.common.event_script_base.CommonOcr', return_value=mock_ocr, create=True):
 
-            script = Main()
+            script = Main(config=config)
 
         # 重新注入 Mock 对象（确保引用正确）
         script.win_controller = mock_win_controller
@@ -503,31 +499,49 @@ class TestAbyssShadowsFlow(unittest.TestCase):
     # ==================== 阈值常量验证 ====================
 
     def test_commander_damage_threshold(self):
-        """验证副将伤害阈值为 33,700,000"""
+        """验证副将伤害阈值为 1。"""
         # 查找副将敌人
         commander_enemies = self.script.enemies[EnemyType.COMMANDER]
         self.assertGreater(len(commander_enemies), 0)
 
         for enemy in commander_enemies:
-            self.assertEqual(enemy.target_damage, 33700000)
+            self.assertEqual(enemy.target_damage, 1)
 
     def test_elite_damage_threshold(self):
-        """验证精英伤害阈值为 5,000,000"""
+        """验证精英伤害阈值为 6,000,000。"""
         # 查找精英敌人
         elite_enemies = self.script.enemies[EnemyType.ELITE]
         self.assertGreater(len(elite_enemies), 0)
 
         for enemy in elite_enemies:
-            self.assertEqual(enemy.target_damage, 5000000)
+            self.assertEqual(enemy.target_damage, 6000000)
 
     def test_boss_damage_threshold(self):
-        """验证首领伤害阈值为 999999999（不设上限）"""
+        """验证首领伤害阈值默认使用界面配置默认值。"""
         # 查找首领敌人
         boss_enemies = self.script.enemies[EnemyType.BOSS]
         self.assertGreater(len(boss_enemies), 0)
 
         for enemy in boss_enemies:
-            self.assertEqual(enemy.target_damage, 999999999)
+            self.assertEqual(enemy.target_damage, 1)
+
+    def test_boss_damage_threshold_uses_config(self):
+        """验证首领伤害阈值使用传入的界面配置。"""
+        script = self._create_mock_script_instance(
+            config={"boss_damage_limit": 123456789},
+        )
+
+        boss_enemies = script.enemies[EnemyType.BOSS]
+        self.assertGreater(len(boss_enemies), 0)
+        for enemy in boss_enemies:
+            self.assertEqual(enemy.target_damage, 123456789)
+
+    def test_boss_damage_threshold_rejects_out_of_range_config(self):
+        """验证首领伤害阈值复用公共配置范围校验。"""
+        with self.assertRaises(ValueError):
+            self._create_mock_script_instance(
+                config={"boss_damage_limit": 1000000000},
+            )
 
 
 class TestAbyssShadowsEnemyDef(unittest.TestCase):
@@ -554,8 +568,8 @@ class TestAbyssShadowsEnemyDef(unittest.TestCase):
         with patch('yys.common.event_script_base.find_window', return_value=mock_hwnd), \
              patch('yys.common.event_script_base.WinController', return_value=mock_win_controller), \
              patch('yys.common.event_script_base.SceneManager', return_value=mock_scene_manager), \
-             patch('yys.common.event_script_base.ImageFinder', return_value=mock_image_finder), \
-             patch('yys.common.event_script_base.CommonOcr', return_value=mock_ocr):
+             patch('yys.common.event_script_base.ImageFinder', return_value=mock_image_finder, create=True), \
+             patch('yys.common.event_script_base.CommonOcr', return_value=mock_ocr, create=True):
 
             script = Main()
 
@@ -569,20 +583,20 @@ class TestAbyssShadowsEnemyDef(unittest.TestCase):
         self.assertEqual(len(script.enemies[EnemyType.BOSS]), 1)
         boss = script.enemies[EnemyType.BOSS][0]
         self.assertEqual(boss.enemy_type, EnemyType.BOSS)
-        self.assertTrue(boss.has_challenged)  # 首领默认已挑战
+        self.assertFalse(boss.has_challenged)  # 首领默认未挑战
 
         # 验证副将配置
         self.assertEqual(len(script.enemies[EnemyType.COMMANDER]), 2)
         for commander in script.enemies[EnemyType.COMMANDER]:
             self.assertEqual(commander.enemy_type, EnemyType.COMMANDER)
-            self.assertEqual(commander.target_damage, 33700000)
-            self.assertTrue(commander.has_challenged)
+            self.assertEqual(commander.target_damage, 1)
+            self.assertFalse(commander.has_challenged)  # 副将默认未挑战
 
         # 验证精英配置
         self.assertEqual(len(script.enemies[EnemyType.ELITE]), 3)
         for elite in script.enemies[EnemyType.ELITE]:
             self.assertEqual(elite.enemy_type, EnemyType.ELITE)
-            self.assertEqual(elite.target_damage, 5000000)
+            self.assertEqual(elite.target_damage, 6000000)
             self.assertFalse(elite.has_challenged)  # 精英默认未挑战
 
     def test_max_challenge_counts_definition(self):

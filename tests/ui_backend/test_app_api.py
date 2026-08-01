@@ -150,6 +150,31 @@ def test_api_lists_scripts_and_starts_run(tmp_path: Path) -> None:
     assert fake_run_manager.request.config == {"max_battle_count": 3}
 
 
+def test_api_lists_abyss_boss_damage_limit(tmp_path: Path) -> None:
+    """脚本列表接口应返回狭间暗域首领伤害限制配置。"""
+    app = create_app(db_path=tmp_path / "ui.db")
+    client = TestClient(app)
+
+    response = client.get("/api/scripts")
+
+    assert response.status_code == 200
+    abyss_shadows = next(
+        item
+        for item in response.json()
+        if item["script_id"] == "abyss_shadows"
+    )
+    fields = {
+        field["key"]: field
+        for field in abyss_shadows["config_schema"]
+    }
+    boss_damage_limit = fields["boss_damage_limit"]
+    assert boss_damage_limit["label"] == "首领伤害限制"
+    assert boss_damage_limit["field_type"] == "number"
+    assert boss_damage_limit["min_value"] == 0
+    assert boss_damage_limit["max_value"] == 999999999
+    assert abyss_shadows["default_config"]["boss_damage_limit"] == 1
+
+
 def test_api_token_protects_http_routes_when_enabled(tmp_path: Path) -> None:
     app = create_app(db_path=tmp_path / "ui.db", api_token="secret-token")
     client = TestClient(app)

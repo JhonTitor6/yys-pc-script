@@ -24,6 +24,15 @@ class AbyssShadowsConfig(TypedDict, total=False):
         help="每个暗域首领挑战次数（0-99）",
         hot_reloadable=True,
     )]
+    boss_damage_limit: Annotated[int, ConfigMeta(
+        default=1,
+        min_value=0,
+        max_value=999999999,
+        field_type="number",
+        label="首领伤害限制",
+        group="基础",
+        help="首领战斗伤害超过该值时退出（0-999999999）",
+    )]
     commander_count: Annotated[int, ConfigMeta(
         default=4,
         min_value=0,
@@ -93,6 +102,7 @@ class Main(YYSBaseScript):
         config_schema=AbyssShadowsConfig,
         default_config={
             "boss_count": 2,
+            "boss_damage_limit": 1,
             "commander_count": 4,
             "elite_count": 6,
         },
@@ -159,16 +169,16 @@ class Main(YYSBaseScript):
         self._current_area: Optional[str] = None  # 当前暗域区域
 
         # 伤害阈值
-        commander_damage_limit = 35000000
+        commander_damage_limit = 1
         # elite_damage_limit = 5000000
-        elite_damage_limit = 30000000
+        elite_damage_limit = 6000000
 
         # 敌人配置（固定位置）
         self.enemies = {
             EnemyType.BOSS: [
                 Enemy(
                     enemy_type=EnemyType.BOSS,
-                    target_damage=999999999,  # 首领不设上限
+                    target_damage=self.boss_damage_limit,
                     image_path="yys/abyss_shadows/images/boss_label.bmp",
                     label_position=(554, 120, 688, 210),
                     has_challenged=False

@@ -84,6 +84,19 @@ def test_default_registry_does_not_import_script_modules(
     assert "max_battle_count" in keys
     assert "accept_wq_type" not in keys  # fallback 路径无 accept_wq_type
 
+    abyss_shadows = next(
+        item for item in scripts if item.script_id == "abyss_shadows"
+    )
+    abyss_keys = {field.key for field in abyss_shadows.config_schema}
+    assert "boss_damage_limit" in abyss_keys
+    boss_damage_limit = next(
+        field
+        for field in abyss_shadows.config_schema
+        if field.key == "boss_damage_limit"
+    )
+    assert boss_damage_limit.default == 1
+    assert boss_damage_limit.max_value == 999999999
+
 
 def test_class_schema_overrides_registry_schema() -> None:
     registry = ScriptRegistry(
@@ -209,6 +222,22 @@ def test_default_registry_soul_raid_uses_script_meta_reflection() -> None:
     }
 
 
+def test_abyss_shadows_exposes_boss_damage_limit() -> None:
+    """狭间暗域通过 SCRIPT_META 暴露首领伤害限制配置。"""
+    abyss_shadows = ScriptRegistry().get("abyss_shadows")
+    boss_damage_limit = next(
+        field
+        for field in abyss_shadows.config_schema
+        if field.key == "boss_damage_limit"
+    )
+
+    assert abyss_shadows.default_config["boss_damage_limit"] == 1
+    assert boss_damage_limit.label == "首领伤害限制"
+    assert boss_damage_limit.field_type == "number"
+    assert boss_damage_limit.min_value == 0
+    assert boss_damage_limit.max_value == 999999999
+
+
 def test_default_registry_migrated_scripts_use_script_meta_reflection() -> None:
     """Step 5：realm_raid/exploration/yuling/abyss_shadows 已迁移到 SCRIPT_META。
 
@@ -237,15 +266,30 @@ def test_default_registry_migrated_scripts_use_script_meta_reflection() -> None:
     assert keys == {"max_battle_count"}
     assert yuling.default_config["max_battle_count"] == 150
 
-    # abyss_shadows（field 多一些：boss/commander/elite_count）
+    # abyss_shadows（次数配置 + 首领伤害限制）
     abyss_shadows = registry.get("abyss_shadows")
     keys = {field.key for field in abyss_shadows.config_schema}
-    assert keys == {"boss_count", "commander_count", "elite_count"}
+    assert keys == {
+        "boss_count",
+        "boss_damage_limit",
+        "commander_count",
+        "elite_count",
+    }
     assert abyss_shadows.default_config == {
         "boss_count": 2,
+        "boss_damage_limit": 1,
         "commander_count": 4,
         "elite_count": 6,
     }
+
+    boss_damage_limit = next(
+        field
+        for field in abyss_shadows.config_schema
+        if field.key == "boss_damage_limit"
+    )
+    assert boss_damage_limit.label == "首领伤害限制"
+    assert boss_damage_limit.min_value == 0
+    assert boss_damage_limit.max_value == 999999999
 
 
 def test_default_registry_reflection_failure_falls_back_to_entries(

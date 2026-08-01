@@ -106,6 +106,15 @@ DEFAULT_SCRIPT_ENTRIES: list[dict[str, Any]] = [
                 "hot_reloadable": True,
             },
             {
+                "key": "boss_damage_limit",
+                "label": "首领伤害限制",
+                "field_type": "number",
+                "default": 1,
+                "min_value": 0,
+                "max_value": 999999999,
+                "hot_reloadable": False,
+            },
+            {
                 "key": "commander_count",
                 "label": "将领次数",
                 "field_type": "number",

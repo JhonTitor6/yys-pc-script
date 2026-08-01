@@ -46,6 +46,10 @@ mock replay, observe-only mode, action limits, or emergency stop.
 - Production image templates that participate in a recorded flow must be exercised
   against a sanitized real fixture. A unit test with a mocked match result is not enough
   to detect live UI drift.
+- Unit-test modules collected in the same pytest process as recorded-replay tests must
+  not replace `cv2`, `numpy`, or the root `PIL` package in `sys.modules`. Mock only the
+  OS-facing leaf dependencies needed by that test; otherwise later replay collection
+  silently runs production template matching against `MagicMock` objects.
 - An image-search rectangle must fully contain the template at every valid match
   position. The right/bottom search boundary cannot cut through the template.
 - Realm-raid automatic group change requires both a victory-count increase since the
@@ -114,6 +118,7 @@ mock replay, observe-only mode, action limits, or emergency stop.
 | Confirmed scene uses an unknown `frame_phase` | Raise `ValueError`; allow only `before` or `after` |
 | Confirmed `source_path` escapes the recording directory | Raise `ValueError`; copy nothing |
 | Transition references a scene absent from confirmed `scenes` | Raise `ValueError` |
+| A unit-test module runs before a real-image replay module | Real `cv2`, `numpy`, and `PIL` remain importable; template matching produces the same result as an isolated replay run |
 | Search rectangle is narrower or shorter than its template placement | Fix the bounds and add a real-fixture regression |
 | Realm-raid record is zero but no victory was gained this round | Keep the current round; this can be the quit-three sequence |
 | Victory increased but record-zero template is absent | Keep the current round and wait for reliable visual evidence |
@@ -148,6 +153,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
   keeps `PrintWindow` and does not change focus.
 - Good: a scene that exists only after a later event uses an explicit
   `{"event_seq": 17, "frame_phase": "after"}` confirmation.
+- Good: a logic-only test mocks `PIL.ImageGrab` and Win32 modules while leaving the root
+  image-processing packages real for replay tests collected later.
 - Good: the production `SceneManager` is run from a sanitized recorded home frame through
   the real exploration and realm-raid templates.
 - Good: realm raid registers the persistent bottom-left “自动” control with a no-op
@@ -174,6 +181,9 @@ mock replay, observe-only mode, action limits, or emergency stop.
   it also captures the hardware-accelerated battle phase correctly.
 - Bad: forcing every scene to come from the same event as a transition. Recorded state
   machines often need a stable frame from a later event.
+- Bad: assigning `MagicMock()` to `sys.modules["cv2"]`, `sys.modules["numpy"]`, or
+  `sys.modules["PIL"]` at test-module import time. The assignment outlives that module
+  and makes replay results depend on pytest collection order.
 - Bad: cropping a template through `x=245` and searching only through `x1=230`; template
   matching cannot place an image outside the supplied search buffer.
 - Bad: treating “攻略记录 0” alone as a new realm-raid group. The first target's
@@ -204,6 +214,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
   source paths fail, and JSON paths use `/`.
 - Recorded replay: production scene templates navigate home → exploration →
   barrier-breakthrough at the normal similarity threshold.
+- Test isolation: run logic-only tests before their related recorded-replay tests in one
+  pytest invocation and assert the real template match still succeeds.
 - Recorded replay: the record-zero template matches the sanitized new-grid frame inside
   the exact production search rectangle.
 - Realm raid: record zero without a new victory does not reset a round; record zero plus

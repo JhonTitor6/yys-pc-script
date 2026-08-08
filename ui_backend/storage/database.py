@@ -83,6 +83,7 @@ class Database:
                     retry_count INTEGER NOT NULL DEFAULT 0,
                     available_actions_json TEXT NOT NULL DEFAULT '[]',
                     latest_evidence_json TEXT,
+                    parent_run_id INTEGER,
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
 
@@ -156,6 +157,7 @@ class Database:
                     "retry_count": "INTEGER NOT NULL DEFAULT 0",
                     "available_actions_json": "TEXT NOT NULL DEFAULT '[]'",
                     "latest_evidence_json": "TEXT",
+                    "parent_run_id": "INTEGER",
                     "updated_at": "TEXT",
                 },
             )

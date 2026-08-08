@@ -786,6 +786,7 @@ async function showHistoryDetail(runId) {
     <div class="history-detail-header">
       <strong>${escapeHtml(script?.display_name || detail.script_id)} · #${escapeHtml(detail.id)}</strong>
       <span class="status-pill ${escapeHtml(detail.status)}">${escapeHtml(HISTORY_STATUS_LABELS[detail.status] || detail.status)}</span>
+      ${detail.status === 'manual' ? `<button type="button" class="ghost-button" data-history-retry="${escapeHtml(detail.id)}">重新识别并重试</button>` : ''}
     </div>
     <p>时间：${escapeHtml(formatHistoryTime(detail.started_at))} - ${escapeHtml(formatHistoryTime(detail.ended_at))}</p>
     <p>来源：${escapeHtml(workflowText)} · 阶段：${escapeHtml(detail.stage || '—')}</p>
@@ -930,12 +931,21 @@ function renderCurrentRun() {
   const stageLabels = {
     queued: '排队中',
     starting: '启动中',
+    preparing: '准备入口中',
+    waiting_safe_entry: '等待战斗安全结束',
+    waiting_safe_entry_timeout: '等待超时，请选择操作',
+    navigating: '正在导航到入口',
+    verifying_entry: '验证入口稳定',
+    entry_failed: '入口准备失败',
     script_running: '脚本运行中',
     paused: '已暂停',
     script_failed: '脚本失败',
     start_failed: '启动失败',
     stopping: '停止中',
     stop_timeout: '停止超时',
+    stopped: '已停止',
+    stopped_after_error: '失败后停止',
+    backend_restarted: '后端重启终止',
     completed: '已完成',
     skipped: '已跳过',
     manual_takeover: '人工接管'
@@ -957,6 +967,7 @@ function renderCurrentRun() {
     pause: ['mainPauseButton'],
     resume: ['mainResumeButton'],
     stop: ['mainStopButton'],
+    continue_waiting: ['mainContinueButton'],
     retry: ['mainRetryButton'],
     skip: ['mainSkipButton'],
     manual_takeover: ['mainManualButton']
@@ -1106,10 +1117,17 @@ function renderSnapshot(stateSnapshot) {
 
 async function controlCurrentRun(action) {
   if (!state.currentRun?.id) return;
-  const endpoint = action === 'manual_takeover' ? 'manual-takeover' : action;
+  const endpointMap = {
+    manual_takeover: 'manual-takeover',
+    continue_waiting: 'continue-waiting'
+  };
+  const endpoint = endpointMap[action] || action;
   await apiPost(`/api/runs/${state.currentRun.id}/${endpoint}`);
   if (action === 'retry') {
     appendLog({ level: 'INFO', message: '已提交重试请求' });
+  }
+  if (action === 'continue_waiting') {
+    appendLog({ level: 'INFO', message: '已请求继续等待 3 分钟' });
   }
   await refreshCurrentRun();
 }
@@ -1352,6 +1370,25 @@ function bindEvents() {
     if (!button) return;
     showHistoryDetail(button.dataset.historyDetail)
       .catch((error) => appendLog({ level: 'ERROR', message: error.message }));
+  });
+
+  // 人工接管历史：重新识别并重试（创建关联新 run，AC12）
+  document.getElementById('historyDetail').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-history-retry]');
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    apiPost(`/api/runs/${button.dataset.historyRetry}/retry`)
+      .then((result) => {
+        appendLog({
+          level: 'INFO',
+          message: `已创建关联重试运行 #${result?.id ?? ''}`
+        });
+        return loadHistory();
+      })
+      .catch((error) => appendLog({ level: 'ERROR', message: error.message }))
+      .finally(() => {
+        button.disabled = false;
+      });
   });
 
   document.getElementById('closeWorkflowModalButton').addEventListener('click', () => closeWorkflowModal());

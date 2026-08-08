@@ -12,10 +12,39 @@ from ui_backend.models import (
     RunRequest,
     RunSourceType,
     RunStatus,
+    available_actions_for_run,
     available_actions_for_status,
 )
 from ui_backend.scripts.registry import ScriptRegistry
 from ui_backend.storage.repositories import Storage
+from yys.common.entry_runtime import EntryOutcome, EntryPreparationError
+
+
+class _RunStageReporter:
+    """把 EntryPreparer 的阶段上报写入 storage 与事件流。
+
+    终态阶段（entry_failed）由 RunManager 统一处理，此处只透传进行中阶段。
+    """
+
+    def __init__(self, manager: "RunManager", run_id: int) -> None:
+        self._manager = manager
+        self._run_id = run_id
+
+    def on_stage_change(self, stage: str, detail: dict | None = None) -> None:
+        if stage == "entry_failed":
+            return
+        self._manager.storage.runs.update_observation(
+            self._run_id, stage=stage
+        )
+        self._manager._publish(
+            {
+                "type": "run_stage_changed",
+                "run_id": self._run_id,
+                "stage": stage,
+                "detail": detail or {},
+            }
+        )
+        self._manager._publish_run_snapshot(self._run_id)
 
 
 class RunManager:
@@ -56,6 +85,7 @@ class RunManager:
                 step_id=request.step_id or request.workflow_step_id,
                 action_id=request.action_id,
                 retry_count=request.retry_count,
+                parent_run_id=request.parent_run_id,
             )
             self._active_run_id = run_id
 
@@ -83,10 +113,18 @@ class RunManager:
             with self._lock:
                 self._scripts[run_id] = script
                 self._threads[run_id] = thread
+                # 新入口契约脚本从 preparing 阶段开始；旧脚本保持 script_running
+                if getattr(script, "entry_spec", None) is not None:
+                    start_stage = "preparing"
+                else:
+                    start_stage = "script_running"
                 self.storage.runs.update_status(
                     run_id,
                     RunStatus.RUNNING,
-                    stage="script_running",
+                    stage=start_stage,
+                    available_actions=available_actions_for_run(
+                        RunStatus.RUNNING, start_stage
+                    ),
                     progress=self._progress_from_state(self._snapshot(script)),
                 )
                 self._append_log(run_id, "INFO", "脚本开始运行")
@@ -206,15 +244,19 @@ class RunManager:
             self._clear_active(run_id)
 
     def retry(self, run_id: int) -> int:
-        """重试失败运行，返回新 run ID。"""
+        """重试失败或人工接管的运行，返回新 run ID（关联重试）。
+
+        人工接管的 run 通过“重新识别并重试”创建关联新 run（AC12）：
+        新 run 复制脚本配置与工作流上下文，parent_run_id 指向原 run。
+        """
         with self._lock:
             if self._active_run_id is not None:
                 raise RuntimeError("已有脚本正在运行")
             run = self.storage.runs.get(run_id)
         if run is None:
             raise KeyError(f"未知运行记录: {run_id}")
-        if run.get("status") != RunStatus.ERROR.value:
-            raise RuntimeError("只有失败运行可以重试")
+        if run.get("status") not in (RunStatus.ERROR.value, RunStatus.MANUAL.value):
+            raise RuntimeError("只有失败或人工接管的运行可以重试")
         request = RunRequest(
             script_id=str(run["script_id"]),
             config=dict(run.get("config", {})),
@@ -225,6 +267,7 @@ class RunManager:
             step_id=run.get("step_id"),
             action_id=run.get("action_id"),
             retry_count=int(run.get("retry_count") or 0) + 1,
+            parent_run_id=run_id,
         )
         self._append_log(run_id, "INFO", "已请求重试")
         self._publish(
@@ -236,12 +279,71 @@ class RunManager:
         )
         return self.start(request)
 
+    def continue_waiting(self, run_id: int) -> None:
+        """战斗安全等待超时后，请求继续等待一个 3 分钟窗口（AC4）。
+
+        Raises:
+            RuntimeError: 非等待超时阶段或没有活动准备器。
+        """
+        with self._lock:
+            if self._active_run_id != run_id:
+                raise RuntimeError("运行记录不是当前活动脚本")
+            run = self.storage.runs.get(run_id)
+            if (
+                run is None
+                or run.get("status") != RunStatus.RUNNING.value
+                or run.get("stage") != "waiting_safe_entry_timeout"
+            ):
+                raise RuntimeError("仅战斗等待超时阶段可以继续等待")
+            script = self._scripts.get(run_id)
+        if script is None or not callable(getattr(script, "request_entry_command", None)):
+            raise RuntimeError("脚本当前不接受继续等待命令")
+        if not script.request_entry_command("continue_waiting"):
+            raise RuntimeError("脚本当前不接受继续等待命令")
+        self._append_log(run_id, "INFO", "用户选择继续等待 3 分钟")
+        self._publish(
+            {
+                "type": "run_stage_command",
+                "run_id": run_id,
+                "action": "continue_waiting",
+            }
+        )
+
     def skip(self, run_id: int) -> None:
         """将失败运行标记为跳过，并发布审计事件。"""
         self._mark_recovery_terminal(run_id, RunStatus.SKIPPED, "skip", "失败运行已跳过")
 
     def manual_takeover(self, run_id: int) -> None:
-        """将失败运行交给人工接管。"""
+        """转人工接管：等待超时阶段直接请求，失败运行走既有恢复路径。"""
+        with self._lock:
+            active = self._active_run_id == run_id
+            if active:
+                run = self.storage.runs.get(run_id)
+                if (
+                    run is not None
+                    and run.get("status") == RunStatus.RUNNING.value
+                    and run.get("stage") == "waiting_safe_entry_timeout"
+                ):
+                    script = self._scripts.get(run_id)
+                else:
+                    raise RuntimeError("活动运行当前不接受人工接管")
+            else:
+                script = None
+        if active and script is not None:
+            if not callable(getattr(script, "request_entry_command", None)):
+                raise RuntimeError("脚本当前不接受人工接管命令")
+            if not script.request_entry_command("manual_takeover"):
+                raise RuntimeError("脚本当前不接受人工接管命令")
+            self._append_log(run_id, "INFO", "用户请求人工接管，正在终结当前运行")
+            self._publish(
+                {
+                    "type": "run_stage_command",
+                    "run_id": run_id,
+                    "action": "manual_takeover",
+                }
+            )
+            return
+        # 既有行为：失败运行标记为人工接管
         self._mark_recovery_terminal(
             run_id,
             RunStatus.MANUAL,
@@ -306,12 +408,18 @@ class RunManager:
         stop_event = threading.Event()
         snapshot_thread = self._start_snapshot_pusher(run_id, script_id, script, stop_event)
         try:
+            if getattr(script, "entry_spec", None) is not None:
+                # 新入口契约：先准备，READY 后才进入业务运行（设计 §8.1）
+                self._run_with_entry_preparation(run_id, script_id, script)
+                return
             script.run()
             state = self._record_state_snapshot(run_id, script_id, script)
             if self._mark_success_if_not_stopped(run_id):
                 if self.storage.runs.get(run_id).get("status") == RunStatus.SUCCESS.value:
                     self._append_log(run_id, "INFO", "脚本运行完成")
                     self._publish_status(run_id, RunStatus.SUCCESS)
+        except EntryPreparationError as exc:
+            self._finish_entry_preparation_error(run_id, script, exc.result)
         except Exception:
             traceback_text = traceback.format_exc()
             state = self._record_state_snapshot(run_id, script_id, script)
@@ -342,6 +450,128 @@ class RunManager:
                 snapshot_thread.join(timeout=2.0)
             self._remove_loguru_sink(sink_id)
             self._clear_active(run_id)
+
+    def _run_with_entry_preparation(
+        self, run_id: int, script_id: str, script: Any
+    ) -> None:
+        """新入口契约运行路径：prepare → READY → 业务运行（设计 §8.1）。
+
+        入口失败/人工接管/停止分别写入对应终态，绝不写业务成功。
+        """
+        result = script.prepare_entry(_RunStageReporter(self, run_id))
+
+        if result.outcome is EntryOutcome.READY:
+            self.storage.runs.update_status(
+                run_id,
+                RunStatus.RUNNING,
+                stage="script_running",
+                available_actions=available_actions_for_run(
+                    RunStatus.RUNNING, "script_running"
+                ),
+            )
+            self._append_log(run_id, "INFO", "入口准备完成，进入业务运行")
+            self._publish_run_snapshot(run_id)
+            script.run_business()
+            state = self._record_state_snapshot(run_id, script_id, script)
+            if self._mark_success_if_not_stopped(run_id):
+                if self.storage.runs.get(run_id).get("status") == RunStatus.SUCCESS.value:
+                    self._append_log(run_id, "INFO", "脚本运行完成")
+                    self._publish_status(run_id, RunStatus.SUCCESS)
+            return
+
+        if result.outcome is EntryOutcome.MANUAL:
+            self._mark_entry_terminal(
+                run_id,
+                RunStatus.MANUAL,
+                "manual_takeover",
+                result.reason or "入口准备期间已转入人工接管",
+            )
+            return
+        if result.outcome is EntryOutcome.STOPPED:
+            self._mark_entry_terminal(
+                run_id,
+                RunStatus.STOPPED,
+                "stopped",
+                result.reason or "入口准备期间已停止",
+            )
+            return
+        # error：结构化入口失败，带错误码与证据
+        self._finish_entry_preparation_error(run_id, script, result)
+
+    def _finish_entry_preparation_error(
+        self, run_id: int, script: Any, result: Any
+    ) -> None:
+        """入口准备失败终态：error/entry_failed + 稳定错误码 + 证据。"""
+        error_code = result.error_code or "ENTRY_FAILED"
+        reason = result.reason or "入口准备失败"
+        evidence = self._capture_failure_evidence(
+            run_id,
+            script,
+            f"入口准备失败: {error_code}",
+        )
+        self._append_log(run_id, "ERROR", f"[{error_code}] {reason}")
+        if self._mark_entry_error_if_not_stopped(run_id, reason, error_code, evidence):
+            self._publish_status(
+                run_id,
+                RunStatus.ERROR,
+                error_message=reason,
+                error_code=error_code,
+                evidence=evidence,
+            )
+
+    def _mark_entry_terminal(
+        self,
+        run_id: int,
+        status: RunStatus,
+        stage: str,
+        message: str,
+    ) -> None:
+        """入口准备终态（manual/stopped）：终态与活动槽释放作为同一操作。"""
+        with self._lock:
+            current = self.storage.runs.get(run_id)
+            if current is not None and current.get("status") in {
+                RunStatus.STOPPED.value,
+                RunStatus.MANUAL.value,
+            }:
+                # 命令路径可能已先写入终态（stop() 等），不覆盖
+                return
+            self.storage.runs.update_status(
+                run_id,
+                status,
+                stage=stage,
+                available_actions=available_actions_for_run(status, stage),
+            )
+            self._append_log(run_id, "INFO", message)
+            if self._active_run_id == run_id:
+                self._active_run_id = None
+        self._publish_status(run_id, status)
+
+    def _mark_entry_error_if_not_stopped(
+        self,
+        run_id: int,
+        error_message: str,
+        error_code: str,
+        evidence: dict[str, Any],
+    ) -> bool:
+        """写入 error/entry_failed 终态；已被停止时返回 False。"""
+        with self._lock:
+            current = self.storage.runs.get(run_id)
+            if current is None or current.get("status") == RunStatus.STOPPED.value:
+                return False
+            self.storage.runs.update_status(
+                run_id,
+                RunStatus.ERROR,
+                error_message=error_message,
+                error_code=error_code,
+                stage="entry_failed",
+                available_actions=available_actions_for_run(
+                    RunStatus.ERROR, "entry_failed"
+                ),
+            )
+            self.storage.runs.set_latest_evidence(run_id, evidence)
+            if self._active_run_id == run_id:
+                self._active_run_id = None
+            return True
 
     def _start_snapshot_pusher(
         self,

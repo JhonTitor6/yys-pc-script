@@ -7,6 +7,7 @@ from typing import Any
 from ui_backend.models import (
     RunSourceType,
     RunStatus,
+    available_actions_for_run,
     available_actions_for_status,
 )
 from ui_backend.storage.database import Database
@@ -314,8 +315,12 @@ class RunRepository:
         step_id: int | None = None,
         action_id: str | None = None,
         retry_count: int = 0,
+        parent_run_id: int | None = None,
     ) -> int:
-        """创建 run 记录并返回主键。"""
+        """创建 run 记录并返回主键。
+
+        parent_run_id：关联重试的来源 run（AC12），旧库迁移后为 NULL。
+        """
         run_uuid = str(uuid.uuid4())
         resolved_step_id = step_id if step_id is not None else workflow_step_id
         with self.db.connect() as conn:
@@ -324,8 +329,9 @@ class RunRepository:
                 INSERT INTO runs
                     (run_uuid, script_id, task_id, source_type, workflow_id,
                      workflow_step_id, step_id, action_id, status, stage,
-                     progress_json, config_json, retry_count, available_actions_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     progress_json, config_json, retry_count, available_actions_json,
+                     parent_run_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_uuid,
@@ -342,6 +348,7 @@ class RunRepository:
                     json.dumps(config, ensure_ascii=False),
                     retry_count,
                     json.dumps(available_actions_for_status(RunStatus.QUEUED), ensure_ascii=False),
+                    parent_run_id,
                 ),
             )
             return int(cur.lastrowid)
@@ -389,7 +396,7 @@ class RunRepository:
                 json.dumps(
                     available_actions
                     if available_actions is not None
-                    else available_actions_for_status(status),
+                    else available_actions_for_run(status, stage),
                     ensure_ascii=False,
                 ),
             ]
@@ -518,7 +525,9 @@ class RunRepository:
         item["progress"] = _load_json(item.pop("progress_json", "{}"), {})
         item["available_actions"] = _load_json(
             item.pop("available_actions_json", "[]"),
-            available_actions_for_status(str(item.get("status", ""))),
+            available_actions_for_run(
+                str(item.get("status", "")), str(item.get("stage", "") or None)
+            ),
         )
         latest_evidence = item.pop("latest_evidence_json", None)
         item["latest_evidence"] = _load_json(latest_evidence, None)

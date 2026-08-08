@@ -168,6 +168,7 @@ def create_app(db_path: Path | str | None = None, api_token: str | None = None) 
             step_id=payload.get("step_id"),
             action_id=_optional_str(payload.get("action_id")),
             retry_count=int(payload.get("retry_count", 0)),
+            parent_run_id=payload.get("parent_run_id"),
         )
         return {"id": app.state.run_manager.start(request)}
 
@@ -187,6 +188,17 @@ def create_app(db_path: Path | str | None = None, api_token: str | None = None) 
     def stop_run(run_id: int) -> dict[str, str]:
         """停止脚本运行。"""
         app.state.run_manager.stop(run_id)
+        return {"status": "ok"}
+
+    @app.post("/api/runs/{run_id}/continue-waiting")
+    def continue_waiting_run(run_id: int) -> dict[str, str]:
+        """战斗安全等待超时后，继续等待一个 3 分钟窗口（AC4）。"""
+        try:
+            app.state.run_manager.continue_waiting(run_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {"status": "ok"}
 
     @app.post("/api/runs/{run_id}/retry")

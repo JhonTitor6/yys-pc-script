@@ -33,11 +33,21 @@ class SchedulerService:
         self._thread: threading.Thread | None = None
 
     def run_workflow_now(self, workflow: dict[str, Any]) -> str:
-        """按顺序执行工作流，并按工作流/步骤策略处理失败。"""
+        """按顺序执行工作流，并按工作流/步骤策略处理失败。
+
+        _run_step_with_policy 返回：
+        - True：步骤成功，继续下一步；
+        - False：步骤未成功（error + continue/skip 策略），继续后续步骤；
+        - None：人工介入（manual），中断后续步骤（AC13：等待关联重试）。
+        """
         workflow_id = int(workflow["id"])
         workflow_success = True
         for step in workflow["steps"]:
-            if not self._run_step_with_policy(workflow_id, workflow, step):
+            step_outcome = self._run_step_with_policy(workflow_id, workflow, step)
+            if step_outcome is None:
+                workflow_success = False
+                break
+            if not step_outcome:
                 workflow_success = False
         return RunStatus.SUCCESS.value if workflow_success else RunStatus.ERROR.value
 
@@ -236,6 +246,17 @@ class SchedulerService:
             if run_id is not None and callable(wait):
                 wait(run_id, timeout=None)
                 status = self._run_status(run_id)
+                if status == RunStatus.MANUAL.value:
+                    # 人工接管（AC13）：原 run 不可变，中断后续步骤；
+                    # 关联重试的新 run 独立记录结果，成功后由用户/后续执行推进。
+                    self._publish_step_event(
+                        workflow_id,
+                        step,
+                        "manual_intervention_required",
+                        run_id,
+                        attempts,
+                    )
+                    return None
                 if status != RunStatus.ERROR.value:
                     self._publish_step_event(workflow_id, step, "success", run_id, attempts)
                     return True

@@ -112,3 +112,35 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: 完成桌面工作台 P0/P1
+
+**Date**: 2026-08-08
+**Task**: 完成桌面工作台 P0/P1
+
+### Summary
+
+完成 P0 运行可靠性与 P1 工作流调度实现，新增契约测试并归档 Trellis 任务。定向测试 47 项通过；完整 UI 后端保留 1 个既有 realm_raid 默认值基线失败。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bc4bf1c` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

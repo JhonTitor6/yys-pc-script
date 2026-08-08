@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Annotated, Any, Optional, TYPE_CHECKING, TypedDict, get_type_hints
 
 from win_util.image import ImageMatchConfig
+from yys.common.entry_runtime import SafeOverlayPolicy, TaskEntrySpec
 from yys.common.event_script_base import YYSBaseScript, _extract_config_meta
 from yys.common.script_meta import ConfigMeta, ScriptMeta
 
@@ -57,7 +58,23 @@ class SoulRaidScript(YYSBaseScript):
             "loop_interval": 300,
         },
     )
-    # 入口场景：御魂副本选择界面
+    # 新入口契约：御魂作为首个试点，从任意可识别页面安全进入御魂选择界面
+    # （任务 08-08-universal-entry-recovery；旧 entry_scene 声明已废弃）
+    entry_spec: Optional[TaskEntrySpec] = TaskEntrySpec(
+        target_scene="soul_selection",
+        safe_overlay_policy=SafeOverlayPolicy(
+            settlement_templates=(
+                "yys/images/battle_end_success.bmp",
+                "yys/images/battle_end.bmp",
+                "yys/images/battle_end_loss.bmp",
+                "yys/images/battle_end_1.bmp",
+                "yys/images/battle_end_2.bmp",
+            ),
+            refuse_wanted_quests=True,
+            wanted_quest_reject_template="yys/images/xuanshangfengyin_reject.bmp",
+        ),
+    )
+    # 旧入口场景声明（已废弃，保留注释说明迁移过程）
     # entry_scene: Optional[str] = "soul_selection"
 
     @classmethod

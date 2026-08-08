@@ -403,6 +403,70 @@ class ImageFinder:
         logger.debug(f"匹配成功: {Path(small_img_path).stem} | 位置: ({center_x},{center_y}) | 相似度: {final_score:.4f}")
         return center_x, center_y
 
+    def best_match(self, screenshot: Optional[Any], small_img_path: str, x0: int = 0, y0: int = 0,
+                   x1: int = 99999, y1: int = 99999) -> ImageMatchResult:
+        """返回截图中该模板的最佳匹配候选，不设相似度下限（只读，无输入）。
+
+        与 bg_find_pic_all 复用同一模板匹配实现（灰度结构 + HSV 颜色合成分），
+        直接取全局最佳位置而非收集全图候选，避免低阈值下的全量排序开销。
+        当常规阈值下无命中时，本接口仍提供最高候选相似度作为识别证据（设计 §4.1）。
+
+        Args:
+            screenshot: 截图 numpy 数组；为 None 时返回未命中。
+            small_img_path: 小图路径。
+            x0, y0, x1, y1: 搜索区域。
+
+        Returns:
+            ImageMatchResult：最佳候选（可能低于常规阈值 0.8，
+            由调用方自行判定是否可接受）；截图缺失时返回未命中。
+        """
+        if screenshot is None:
+            return ImageMatchResult(point=(-1, -1), image_path=small_img_path, similarity=0.0)
+
+        raw_path = small_img_path
+        small_img_path = to_project_path(small_img_path)
+        small_img = cv2.imread(small_img_path)
+        if small_img is None:
+            return ImageMatchResult(point=(-1, -1), image_path=raw_path, similarity=0.0)
+
+        big_img = screenshot
+        if x0 or y0 or x1 < 99999 or y1 < 99999:
+            h_img, w_img = big_img.shape[:2]
+            x1 = min(x1, w_img)
+            y1 = min(y1, h_img)
+            big_img = big_img[y0:y1, x0:x1]
+
+        big_gray = cv2.cvtColor(big_img, cv2.COLOR_BGR2GRAY)
+        small_gray = cv2.cvtColor(small_img, cv2.COLOR_BGR2GRAY)
+        result = cv2.matchTemplate(big_gray, small_gray, cv2.TM_CCOEFF_NORMED)
+        if result.size == 0:
+            return ImageMatchResult(point=(-1, -1), image_path=raw_path, similarity=0.0)
+
+        _min_val, max_val, _min_loc, max_loc = cv2.minMaxLoc(result)
+        h, w = small_img.shape[:2]
+        x = x0 + max_loc[0]
+        y = y0 + max_loc[1]
+        roi = screenshot[y:y + h, x:x + w]
+        if roi.size == 0:
+            return ImageMatchResult(point=(-1, -1), image_path=raw_path, similarity=0.0)
+
+        # 颜色相似度（与 bg_find_pic_all 相同的合成公式）
+        tpl_hsv = cv2.cvtColor(small_img, cv2.COLOR_BGR2HSV)
+        roi_hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        color_diff = np.linalg.norm(
+            tpl_hsv.mean(axis=(0, 1)) - roi_hsv.mean(axis=(0, 1))
+        )
+        color_score = max(0.0, 1.0 - color_diff / 180.0)
+        final_score = 0.7 * max_val + 0.3 * color_score
+
+        center_x = x + w // 2
+        center_y = y + h // 2
+        return ImageMatchResult(
+            point=(center_x, center_y),
+            image_path=raw_path,
+            similarity=final_score,
+        )
+
     def find_image(self, screenshot: Optional[Any], small_img_path: str, x0: int = 0, y0: int = 0,
                    x1: int = 99999, y1: int = 99999, similarity: float = 0.8) -> ImageMatchResult:
         """

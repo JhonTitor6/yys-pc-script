@@ -22,6 +22,16 @@ from yys.common import (
     BATTLE_END_CLICK_RANGE_Y,
     OCR_CLICK_RANGE,
 )
+from yys.common.entry_runtime import (
+    EntryOutcome,
+    EntryPreparationError,
+    EntryPreparationResult,
+    EntryPreparer,
+    EntryReporter,
+    ImageSceneStateResolver,
+    NoopReporter,
+    TaskEntrySpec,
+)
 from yys.common.scene_manager import SceneManager, SceneDetectionResult
 from yys.common.script_meta import ConfigMeta
 
@@ -144,6 +154,30 @@ class _ABCMetaRelaxDel(ABCMeta):
             pass
 
 
+class _LegacyControllerEnv:
+    """未注入 GameEnvironment（工作台 legacy 路径）时的输入/截图适配器。
+
+    新入口契约要求输入经过注入环境；当脚本以 legacy 方式构造（env=None）时，
+    本适配器把 EntryPreparer 的调用转发到 WinController，保持既有行为
+    （quality-guidelines：未注入环境的普通脚本保持 legacy Win32）。
+    """
+
+    def __init__(self, win_controller: WinController):
+        self._win_controller = win_controller
+
+    def capture_screen(self):
+        """返回最近截图缓存（numpy BGR），必要时先刷新。"""
+        cache = self._win_controller.image_finder.screenshot_cache
+        if cache is None:
+            self._win_controller.update_screenshot_cache()
+            cache = self._win_controller.image_finder.screenshot_cache
+        return cache
+
+    def left_click(self, x: int, y: int) -> None:
+        """转发点击到 WinController（与既有 bg_left_click 一致）。"""
+        self._win_controller.mouse.bg_left_click_with_range((x, y))
+
+
 class YYSBaseScript(EventBaseScript, metaclass=_ABCMetaRelaxDel):
     """
     阴阳师基础脚本类
@@ -157,6 +191,10 @@ class YYSBaseScript(EventBaseScript, metaclass=_ABCMetaRelaxDel):
     # 子类覆盖此属性声明自己需要在哪个场景启动。
     # 为空字符串或 None 时跳过入口跳转（兼容 Kuzunoha 等老脚本）。
     entry_scene: Optional[str] = None
+
+    # 新入口契约：声明后启动阶段走 EntryPreparer（准备→等待→导航→验证），
+    # 与 entry_scene 互斥；未声明时保持旧 run() 行为（设计 §7）。
+    entry_spec: Optional[TaskEntrySpec] = None
 
     def __init__(self, script_name: str, config: Optional[dict] = None, env: Optional['GameEnvironment'] = None):
         """初始化阴阳师基础脚本
@@ -199,6 +237,9 @@ class YYSBaseScript(EventBaseScript, metaclass=_ABCMetaRelaxDel):
         self._cur_battle_victory_count = 0
         self.max_battle_count = 103
         self.accept_wq_type: WantedQuestAcceptType = WantedQuestAcceptType.REFUSE
+
+        # 场景管理器
+        self._active_entry_preparer = None  # 入口准备器（prepare_entry 期间非 None）
 
         # 初始化场景管理器
         self.logger.info("初始化场景管理器中...")
@@ -402,18 +443,102 @@ class YYSBaseScript(EventBaseScript, metaclass=_ABCMetaRelaxDel):
         }
 
     def run(self) -> None:
-        """主循环：先做入口场景跳转，再进入父类的主循环逻辑。
+        """兼容包装：新契约走 prepare + business；旧 entry_scene 走既有跳转。
+
+        - 声明 entry_spec 的脚本：先 prepare_entry，READY 后才进入业务主循环；
+          准备失败抛出 EntryPreparationError（不允许被误判为业务成功返回）。
+        - 仅声明 entry_scene 的脚本：保持既有 goto_scene 跳转行为。
+        - 两者皆无：直接进入业务主循环。
 
         Returns:
-            无返回值。跳转失败时直接 return，**不**进入主循环，
-            RunManager 会检测到脚本未进入 RUNNING 状态而标记 ERROR。
+            无返回值。
+
+        Raises:
+            EntryPreparationError: 新契约入口准备失败（携带结构化结果）。
         """
+        if self.entry_spec is not None:
+            self.logger.info(f"执行入口准备: 目标 {self.entry_spec.target_scene}")
+            result = self.prepare_entry()
+            if result.outcome is not EntryOutcome.READY:
+                raise EntryPreparationError(result)
+            self._stop_threading_event.clear()  # 防御性清理，允许重新 run
+            self.run_business()
+            return
         if self.entry_scene:
             self.logger.info(f"执行入口场景跳转: {self.entry_scene}")
             if not self.scene_manager.goto_scene(self.entry_scene):
                 self.logger.error(f"入口场景跳转失败，停止脚本: {self.entry_scene}")
                 self._stop_threading_event.clear()  # 防御性清理，允许重新 run
                 return
+        super().run()
+
+    def prepare_entry(self, reporter: Optional[EntryReporter] = None) -> EntryPreparationResult:
+        """按 TaskEntrySpec 运行入口准备状态机（新契约）。
+
+        Args:
+            reporter: 阶段上报回调；为 None 时使用 NoopReporter。
+
+        Returns:
+            EntryPreparationResult：READY 后调用方才能进入 run_business()。
+
+        Raises:
+            RuntimeError: 本脚本未声明 entry_spec。
+        """
+        spec = self.entry_spec
+        if spec is None:
+            raise RuntimeError(
+                f"{type(self).__name__} 未声明 entry_spec，无法执行入口准备"
+            )
+        env = self._env if self._env is not None else _LegacyControllerEnv(self.win_controller)
+        resolver = ImageSceneStateResolver(self.scene_manager, self.image_finder, spec)
+        preparer = EntryPreparer(
+            env=env,
+            resolver=resolver,
+            image_finder=self.image_finder,
+            scene_manager=self.scene_manager,
+            spec=spec,
+            guard=self._run_guard,
+        )
+        self._active_entry_preparer = preparer
+        try:
+            return preparer.prepare(reporter or NoopReporter())
+        finally:
+            self._active_entry_preparer = None
+
+    def request_entry_command(self, command: str) -> bool:
+        """向进行中的入口准备发送用户命令（continue_waiting/manual_takeover/stop）。
+
+        Args:
+            command: 命令名。
+
+        Returns:
+            是否已转发给活动准备器（无活动准备时返回 False）。
+
+        Raises:
+            ValueError: 未知命令名。
+        """
+        preparer = getattr(self, "_active_entry_preparer", None)
+        if preparer is None:
+            return False
+        if command == "continue_waiting":
+            preparer.request_continue_waiting()
+        elif command == "manual_takeover":
+            preparer.request_manual_takeover()
+        elif command == "stop":
+            preparer.request_stop()
+        else:
+            raise ValueError(f"未知入口准备命令: {command}")
+        return True
+
+    def stop(self) -> None:
+        """停止脚本；若入口准备进行中，同步通知准备状态机。"""
+        super().stop()
+        preparer = getattr(self, "_active_entry_preparer", None)
+        if preparer is not None:
+            preparer.request_stop()
+
+    def run_business(self) -> None:
+        """只运行既有业务事件主循环（入口准备已由 prepare_entry 完成）。"""
         super().run()
 
     @abstractmethod

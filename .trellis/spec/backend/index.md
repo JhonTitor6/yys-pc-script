@@ -17,7 +17,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Directory Structure](./directory-structure.md) | Module organization and file layout | To fill |
 | [Database Guidelines](./database-guidelines.md) | ORM patterns, queries, migrations | To fill |
 | [Error Handling](./error-handling.md) | Error types, handling strategies | To fill |
-| [Quality Guidelines](./quality-guidelines.md) | Game automation input, replay, and guarded-run contracts | Active |
+| [Quality Guidelines](./quality-guidelines.md) | Game automation, replay, guarded-run, and desktop workbench runtime contracts | Active |
 | [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | To fill |
 
 ---

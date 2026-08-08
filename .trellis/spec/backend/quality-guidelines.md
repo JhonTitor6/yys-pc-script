@@ -476,3 +476,114 @@ python tools/run_guarded_script.py realm_raid --execute `
 The exact phrase couples authorization to both mode and script. A missing or mismatched
 phrase fails before the game window is resolved, and the process still executes only one
 guarded run.
+
+---
+
+## Scenario: Desktop Workbench Runtime Contract
+
+This section records the long-term contract established by the P0/P1 desktop workbench.
+It applies to changes that cross the storage, service, API, WebSocket, scheduler, and UI
+layers. The implementation may change, but the externally visible behavior below must
+remain stable.
+
+### 1. Canonical Run Snapshot
+
+`RunManager` and the run repository are the source of truth for a run's current state.
+Every consumer must use the normalized run snapshot and its derived `available_actions`:
+
+- REST responses, WebSocket events, and the desktop UI must expose the same status,
+  timestamps, error fields, evidence fields, and available actions.
+- The UI must enable or disable controls from `available_actions`, not from local flags,
+  button history, or guesses based on log text.
+- WebSocket updates may be incremental, but they must preserve the same field meanings as
+  the REST snapshot. A reconnect must be able to rebuild the UI from the latest snapshot.
+- New run fields must be added at the storage model, normalization, API/event schema, and
+  UI consumption points together. A field that exists in only one layer is incomplete.
+
+### 2. Terminal State and Execution Slot Release
+
+The terminal transition and the active execution-slot release form one externally visible
+operation. A run must not be observable as terminal while `active_run_id` still blocks a
+new run.
+
+The required order is:
+
+1. Persist the terminal status and terminal metadata (`finished_at`, error information,
+   or stop information).
+2. Clear the active execution slot in the same terminal path.
+3. Publish the final snapshot or terminal event only after both facts are consistent.
+
+Recovery code must tolerate a terminal run that has already released its slot. A stale
+publish from the pre-recovery path must not overwrite a newer status. Regression coverage
+must include an error or stop transition immediately followed by `skip()` or another
+control request; the request must not fail merely because the previous terminal state was
+visible before the slot was released.
+
+### 3. SQLite Migration Rules
+
+Startup migrations are deliberately conservative because user databases are long-lived:
+
+- Prefer additive, idempotent changes such as guarded `ALTER TABLE ... ADD COLUMN`.
+- Inspect the actual schema before adding a column; running startup twice must be safe.
+- Give new columns backwards-compatible defaults and preserve all existing rows.
+- Do not silently rename, drop, or reinterpret existing data in a compatibility migration.
+- Add a regression that creates the previous schema, starts the current storage layer, and
+  verifies both upgrade success and normal read/write behavior after the upgrade.
+
+### 4. Scheduler Contract
+
+Scheduling preview and real execution must share the same pure time-calculation function.
+The function receives the schedule definition and a reference time, and returns the next
+run time without reading UI state or mutating storage.
+
+The scheduler also owns these invariants:
+
+- A pending workflow is fully hydrated, including its ordered workflow steps, before it is
+  passed to `run_workflow_now`. A workflow row without its steps is not an executable
+  workflow object.
+- Priority ordering is deterministic: higher priority first, then stable ID order for
+  ties.
+- Only one actual run may occupy the execution slot at a time. A second due item remains
+  pending and is not started concurrently.
+- Preview and execution use identical interval, daily, and cron semantics, including
+  timezone handling and invalid-schedule errors.
+- Tests must cover next-run calculation, priority ties, step hydration, and the
+  single-slot guarantee.
+
+### 5. Failure Evidence
+
+Failures are part of the product contract, not only log messages. A startup failure,
+runtime exception, stop timeout, or evidence-capture failure must leave enough structured
+information for the API and UI to explain what happened.
+
+At minimum, a failure path records:
+
+- a stable `error_code` suitable for programmatic handling;
+- a human-readable message and the relevant timestamps;
+- the associated log or event evidence;
+- a real screenshot or other capture path when capture succeeded; or an explicit
+  `capture_error` when capture was unavailable.
+
+Never create a fake screenshot path or claim that evidence exists because a capture handle
+was opened. Evidence fields must describe an actual artifact, and capture failures must be
+visible as failures. Stop-timeout evidence must remain available after the run reaches its
+terminal status.
+
+### 6. Required Contract Tests
+
+Any change to the workbench runtime must preserve or extend tests for the affected
+boundary. The minimum regression set is:
+
+- one normalized snapshot is rendered consistently by REST, WebSocket, and UI action
+  derivation;
+- terminal status and `active_run_id` are consistent, including an immediate control
+  request after an error or stop;
+- an old SQLite schema upgrades idempotently and remains readable and writable;
+- scheduler preview equals the execution calculation for the same reference time;
+- a pending workflow loads all steps before execution and never raises a missing-steps
+  error;
+- startup, exception, stop-timeout, and capture-failure paths expose structured evidence
+  without fabricated artifacts.
+
+Tests must assert product contracts and observable behavior. They must not merely repeat the
+implementation's current helper branches or private field assignments.

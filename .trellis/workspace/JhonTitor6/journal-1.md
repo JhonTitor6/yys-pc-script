@@ -144,3 +144,41 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: 通用入口与恢复运行时（御魂试点）
+
+**Date**: 2026-08-08
+**Task**: 通用入口与恢复运行时（御魂试点）
+**Branch**: `master`
+
+### Summary
+
+从规划批准到实施闭环：场景身份归一化与图校验、EntryPreparer 状态机（战斗等待/结算关闭/导航验证/未知安全失败）、RunStage 与关联重试、真实帧夹具与队长指纹模板；AC1-AC13 全部闭环，282 测试通过
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `531218e` | (see git log) |
+| `6421685` | (see git log) |
+| `053add5` | (see git log) |
+| `ab07cba` | (see git log) |
+| `de95018` | (see git log) |
+| `e7cfbfd` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

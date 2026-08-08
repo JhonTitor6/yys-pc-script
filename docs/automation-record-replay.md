@@ -11,7 +11,7 @@
 
 原始录制默认写入 `recordings/`，该目录已被 Git 忽略。只有经过人工检查并挑选出的最小回放夹具才应提交到仓库。
 
-当前已经完成通用录制/回放基础设施，以及结界突破的固定顺序状态机。狭间暗域、御魂、御灵、探索可以先使用同一个录制器采集流程，后续再逐个补齐各自状态机。
+当前已经完成通用录制/回放基础设施，以及结界突破的固定顺序状态机。狭间暗域、御魂、御灵、探索可以先使用同一个录制器采集流程，后续再逐个补齐各自状态机。狭间暗域 Home 入口已接入脱敏回放夹具，覆盖横向拖拽、动态入口找图、纵向拖拽和狭间暗域卡片找图。
 
 ## 1. 录制结界突破
 
@@ -64,6 +64,18 @@ D:/ProgramData/anaconda3/envs/win_macro/python.exe tools/build_replay_fixture.py
 
 `region` 必须来自实际录制及人工确认，不要根据视频猜坐标。
 
+拖拽转换额外填写 `end_region`，分别约束拖拽起点和终点：
+
+```json
+{
+  "from_scene": "home",
+  "to_scene": "home_panned",
+  "action": "drag",
+  "region": [553, 304, 577, 328],
+  "end_region": [928, 304, 952, 328]
+}
+```
+
 ## 3. 生成最小回放夹具
 
 ```powershell
@@ -71,6 +83,12 @@ D:/ProgramData/anaconda3/envs/win_macro/python.exe tools/build_replay_fixture.py
 ```
 
 工具只复制确认事件的关键帧，并生成 `fixture.json`。确认不含账号、聊天或其他隐私画面后，才可把这个最小目录加入 Git。
+
+狭间暗域 Home 入口的脱敏夹具位于 `tests/fixtures/abyss_shadows/home_entry/`，可单独验证：
+
+```powershell
+D:/ProgramData/anaconda3/envs/win_macro/python.exe -m pytest yys/abyss_shadows/test_abyss_shadows_scene_replay.py::TestAbyssShadowsSceneReplay::test_home_entry_replays_recorded_drag_and_dynamic_templates -v
+```
 
 离线验证：
 

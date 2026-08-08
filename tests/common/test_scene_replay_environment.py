@@ -136,6 +136,53 @@ def test_home_to_realm_raid_chain_is_data_driven(tmp_path: Path) -> None:
     assert len(env.action_log) == 2
 
 
+def test_drag_region_drives_scene_transition(tmp_path: Path) -> None:
+    """拖拽转换应由夹具中的起止区域驱动，并只记录一个逻辑动作。"""
+    scenes = tmp_path / "scenes"
+    scenes.mkdir()
+    Image.new("RGB", (100, 80), "red").save(scenes / "home.png")
+    Image.new("RGB", (100, 80), "green").save(scenes / "daily.png")
+    fixture = tmp_path / "fixture.json"
+    fixture.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "scenario_id": "drag-entry",
+                "client_size": [100, 80],
+                "initial_scene": "home",
+                "scenes": {
+                    "home": "scenes/home.png",
+                    "daily": "scenes/daily.png",
+                },
+                "transitions": [
+                    {
+                        "from_scene": "home",
+                        "to_scene": "daily",
+                        "action": "drag",
+                        "region": [10, 10, 20, 20],
+                        "end_region": [70, 50, 80, 60],
+                    }
+                ],
+                "expected_actions": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    log = ActionLog()
+    env = SceneReplayEnvironment(
+        scene_dir=str(scenes),
+        transitions_config=str(fixture),
+        initial_scene="home",
+        action_log=log,
+    )
+
+    env.drag(15, 15, 75, 55)
+
+    assert env.get_current_scene() == "daily"
+    assert len(log) == 1
+    assert log.records[0].extra == {"x2": 75, "y2": 55}
+
+
 def test_v1_fixture_rejects_scene_path_outside_fixture(tmp_path: Path) -> None:
     """v1 场景图片不得通过上级目录读取夹具外文件。"""
     Image.new("RGB", (100, 80), "red").save(tmp_path / "outside.png")

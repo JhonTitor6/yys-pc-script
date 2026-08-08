@@ -17,6 +17,7 @@ from yys.common.recording.contracts import (
 )
 from yys.common.recording.fixture_builder import (
     REPLAY_FIXTURE_SCHEMA_VERSION,
+    ReplayTransition,
     build_candidates,
     build_confirmed_fixture,
     load_replay_fixture,
@@ -263,3 +264,20 @@ def test_load_legacy_button_mapping(tmp_path: Path) -> None:
 
     assert fixture.transitions[0].button == "to_barrier.bmp"
     assert fixture.transitions[0].to_scene == "barrier_breakthrough"
+
+
+def test_replay_transition_matches_drag_start_and_end_regions() -> None:
+    """拖拽回放必须同时校验起点和终点区域。"""
+    transition = ReplayTransition(
+        from_scene="home",
+        to_scene="daily",
+        action="drag",
+        region=(8, 18, 32, 42),
+        end_region=(40, 50, 64, 74),
+    )
+
+    transition.validate((100, 80))
+
+    assert transition.matches_action("home", "drag", 20, 30, 52, 62)
+    assert not transition.matches_action("home", "drag", 20, 30, 80, 62)
+    assert not transition.matches_action("home", "left_click", 20, 30)

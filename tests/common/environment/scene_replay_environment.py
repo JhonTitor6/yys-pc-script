@@ -28,7 +28,7 @@ class SceneReplayEnvironment(GameEnvironment):
     - 实现 GameEnvironment 接口，复用真实的 WinController 找图逻辑
     - 只 mock capture_screen() 返回预设的场景图片
     - 场景转换由场景状态机控制
-    - 点击后自动根据配置触发场景流转
+    - 点击或拖拽后自动根据配置触发场景流转
     """
 
     def __init__(
@@ -150,6 +150,25 @@ class SceneReplayEnvironment(GameEnvironment):
     def drag(self, x1: int, y1: int, x2: int, y2: int) -> None:
         """拖拽操作"""
         self._record_action(ActionType.DRAG, x1, y1, extra={"x2": x2, "y2": y2})
+        if self._auto_transition:
+            self._transition_by_drag(x1, y1, x2, y2)
+
+    def _transition_by_drag(self, x1: int, y1: int, x2: int, y2: int) -> None:
+        """根据拖拽起止位置触发场景转换。"""
+        for transition in self._fixture.transitions:
+            if transition.matches_action(
+                self._current_scene,
+                ActionType.DRAG.value,
+                x1,
+                y1,
+                x2,
+                y2,
+            ):
+                old_scene = self._current_scene
+                self.set_scene(transition.to_scene)
+                label = transition.button or transition.action
+                print(f"  [场景转换] {old_scene} --[{label}]--> {transition.to_scene}")
+                return
 
     def key_press(self, key_code: int) -> None:
         """按键按下并释放"""

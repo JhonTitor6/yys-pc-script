@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "scenario_id": "abyss_shadows_home_entry",
+  "client_size": [1148, 647],
+  "initial_scene": "home",
+  "scenes": {
+    "home": "scenes/home.png",
+    "home_panned": "scenes/home_panned.png",
+    "daily": "scenes/daily.png",
+    "daily_scrolled": "scenes/daily_scrolled.png",
+    "abyss_selection": "scenes/abyss_selection.png"
+  },
+  "transitions": [
+    {
+      "from_scene": "home",
+      "to_scene": "home_panned",
+      "action": "drag",
+      "region": [553, 304, 577, 328],
+      "end_region": [928, 304, 952, 328]
+    },
+    {
+      "from_scene": "home_panned",
+      "to_scene": "daily",
+      "action": "left_click",
+      "region": [220, 250, 310, 340],
+      "button": "yys/abyss_shadows/images/scene_control/home_to_daily.bmp"
+    },
+    {
+      "from_scene": "daily",
+      "to_scene": "daily_scrolled",
+      "action": "drag",
+      "region": [667, 372, 691, 396],
+      "end_region": [670, 216, 694, 240]
+    },
+    {
+      "from_scene": "daily_scrolled",
+      "to_scene": "abyss_selection",
+      "action": "left_click",
+      "region": [600, 300, 934, 400],
+      "button": "yys/abyss_shadows/images/scene_control/daily_to_abyss_selection.bmp"
+    }
+  ],
+  "expected_actions": []
+}

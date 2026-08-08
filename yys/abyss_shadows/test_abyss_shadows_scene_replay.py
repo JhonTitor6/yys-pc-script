@@ -37,6 +37,45 @@ from yys.abyss_shadows.abyss_shadows_script import Main, EnemyType, AbyssShadows
 class TestAbyssShadowsSceneReplay(unittest.TestCase):
     """狭间暗域场景重放测试"""
 
+    def test_home_entry_replays_recorded_drag_and_dynamic_templates(self) -> None:
+        """Home 入口应按录制顺序回放拖拽，并用模板匹配两个动态入口。"""
+        from tests.common.recorders.action_log import ActionLog
+        from win_util.controller import WinController
+
+        fixture_root = PROJECT_ROOT / "tests/fixtures/abyss_shadows/home_entry"
+        env = SceneReplayEnvironment(
+            scene_dir=str(fixture_root / "scenes"),
+            transitions_config=str(fixture_root / "fixture.json"),
+            initial_scene="home",
+            action_log=ActionLog(),
+        )
+        controller = WinController(env=env)
+        script = Main.__new__(Main)
+        script._env = env
+        script.win_controller = controller
+        script.image_finder = controller.image_finder
+        script.logger = MagicMock()
+        script.script_name = "abyss_shadows"
+        script.max_battle_count = 1
+        script._cur_battle_count = 0
+        script._cur_battle_victory_count = 0
+        script.scene_manager = MagicMock()
+        script.scene_manager.goto_scene.return_value = True
+
+        script.on_run()
+        assert env.get_current_scene() == "abyss_selection"
+        script.scene_manager.goto_scene.assert_called_once_with("abyss_dragon")
+        assert [record.action_type for record in env.action_log.records] == [
+            "drag",
+            "left_click",
+            "drag",
+            "left_click",
+        ]
+        assert env.action_log.records[0].extra == {"x2": 940, "y2": 316}
+        assert env.action_log.records[2].extra == {"x2": 682, "y2": 228}
+        assert 220 <= env.action_log.records[1].x <= 275
+        assert 850 <= env.action_log.records[3].x <= 900
+
     def _create_replay_environment(self, verbose: bool = True):
         """创建场景回放环境
 

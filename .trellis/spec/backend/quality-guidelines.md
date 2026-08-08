@@ -35,6 +35,9 @@ mock replay, observe-only mode, action limits, or emergency stop.
 
 - Coordinates persisted by the recorder are client-relative; desktop absolute coordinates
   are forbidden.
+- A replay transition with `action: "drag"` must preserve both the recorded start region
+  and `end_region`; matching only the first point can advance a scene after an unrelated
+  mouse movement.
 - Raw recordings stay under ignored `recordings/`; only user-confirmed minimal fixtures
   may enter Git.
 - A confirmation may define top-level `scenes` independently from `transitions`.
@@ -116,6 +119,7 @@ mock replay, observe-only mode, action limits, or emergency stop.
 |---|---|
 | Unknown recording or fixture schema version | Raise `ValueError` at the shared decoder |
 | Client coordinate outside the recorded window | Raise `ValueError` |
+| Drag transition end region is malformed or outside the client area | Raise `ValueError`; do not advance the replay scene |
 | Window size changes during recording | Stop and preserve failed metadata |
 | Foreground capture target is not the active window | Raise `RuntimeError`; never capture unrelated desktop content |
 | First frame is empty or has standard deviation below `1.0` | Preserve failed metadata and abort before video/input startup |
@@ -155,6 +159,9 @@ mock replay, observe-only mode, action limits, or emergency stop.
 
 - Good: a `SceneManager` click calls `self.win_controller.mouse`, so injected guards and
   replay environments observe it.
+- Good: a recorded Home entry converts both drags to normalized client coordinates,
+  matches the moving entry controls by image template, and replays the drag only when
+  both its start and end regions match.
 - Good: Windows MP4 creation explicitly passes `cv2.CAP_MSMF`.
 - Good: recording finalization retries transient Windows MP4-handle `PermissionError` and
   still exposes `.partial` evidence after the bounded retry window.

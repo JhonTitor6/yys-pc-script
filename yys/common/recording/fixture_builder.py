@@ -31,6 +31,7 @@ class ReplayTransition:
     to_scene: str
     action: str = "left_click"
     region: Optional[tuple[int, int, int, int]] = None
+    end_region: Optional[tuple[int, int, int, int]] = None
     button: Optional[str] = None
 
     def validate(self, client_size: tuple[int, int]) -> None:
@@ -39,18 +40,38 @@ class ReplayTransition:
             raise ValueError("场景转换必须包含 from_scene 和 to_scene")
         if self.region is None and self.button is None:
             raise ValueError("场景转换必须至少包含 region 或 button")
+        if self.action == "drag" and self.region is None:
+            raise ValueError("拖拽转换必须包含起点 region")
+        if self.end_region is not None and self.action != "drag":
+            raise ValueError("end_region 只能用于拖拽转换")
         if self.region is not None:
-            x1, y1, x2, y2 = self.region
-            width, height = client_size
-            if not (0 <= x1 <= x2 < width and 0 <= y1 <= y2 < height):
-                raise ValueError(f"场景转换区域超出客户区: {self.region}")
+            _validate_region(self.region, client_size, "场景转换区域")
+        if self.end_region is not None:
+            _validate_region(self.end_region, client_size, "场景转换结束区域")
 
     def matches_click(self, scene: str, x: int, y: int, action: str) -> bool:
         """判断客户区动作是否命中该转换。"""
+        return self.matches_action(scene, action, x, y)
+
+    def matches_action(
+        self,
+        scene: str,
+        action: str,
+        x: int,
+        y: int,
+        end_x: Optional[int] = None,
+        end_y: Optional[int] = None,
+    ) -> bool:
+        """判断点击或拖拽动作是否命中该转换。"""
         if self.from_scene != scene or self.action != action or self.region is None:
             return False
-        x1, y1, x2, y2 = self.region
-        return x1 <= x <= x2 and y1 <= y <= y2
+        if not _point_in_region(x, y, self.region):
+            return False
+        if action != "drag" or self.end_region is None:
+            return True
+        if end_x is None or end_y is None:
+            return False
+        return _point_in_region(end_x, end_y, self.end_region)
 
 
 @dataclass(frozen=True)
@@ -99,7 +120,9 @@ class ReplayFixture:
             "scenes": dict(self.scenes),
             "transitions": [
                 {
-                    key: list(value) if key == "region" and value is not None else value
+                    key: list(value)
+                    if key in {"region", "end_region"} and value is not None
+                    else value
                     for key, value in asdict(item).items()
                     if value is not None
                 }
@@ -169,19 +192,25 @@ def build_candidates(recording_dir: Path, output_path: Path) -> Path:
                 metadata.client_width,
                 metadata.client_height,
             )
-        candidates.append(
-            {
-                "event_seq": event.seq,
-                "elapsed_ms": event.elapsed_ms,
-                "action": event.action,
-                "key": event.key,
-                "before_frame": str(before),
-                "after_frame": str(after),
-                "suggested_region": region,
-                "suggested_from_scene": f"scene_{event.seq:03d}_before",
-                "suggested_to_scene": f"scene_{event.seq:03d}_after",
-            }
-        )
+        candidate = {
+            "event_seq": event.seq,
+            "elapsed_ms": event.elapsed_ms,
+            "action": event.action,
+            "key": event.key,
+            "before_frame": str(before),
+            "after_frame": str(after),
+            "suggested_region": region,
+            "suggested_from_scene": f"scene_{event.seq:03d}_before",
+            "suggested_to_scene": f"scene_{event.seq:03d}_after",
+        }
+        if event.action == "drag" and event.end_client_x is not None and event.end_client_y is not None:
+            candidate["suggested_end_region"] = _bounded_region(
+                event.end_client_x,
+                event.end_client_y,
+                metadata.client_width,
+                metadata.client_height,
+            )
+        candidates.append(candidate)
     payload = {
         "schema_version": REPLAY_FIXTURE_SCHEMA_VERSION,
         "recording_id": metadata.recording_id,
@@ -243,12 +272,14 @@ def build_confirmed_fixture(
         elif from_scene not in scenes or to_scene not in scenes:
             raise ValueError("transitions 引用的场景必须先在 scenes 中确认")
         region = _decode_region(selection.get("region"))
+        end_region = _decode_region(selection.get("end_region"))
         transitions.append(
             ReplayTransition(
                 from_scene=from_scene,
                 to_scene=to_scene,
                 action=str(selection.get("action", "left_click")),
                 region=region,
+                end_region=end_region,
                 button=(
                     str(selection["button"])
                     if selection.get("button") is not None
@@ -399,11 +430,13 @@ def _decode_transition(payload: object) -> ReplayTransition:
     if not isinstance(payload, dict):
         raise ValueError("transitions 元素必须是对象")
     region = _decode_region(payload.get("region"))
+    end_region = _decode_region(payload.get("end_region"))
     return ReplayTransition(
         from_scene=str(payload["from_scene"]),
         to_scene=str(payload["to_scene"]),
         action=str(payload.get("action", "left_click")),
         region=region,
+        end_region=end_region,
         button=str(payload["button"]) if payload.get("button") else None,
     )
 
@@ -480,3 +513,21 @@ def _bounded_region(
         min(width - 1, x + radius),
         min(height - 1, y + radius),
     ]
+
+
+def _validate_region(
+    region: tuple[int, int, int, int],
+    client_size: tuple[int, int],
+    label: str,
+) -> None:
+    """校验一个位于客户区内的矩形区域。"""
+    x1, y1, x2, y2 = region
+    width, height = client_size
+    if not (0 <= x1 <= x2 < width and 0 <= y1 <= y2 < height):
+        raise ValueError(f"{label}超出客户区: {region}")
+
+
+def _point_in_region(x: int, y: int, region: tuple[int, int, int, int]) -> bool:
+    """判断一个客户区坐标是否位于矩形区域内。"""
+    x1, y1, x2, y2 = region
+    return x1 <= x <= x2 and y1 <= y <= y2

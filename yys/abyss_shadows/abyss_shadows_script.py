@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from enum import Enum
+from numbers import Real
 from typing import Annotated, Any, Optional, TYPE_CHECKING, TypedDict, get_type_hints
 
 from win_util.image import ImageMatchConfig, to_project_path
@@ -107,7 +108,31 @@ class Main(YYSBaseScript):
             "elite_count": 6,
         },
     )
-    # 当前游戏版本没有稳定的统一入口路径，暂不声明 entry_scene。
+    # 入口包含 Home 界面拖拽，不能直接交给只支持按钮 BFS 的 entry_scene。
+    # on_run() 会执行录制确认过的 Home → 日常 → 狭间暗域入口流程。
+
+    _ENTRY_HOME_TO_DAILY_IMAGE: str = "yys/abyss_shadows/images/scene_control/home_to_daily.bmp"
+    _ENTRY_DAILY_IMAGE: str = "yys/abyss_shadows/images/scene/daily.bmp"
+    _ENTRY_DAILY_TO_ABYSS_IMAGE: str = (
+        "yys/abyss_shadows/images/scene_control/daily_to_abyss_selection.bmp"
+    )
+    _ENTRY_ABYSS_SELECTION_IMAGE: str = "yys/abyss_shadows/images/scene/abyss_selection.bmp"
+    _ENTRY_IMAGE_SIMILARITY: float = 0.8
+    _ENTRY_IMAGE_TIMEOUT: float = 10.0
+    _ENTRY_HOME_CLICK_OFFSET: tuple[int, int] = (0, 0)
+    _ENTRY_ABYSS_CLICK_OFFSET: tuple[int, int] = (114, 18)
+
+    # 录制事件中的客户区坐标归一化结果：
+    # 1. Home 横向拖拽，露出左侧入口图标；
+    # 2. 日常列表纵向拖拽，露出完整的狭间暗域卡片。
+    _ENTRY_HOME_SWIPE: tuple[tuple[float, float], tuple[float, float]] = (
+        (565 / 1148, 316 / 647),
+        (940 / 1148, 316 / 647),
+    )
+    _ENTRY_DAILY_SWIPE: tuple[tuple[float, float], tuple[float, float]] = (
+        (679 / 1148, 384 / 647),
+        (682 / 1148, 228 / 647),
+    )
 
     @classmethod
     def get_config_schema(cls) -> list[dict[str, Any]]:
@@ -523,32 +548,156 @@ class Main(YYSBaseScript):
         self._log_battle_count()
         self._cur_enemy = None
 
+    @staticmethod
+    def _is_valid_point(point: object) -> bool:
+        """判断找图结果是否为有效客户区坐标。"""
+        if not isinstance(point, (tuple, list)) or len(point) != 2:
+            return False
+        return all(isinstance(value, Real) for value in point) and point != (-1, -1)
+
+    def _entry_client_size(self) -> tuple[int, int]:
+        """获取录制入口动作使用的客户区尺寸。"""
+        if self._env is not None:
+            try:
+                left, top, right, bottom = self._env.get_window_client_rect()
+                width, height = right - left, bottom - top
+                if width > 0 and height > 0:
+                    return width, height
+            except (AttributeError, TypeError, ValueError):
+                pass
+
+        screenshot_cache = getattr(self.image_finder, "screenshot_cache", None)
+        shape = getattr(screenshot_cache, "shape", None)
+        if shape is not None and len(shape) >= 2:
+            height, width = int(shape[0]), int(shape[1])
+            if width > 0 and height > 0:
+                return width, height
+
+        # 录制时的客户区为 1148x647；1154x680 是项目既有默认窗口尺寸，
+        # 用作真实窗口截图尚未初始化时的保守回退值。
+        return 1154, 680
+
+    def _entry_swipe(
+        self,
+        start: tuple[float, float],
+        end: tuple[float, float],
+    ) -> bool:
+        """按客户区比例执行录制中的拖拽，并刷新截图缓存。"""
+        width, height = self._entry_client_size()
+        start_point = (round(width * start[0]), round(height * start[1]))
+        end_point = (round(width * end[0]), round(height * end[1]))
+        result = self.mouse.bg_swipe(
+            start_point[0],
+            start_point[1],
+            end_point[0],
+            end_point[1],
+            steps=20,
+            duration=0.6,
+            curve_factor=0.35,
+        )
+        self.win_controller.update_screenshot_cache()
+        return bool(result)
+
+    def _entry_find_and_click(
+        self,
+        image_path: str,
+        timeout: float,
+        click_offset: tuple[int, int] = (0, 0),
+    ) -> bool:
+        """通过模板匹配找到入口控件并点击，不使用固定点击坐标。"""
+        point = self.win_controller.find_image_with_timeout(
+            image_path,
+            timeout=timeout,
+            similarity=self._ENTRY_IMAGE_SIMILARITY,
+        )
+        if not self._is_valid_point(point):
+            self.logger.warning(f"未找到入口控件: {image_path}")
+            return False
+
+        click_point = (
+            int(point[0]) + click_offset[0],
+            int(point[1]) + click_offset[1],
+        )
+        return bool(self.mouse.bg_left_click(click_point, x_range=5, y_range=5))
+
+    def _entry_wait_for_image(self, image_path: str, timeout: float) -> bool:
+        """等待入口场景模板出现。"""
+        point = self.win_controller.find_image_with_timeout(
+            image_path,
+            timeout=timeout,
+            similarity=self._ENTRY_IMAGE_SIMILARITY,
+        )
+        return self._is_valid_point(point)
+
+    def _is_abyss_selection_visible(self) -> bool:
+        """判断当前是否已经位于狭间暗域选择界面。"""
+        self.win_controller.update_screenshot_cache()
+        point = self.win_controller.find_image(
+            self._ENTRY_ABYSS_SELECTION_IMAGE,
+            similarity=self._ENTRY_IMAGE_SIMILARITY,
+        )
+        return self._is_valid_point(point)
+
     def goto_abyss_shadows(self) -> bool:
         """
         进入狭间暗域
 
-        流程：主界面 → 神社入口 → 滑到狭间暗域 → 点击进入
+        流程：Home 横向拖拽 → 动态入口图标 → 日常列表纵向拖拽 →
+        动态狭间暗域卡片。
+
+        狭间暗域卡片位置会随日常列表滚动而变化，必须通过模板匹配点击。
+        本方法只负责进入“狭间暗域”选择界面；选择具体暗域由 SceneManager
+        继续使用对应的动态场景控制图完成。
 
         Returns:
             bool: 进入成功返回 True
         """
-        # 点击神社入口
-        if not self.win_controller.find_and_click("yys/abyss_shadows/images/ryou_shenshe.bmp"):
-            self.logger.warning("未找到神社入口")
+        if self._is_abyss_selection_visible():
+            return True
+
+        # 录制事件 1：Home 横向拖拽，露出入口图标。
+        if not self._entry_swipe(*self._ENTRY_HOME_SWIPE):
+            self.logger.warning("Home 入口横向拖拽失败")
             return False
 
-        random_sleep(0.5, 1)
-
-        # 滑动到狭间暗域（从神社向右滑，贝塞尔曲线防封）
-        self.mouse.bg_swipe(800, 400, 200, 400, steps=20, duration=0.6, curve_factor=0.35)
-        random_sleep(1, 1.5)
-
-        # 点击狭间暗域入口
-        if not self.win_controller.find_and_click("yys/abyss_shadows/images/abyss_shadows.bmp"):
-            self.logger.warning("未找到狭间暗域入口")
+        # 录制事件 2：入口图标位置不固定，使用模板匹配点击。
+        if not self._entry_find_and_click(
+            self._ENTRY_HOME_TO_DAILY_IMAGE,
+            timeout=self._ENTRY_IMAGE_TIMEOUT,
+            click_offset=self._ENTRY_HOME_CLICK_OFFSET,
+        ):
+            self.logger.warning("未找到日常入口图标")
             return False
 
-        self.logger.info("已进入狭间暗域")
+        # 等待“日常”面板稳定后，再执行录制事件 3 的纵向拖拽。
+        if not self._entry_wait_for_image(
+            self._ENTRY_DAILY_IMAGE,
+            timeout=self._ENTRY_IMAGE_TIMEOUT,
+        ):
+            self.logger.warning("点击日常入口后未进入日常面板")
+            return False
+
+        if not self._entry_swipe(*self._ENTRY_DAILY_SWIPE):
+            self.logger.warning("日常列表纵向拖拽失败")
+            return False
+
+        # 录制事件 4：狭间暗域卡片位置随列表滚动变化，使用卡片模板匹配点击。
+        if not self._entry_find_and_click(
+            self._ENTRY_DAILY_TO_ABYSS_IMAGE,
+            timeout=self._ENTRY_IMAGE_TIMEOUT,
+            click_offset=self._ENTRY_ABYSS_CLICK_OFFSET,
+        ):
+            self.logger.warning("未找到狭间暗域卡片")
+            return False
+
+        if not self._entry_wait_for_image(
+            self._ENTRY_ABYSS_SELECTION_IMAGE,
+            timeout=self._ENTRY_IMAGE_TIMEOUT,
+        ):
+            self.logger.warning("点击狭间暗域卡片后未进入选择界面")
+            return False
+
+        self.logger.info("已进入狭间暗域选择界面")
         return True
 
     def check_current_area(self) -> Optional[str]:
@@ -653,10 +802,16 @@ class Main(YYSBaseScript):
         self._current_area = "abyss_leopard"
 
 
-    def on_run(self):
+    def on_run(self) -> None:
         """启动时调用"""
         super().on_run()
-        self.scene_manager.goto_scene("abyss_dragon")
+        if not self.goto_abyss_shadows():
+            self.logger.error("未能从 Home 进入狭间暗域，停止脚本")
+            self.stop()
+            return
+        if not self.scene_manager.goto_scene("abyss_dragon"):
+            self.logger.error("未能进入神龙暗域，停止脚本")
+            self.stop()
 
 
 if __name__ == '__main__':

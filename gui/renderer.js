@@ -16,7 +16,16 @@ const state = {
     dirty: false,
     expandedIndex: 0
   },
-  logLevelMin: 'INFO'
+  logLevelMin: 'INFO',
+  connectionStatus: 'disconnected',
+  lastEventSeq: 0,
+  history: {
+    status: '',
+    offset: 0,
+    limit: 20,
+    hasNext: false,
+    items: []
+  }
 };
 
 async function apiGet(path) {
@@ -120,6 +129,20 @@ function activeStatusText(status) {
   return status;
 }
 
+function setConnectionStatus(status) {
+  state.connectionStatus = status;
+  const element = document.getElementById('connectionStatus');
+  if (!element) return;
+  const labels = {
+    connected: '已连接',
+    connecting: '连接中',
+    reconnecting: '重连中',
+    disconnected: '未连接'
+  };
+  element.textContent = labels[status] || status;
+  element.className = `status-pill connection ${status}`;
+}
+
 function renderScripts() {
   const container = document.getElementById('scriptList');
   container.innerHTML = '';
@@ -183,6 +206,9 @@ function renderField(field, defaults = {}) {
   const key = field.key;
   const value = defaults[key] ?? field.default ?? '';
   const label = escapeHtml(field.label || key);
+  const unit = field.unit ? `（${escapeHtml(field.unit)}）` : '';
+  const description = escapeHtml(field.description || '');
+  const title = description ? ` title="${description}"` : '';
   const name = escapeHtml(key);
 
   if (field.field_type === 'select') {
@@ -191,18 +217,18 @@ function renderField(field, defaults = {}) {
       const selected = String(optionValue) === String(value) ? ' selected' : '';
       return `<option value="${escapeHtml(optionValue)}"${selected}>${escapeHtml(item.label ?? optionValue)}</option>`;
     }).join('');
-    return `<label class="field"><span>${label}</span><select name="${name}">${options}</select></label>`;
+    return `<label class="field"><span${title}>${label}${unit}</span><select name="${name}">${options}</select></label>`;
   }
 
   if (field.field_type === 'boolean') {
     const checked = value === true || value === 'true' ? ' checked' : '';
-    return `<label class="field boolean-field"><input name="${name}" type="checkbox" value="true"${checked}><span>${label}</span></label>`;
+    return `<label class="field boolean-field"${title}><input name="${name}" type="checkbox" value="true"${checked}><span>${label}${unit}</span></label>`;
   }
 
-  const type = field.field_type === 'number' ? 'number' : 'text';
+  const type = field.sensitive ? 'password' : field.field_type === 'number' ? 'number' : 'text';
   const min = field.min_value !== null && field.min_value !== undefined ? ` min="${escapeHtml(field.min_value)}"` : '';
   const max = field.max_value !== null && field.max_value !== undefined ? ` max="${escapeHtml(field.max_value)}"` : '';
-  return `<label class="field"><span>${label}</span><input name="${name}" type="${type}" value="${escapeHtml(value)}"${min}${max}></label>`;
+  return `<label class="field"><span${title}>${label}${unit}</span><input name="${name}" type="${type}" value="${escapeHtml(value)}"${min}${max}></label>`;
 }
 
 function normalizeConfigValue(value, field) {
@@ -249,8 +275,23 @@ async function startScript(scriptId, form) {
 const FAILURE_POLICY_LABELS = {
   stop_workflow: '失败后停止',
   continue_next: '失败后继续',
-  retry_then_stop: '重试后停止'
+  retry_then_stop: '重试后停止',
+  stop: '失败后停止',
+  continue: '失败后继续',
+  retry: '按次数重试',
+  skip: '失败后跳过',
+  manual: '转人工接管',
+  inherit: '继承工作流'
 };
+
+const STEP_FAILURE_POLICY_OPTIONS = [
+  ['inherit', '继承工作流'],
+  ['stop', '停止工作流'],
+  ['continue', '继续下一步'],
+  ['retry', '按次数重试'],
+  ['skip', '跳过当前步骤'],
+  ['manual', '转人工接管']
+];
 
 // 保存或更新编排
 async function saveWorkflow(form) {
@@ -271,7 +312,8 @@ async function saveWorkflow(form) {
     const step = {
       sort_order: index + 1,
       step_type: stepType,
-      retry_count: 0,
+      retry_count: Number(fields.retry_count || 0),
+      failure_policy: fields.failure_policy || 'inherit',
       script_id: null,
       config: {},
       condition: {}
@@ -306,12 +348,21 @@ async function saveWorkflow(form) {
   const payload = {
     name: data.get('name'),
     group_name: data.get('group_name'),
-    enabled: true,
-    trigger_type: 'manual',
+    enabled: form.elements.enabled?.checked ?? true,
+    trigger_type: data.get('trigger_type') || 'manual',
     trigger_config: {},
+    priority: Number(data.get('priority') || 0),
+    success_interval_seconds: Number(data.get('success_interval_seconds') || 0),
+    failure_interval_seconds: Number(data.get('failure_interval_seconds') || 0),
     failure_policy: data.get('failure_policy'),
     steps
   };
+  if (payload.trigger_type === 'interval') {
+    payload.trigger_config.interval_seconds = Number(data.get('interval_seconds') || 0);
+  }
+  if (payload.trigger_type === 'scheduled_time') {
+    payload.trigger_config.time = data.get('scheduled_time') || '';
+  }
 
   const editingId = data.get('workflow_id');
   if (editingId) {
@@ -346,6 +397,13 @@ function openWorkflowModal(mode, workflow = null) {
     form.querySelector('[name="name"]').value = workflow.name || '';
     form.querySelector('[name="group_name"]').value = workflow.group_name || '';
     form.querySelector('[name="failure_policy"]').value = workflow.failure_policy || 'stop_workflow';
+    form.querySelector('[name="enabled"]').checked = workflow.enabled !== false;
+    form.querySelector('[name="priority"]').value = workflow.priority ?? 0;
+    form.querySelector('[name="trigger_type"]').value = workflow.trigger_type || 'manual';
+    form.querySelector('[name="interval_seconds"]').value = workflow.trigger_config?.interval_seconds ?? 0;
+    form.querySelector('[name="scheduled_time"]').value = workflow.trigger_config?.time || workflow.trigger_config?.at || '09:00';
+    form.querySelector('[name="success_interval_seconds"]').value = workflow.success_interval_seconds ?? 0;
+    form.querySelector('[name="failure_interval_seconds"]').value = workflow.failure_interval_seconds ?? 0;
   }
 
   // 4) 渲染步骤
@@ -459,6 +517,11 @@ function renderModalStepAccordion(index, step = {}) {
   const stepType = step.step_type || 'run_script';
   const scriptId = step.script_id || (state.scripts[0]?.script_id || '');
   const expanded = index === state.workflowModal.expandedIndex;
+  const failurePolicy = step.failure_policy || 'inherit';
+  const retryCount = Number(step.retry_count || 0);
+  const policyOptions = STEP_FAILURE_POLICY_OPTIONS.map(([value, label]) => (
+    `<option value="${value}"${failurePolicy === value ? ' selected' : ''}>${label}</option>`
+  )).join('');
   return `
     <div class="step-accordion${expanded ? ' expanded' : ''}" data-step-index="${index}">
       <div class="step-accordion-header" data-accordion-toggle="${index}">
@@ -475,6 +538,16 @@ function renderModalStepAccordion(index, step = {}) {
             <option value="run_until_time"${stepType === 'run_until_time' ? ' selected' : ''}>运行到指定时间</option>
           </select>
         </label>
+        <div class="step-policy-fields">
+          <label class="field">
+            <span>步骤失败策略</span>
+            <select name="failure_policy">${policyOptions}</select>
+          </label>
+          <label class="field">
+            <span>重试次数</span>
+            <input name="retry_count" type="number" min="0" value="${escapeHtml(retryCount)}">
+          </label>
+        </div>
         <div data-step-dynamic="${index}">
           ${renderModalStepBody(index, stepType, scriptId, step.config || {}, step.condition || {})}
         </div>
@@ -535,7 +608,15 @@ function collectStepFromDom(index) {
   if (!accordion) return {};
   const stepTypeSelect = accordion.querySelector('[data-step-type-select]');
   const stepType = stepTypeSelect?.value || 'run_script';
-  const step = { step_type: stepType, config: {}, condition: {} };
+  const policyInput = accordion.querySelector('select[name="failure_policy"]');
+  const retryInput = accordion.querySelector('input[name="retry_count"]');
+  const step = {
+    step_type: stepType,
+    failure_policy: policyInput?.value || 'inherit',
+    retry_count: Number(retryInput?.value || 0),
+    config: {},
+    condition: {}
+  };
   if (stepType === 'run_script') {
     const scriptSelect = accordion.querySelector('[data-step-script-select]');
     step.script_id = scriptSelect?.value || '';
@@ -564,6 +645,7 @@ async function renderWorkflows() {
 
   if (!workflows.length) {
     container.innerHTML = '<p class="empty-text">暂无编排任务</p>';
+    renderSchedulePreview().catch((error) => appendLog({ level: 'WARNING', message: error.message }));
     return;
   }
 
@@ -571,18 +653,142 @@ async function renderWorkflows() {
     const isEditing = state.editingWorkflowId === item.id;
     const stepCount = (item.steps || []).length;
     const policyLabel = FAILURE_POLICY_LABELS[item.failure_policy] || item.failure_policy || '';
+    const triggerLabel = item.trigger_type === 'interval'
+      ? `间隔 ${item.trigger_config?.interval_seconds || 0}s`
+      : item.trigger_type === 'scheduled_time'
+        ? `每日 ${item.trigger_config?.time || item.trigger_config?.at || '未设置'}`
+        : '手动';
+    const nextRun = item.next_run_at ? `下次：${item.next_run_at}` : '暂无下次运行';
+    const enabledLabel = item.enabled ? '已启用' : '已停用';
     return `
       <article class="workflow-card${isEditing ? ' editing' : ''}">
         <strong>${escapeHtml(item.name || '未命名编排')}</strong>
         <small>${escapeHtml(item.group_name || '未分组')} · ${stepCount} 个步骤 · ${escapeHtml(policyLabel)}</small>
+        <small>${escapeHtml(enabledLabel)} · 优先级 ${escapeHtml(item.priority ?? 0)} · ${escapeHtml(triggerLabel)} · ${escapeHtml(nextRun)}</small>
         <div class="workflow-actions">
           <button data-run-workflow="${escapeHtml(item.id)}" class="ghost-button" type="button">立即运行</button>
+          <button data-toggle-workflow="${escapeHtml(item.id)}" data-enabled="${item.enabled ? 'true' : 'false'}" class="ghost-button" type="button">${item.enabled ? '停用' : '启用'}</button>
           <button data-edit-workflow="${escapeHtml(item.id)}" class="ghost-button" type="button">编辑</button>
           <button data-delete-workflow="${escapeHtml(item.id)}" class="danger-button" type="button">删除</button>
         </div>
       </article>
     `;
   }).join('');
+  renderSchedulePreview().catch((error) => appendLog({ level: 'WARNING', message: error.message }));
+}
+
+async function toggleWorkflow(workflowId, enabled) {
+  await apiPost(`/api/workflows/${workflowId}/${enabled ? 'enable' : 'disable'}`);
+  appendLog({ level: 'INFO', message: `${enabled ? '已启用' : '已停用'}编排: ${workflowId}` });
+  await renderWorkflows();
+}
+
+function renderSchedulePreviewItems(items) {
+  const container = document.getElementById('schedulePreview');
+  if (!container) return;
+  if (!items.length) {
+    container.textContent = '暂无启用任务';
+    return;
+  }
+  container.innerHTML = items.map((item) => `
+    <div class="schedule-item">
+      <strong>${escapeHtml(item.name || `编排 ${item.id}`)}</strong>
+      <span>${item.supported ? escapeHtml(item.next_run_at || '等待首次计算') : '暂不支持此触发方式'}</span>
+    </div>
+  `).join('');
+}
+
+async function renderSchedulePreview() {
+  const items = await apiGet('/api/scheduler/preview');
+  renderSchedulePreviewItems(items);
+}
+
+const HISTORY_STATUS_LABELS = {
+  queued: '排队',
+  running: '运行中',
+  paused: '已暂停',
+  success: '已完成',
+  error: '错误',
+  stopped: '已停止',
+  skipped: '已跳过',
+  manual: '人工接管'
+};
+
+function formatHistoryTime(value) {
+  if (!value) return '—';
+  return String(value).replace('T', ' ').slice(0, 19);
+}
+
+async function loadHistory() {
+  const params = new URLSearchParams({
+    limit: String(state.history.limit),
+    offset: String(state.history.offset)
+  });
+  if (state.history.status) params.set('status', state.history.status);
+  const items = await apiGet(`/api/runs?${params.toString()}`);
+  state.history.items = items;
+  state.history.hasNext = items.length >= state.history.limit;
+  renderHistory();
+}
+
+function renderHistory() {
+  const container = document.getElementById('historyList');
+  if (!container) return;
+  const items = state.history.items;
+  if (!items.length) {
+    container.innerHTML = '<p class="empty-text">暂无符合条件的历史运行</p>';
+  } else {
+    container.innerHTML = items.map((item) => {
+      const script = findScript(item.script_id);
+      const status = HISTORY_STATUS_LABELS[item.status] || item.status || '未知';
+      const error = item.error_code ? ` · ${item.error_code}` : '';
+      return `
+        <article class="history-row">
+          <div>
+            <strong>${escapeHtml(script?.display_name || item.script_id)}</strong>
+            <small>#${escapeHtml(item.id)} · ${escapeHtml(sourceText(item.source_type))} · ${escapeHtml(status)}${escapeHtml(error)}</small>
+          </div>
+          <div class="history-row-meta">
+            <small>${escapeHtml(formatHistoryTime(item.started_at || item.updated_at))}</small>
+            <button type="button" class="ghost-button" data-history-detail="${escapeHtml(item.id)}">查看详情</button>
+          </div>
+        </article>
+      `;
+    }).join('');
+  }
+  const page = Math.floor(state.history.offset / state.history.limit) + 1;
+  document.getElementById('historyPageText').textContent = `第 ${page} 页`;
+  document.getElementById('historyPreviousButton').disabled = state.history.offset === 0;
+  document.getElementById('historyNextButton').disabled = !state.history.hasNext;
+}
+
+async function showHistoryDetail(runId) {
+  const detail = await apiGet(`/api/runs/${runId}`);
+  const container = document.getElementById('historyDetail');
+  if (!container) return;
+  const script = findScript(detail.script_id);
+  const logs = detail.logs || [];
+  const snapshots = detail.snapshots || [];
+  const evidence = detail.evidence || [];
+  const workflowText = detail.workflow
+    ? `${detail.workflow.name || '编排'} · 步骤 ${detail.workflow_step?.sort_order || '—'}`
+    : '手动运行';
+  const displayConfig = redactConfigForDisplay(detail.config, script);
+  container.hidden = false;
+  container.innerHTML = `
+    <div class="history-detail-header">
+      <strong>${escapeHtml(script?.display_name || detail.script_id)} · #${escapeHtml(detail.id)}</strong>
+      <span class="status-pill ${escapeHtml(detail.status)}">${escapeHtml(HISTORY_STATUS_LABELS[detail.status] || detail.status)}</span>
+    </div>
+    <p>时间：${escapeHtml(formatHistoryTime(detail.started_at))} - ${escapeHtml(formatHistoryTime(detail.ended_at))}</p>
+    <p>来源：${escapeHtml(workflowText)} · 阶段：${escapeHtml(detail.stage || '—')}</p>
+    <p>错误：${escapeHtml(detail.error_code || '无')} ${escapeHtml(detail.error_message || '')}</p>
+    <div class="history-detail-grid">
+      <div><span>配置</span><pre>${escapeHtml(JSON.stringify(displayConfig, null, 2))}</pre></div>
+      <div><span>记录</span><p>日志 ${logs.length} 条 · 快照 ${snapshots.length} 条 · 证据 ${evidence.length} 条</p></div>
+    </div>
+    <div class="history-log-lines">${logs.map((log) => `<p>[${escapeHtml(log.level)}] ${escapeHtml(log.message)}</p>`).join('') || '<p>暂无日志</p>'}</div>
+  `;
 }
 
 // 删除编排：409 表示存在关联运行任务
@@ -628,7 +834,9 @@ function statusText(status) {
     paused: '已暂停',
     success: '已完成',
     error: '错误',
-    stopped: '已停止'
+    stopped: '已停止',
+    skipped: '已跳过',
+    manual: '人工接管'
   };
   return labels[status] || status || '空闲';
 }
@@ -668,10 +876,18 @@ function renderConfigSummary(config, script) {
     .map((key) => {
       const field = schemaByKey.get(key);
       const label = field?.label || key;
-      const value = formatConfigValue(config[key], field);
+      const value = field?.sensitive ? '••••••' : formatConfigValue(config[key], field);
       return `<span class="config-pair"><span class="config-key">${escapeHtml(label)}</span><span class="config-value">${escapeHtml(value)}</span></span>`;
     })
     .join('');
+}
+
+function redactConfigForDisplay(config, script) {
+  const result = { ...(config || {}) };
+  for (const field of script?.config_schema || []) {
+    if (field.sensitive && field.key in result) result[field.key] = '••••••';
+  }
+  return result;
 }
 
 function renderCurrentRun() {
@@ -683,6 +899,15 @@ function renderCurrentRun() {
   document.getElementById('currentRunTitle').textContent = run
     ? (script?.display_name || run.script_id)
     : '暂无运行脚本';
+  const globalRunBar = document.getElementById('globalRunBar');
+  if (globalRunBar) globalRunBar.hidden = !run;
+  const globalRunTitle = document.getElementById('globalRunTitle');
+  if (globalRunTitle) globalRunTitle.textContent = run ? (script?.display_name || run.script_id) : '—';
+  const globalRunStatus = document.getElementById('globalRunStatus');
+  if (globalRunStatus) {
+    globalRunStatus.textContent = run ? statusText(run.status) : '空闲';
+    globalRunStatus.className = `status-pill ${status}`;
+  }
   runStatus.textContent = run ? statusText(run.status) : '空闲';
   runStatus.className = `status-pill ${status}`;
   document.getElementById('runSource').textContent = run ? sourceText(run.source_type) : '-';
@@ -695,9 +920,58 @@ function renderCurrentRun() {
     runConfigEl.textContent = '未启动';
   }
 
+  const stageLabels = {
+    queued: '排队中',
+    starting: '启动中',
+    script_running: '脚本运行中',
+    paused: '已暂停',
+    script_failed: '脚本失败',
+    start_failed: '启动失败',
+    stopping: '停止中',
+    stop_timeout: '停止超时',
+    completed: '已完成',
+    skipped: '已跳过',
+    manual_takeover: '人工接管'
+  };
+  const stageElement = document.getElementById('runStage');
+  stageElement.textContent = run
+    ? (stageLabels[run.stage] || run.stage || statusText(run.status))
+    : '空闲';
+
+  const errorElement = document.getElementById('runError');
+  const errorText = run?.error_code
+    ? `${run.error_code}: ${run.error_message || '请查看关键日志'}`
+    : (run?.error_message || '');
+  errorElement.textContent = errorText;
+  errorElement.hidden = !errorText;
+
+  const actions = new Set(run?.available_actions || []);
+  const actionButtons = {
+    pause: ['mainPauseButton'],
+    resume: ['mainResumeButton'],
+    stop: ['mainStopButton'],
+    retry: ['mainRetryButton'],
+    skip: ['mainSkipButton'],
+    manual_takeover: ['mainManualButton']
+  };
+  for (const [action, ids] of Object.entries(actionButtons)) {
+    ids.forEach((id) => {
+      const button = document.getElementById(id);
+      if (button) button.disabled = !run || !actions.has(action);
+    });
+  }
+  document.querySelectorAll('[data-global-action]').forEach((button) => {
+    button.disabled = !run || !actions.has(button.dataset.globalAction);
+  });
+
   if (!run) {
     renderSnapshot({});
+    renderEvidence(null);
+  } else {
+    renderSnapshot(run.latest_snapshot?.state || run.progress || {});
+    renderEvidence(run);
   }
+  renderProgressDetail(run);
 }
 
 // 日志级别优先级映射，值越大表示严重程度越高
@@ -757,19 +1031,40 @@ function appendLog(event) {
 }
 
 function connectEvents() {
-  const ws = new WebSocket(eventsWebSocketUrl());
+  setConnectionStatus('connecting');
+  const suffix = state.lastEventSeq > 0
+    ? `${UI_TOKEN ? '&' : '?'}after_seq=${encodeURIComponent(state.lastEventSeq)}`
+    : '';
+  const ws = new WebSocket(`${eventsWebSocketUrl()}${suffix}`);
   ws.onopen = () => {
+    setConnectionStatus('connected');
     refreshCurrentRun().catch((error) => {
       appendLog({ level: 'ERROR', message: `刷新运行状态失败: ${error.message}` });
     });
   };
   ws.onmessage = (event) => {
     const payload = JSON.parse(event.data);
+    if (Number.isFinite(Number(payload.seq))) {
+      if (Number(payload.seq) <= state.lastEventSeq) return;
+      state.lastEventSeq = Number(payload.seq);
+    }
+    if (payload.type === 'run_snapshot') {
+      state.currentRun = payload.snapshot || null;
+      renderCurrentRun();
+      renderScripts();
+      return;
+    }
     if (payload.type === 'log') appendLog(payload);
     if (payload.type === 'run_status_changed') refreshCurrentRun().catch((error) => {
       appendLog({ level: 'ERROR', message: error.message });
     });
-    if (payload.type === 'state_snapshot') renderSnapshot(payload.state || {});
+    if (payload.type === 'state_snapshot') {
+      renderSnapshot(payload.state || {});
+      if (state.currentRun) {
+        state.currentRun.progress = payload.progress || state.currentRun.progress;
+        renderProgressDetail(state.currentRun);
+      }
+    }
     if (payload.type === 'workflow_error') {
       const workflowId = payload.workflow_id ? `编排 ${payload.workflow_id}` : '编排';
       const detail = payload.message || payload.error || payload.data || '后台执行失败';
@@ -778,14 +1073,20 @@ function connectEvents() {
     }
   };
   ws.onerror = () => ws.close();
-  ws.onclose = () => setTimeout(connectEvents, 2000);
+  ws.onclose = () => {
+    setConnectionStatus('reconnecting');
+    setTimeout(connectEvents, 2000);
+  };
 }
 
 function renderSnapshot(stateSnapshot) {
   const battleCount = stateSnapshot.battle_count ?? stateSnapshot.current_battle_count ?? 0;
   const maxBattleCount = stateSnapshot.max_battle_count ?? state.currentRun?.config?.max_battle_count ?? 0;
   const victoryCount = stateSnapshot.victory_count ?? stateSnapshot.win_count ?? 0;
-  const progress = maxBattleCount > 0 ? Math.min(100, Math.round((battleCount / maxBattleCount) * 100)) : 0;
+  const reportedProgress = Number(stateSnapshot.percent ?? stateSnapshot.progress_percent);
+  const progress = Number.isFinite(reportedProgress)
+    ? Math.max(0, Math.min(100, Math.round(reportedProgress)))
+    : maxBattleCount > 0 ? Math.min(100, Math.round((battleCount / maxBattleCount) * 100)) : 0;
 
   document.getElementById('snapshotPreview').textContent = Object.keys(stateSnapshot).length
     ? JSON.stringify(stateSnapshot)
@@ -793,12 +1094,56 @@ function renderSnapshot(stateSnapshot) {
   document.getElementById('battleCount').textContent = `${battleCount} / ${maxBattleCount}`;
   document.getElementById('victoryCount').textContent = String(victoryCount);
   document.getElementById('progressBar').style.width = `${progress}%`;
+  document.getElementById('progressText').textContent = `${progress}%（${battleCount}/${maxBattleCount || '—'}）`;
 }
 
 async function controlCurrentRun(action) {
   if (!state.currentRun?.id) return;
-  await apiPost(`/api/runs/${state.currentRun.id}/${action}`);
+  const endpoint = action === 'manual_takeover' ? 'manual-takeover' : action;
+  await apiPost(`/api/runs/${state.currentRun.id}/${endpoint}`);
+  if (action === 'retry') {
+    appendLog({ level: 'INFO', message: '已提交重试请求' });
+  }
   await refreshCurrentRun();
+}
+
+function renderEvidence(run) {
+  const preview = document.getElementById('evidencePreview');
+  const image = document.getElementById('latestEvidence');
+  if (!preview || !image) return;
+  const evidence = run?.evidence?.[run.evidence.length - 1] || run?.latest_evidence;
+  if (!evidence) {
+    preview.textContent = '暂无截图证据';
+    image.hidden = true;
+    image.removeAttribute('src');
+    return;
+  }
+  preview.textContent = evidence.capture_error
+    ? `截图不可用：${evidence.capture_error}`
+    : '已记录失败时截图';
+  if (!evidence.capture_error && run?.id) {
+    const token = UI_TOKEN ? `?token=${encodeURIComponent(UI_TOKEN)}` : '';
+    image.src = `${API_BASE}/api/runs/${run.id}/evidence/latest${token}`;
+    image.hidden = false;
+  } else {
+    image.hidden = true;
+  }
+}
+
+function renderProgressDetail(run) {
+  const element = document.getElementById('progressDetail');
+  if (!element) return;
+  if (!run) {
+    element.textContent = '暂无运行快照';
+    return;
+  }
+  const progress = run.progress || {};
+  element.innerHTML = `
+    <strong>${escapeHtml(findScript(run.script_id)?.display_name || run.script_id)}</strong>
+    <p>阶段：${escapeHtml(run.stage || statusText(run.status))}</p>
+    <p>进度：${escapeHtml(progress.percent ?? 0)}%（${escapeHtml(progress.current ?? 0)}/${escapeHtml(progress.total ?? '—')}）</p>
+    <p>错误：${escapeHtml(run.error_code || '无')}</p>
+  `;
 }
 
 function switchView(viewName) {
@@ -811,6 +1156,12 @@ function switchView(viewName) {
   document.querySelectorAll('.view').forEach((view) => {
     view.classList.toggle('active', view.id === `${viewName}View`);
   });
+  if (viewName === 'logs') {
+    loadHistory().catch((error) => appendLog({ level: 'ERROR', message: error.message }));
+  }
+  if (viewName === 'workflows') {
+    renderSchedulePreview().catch((error) => appendLog({ level: 'WARNING', message: error.message }));
+  }
 }
 
 function bindEvents() {
@@ -837,6 +1188,22 @@ function bindEvents() {
     if (controlBtn) return;
     startScript(form.dataset.scriptForm, form).catch((error) => {
       appendLog({ level: 'ERROR', message: error.message });
+    });
+  });
+
+  document.querySelectorAll('[data-main-action]').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (button.disabled) return;
+      controlCurrentRun(button.dataset.mainAction)
+        .catch((error) => appendLog({ level: 'ERROR', message: error.message }));
+    });
+  });
+
+  document.querySelectorAll('[data-global-action]').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (button.disabled) return;
+      controlCurrentRun(button.dataset.globalAction)
+        .catch((error) => appendLog({ level: 'ERROR', message: error.message }));
     });
   });
 
@@ -868,6 +1235,13 @@ function bindEvents() {
     const run = event.target.closest('[data-run-workflow]');
     if (run) {
       runWorkflowNow(run.dataset.runWorkflow).catch((err) => appendLog({ level: 'ERROR', message: err.message }));
+      return;
+    }
+    const toggle = event.target.closest('[data-toggle-workflow]');
+    if (toggle) {
+      const enabled = toggle.dataset.enabled !== 'true';
+      toggleWorkflow(toggle.dataset.toggleWorkflow, enabled)
+        .catch((err) => appendLog({ level: 'ERROR', message: err.message }));
       return;
     }
     const edit = event.target.closest('[data-edit-workflow]');
@@ -949,6 +1323,30 @@ function bindEvents() {
     rerenderLogBody();
   });
 
+  document.getElementById('historyStatusFilter').addEventListener('change', (event) => {
+    state.history.status = event.target.value;
+    state.history.offset = 0;
+    loadHistory().catch((error) => appendLog({ level: 'ERROR', message: error.message }));
+  });
+  document.getElementById('refreshHistoryButton').addEventListener('click', () => {
+    loadHistory().catch((error) => appendLog({ level: 'ERROR', message: error.message }));
+  });
+  document.getElementById('historyPreviousButton').addEventListener('click', () => {
+    state.history.offset = Math.max(0, state.history.offset - state.history.limit);
+    loadHistory().catch((error) => appendLog({ level: 'ERROR', message: error.message }));
+  });
+  document.getElementById('historyNextButton').addEventListener('click', () => {
+    if (!state.history.hasNext) return;
+    state.history.offset += state.history.limit;
+    loadHistory().catch((error) => appendLog({ level: 'ERROR', message: error.message }));
+  });
+  document.getElementById('historyList').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-history-detail]');
+    if (!button) return;
+    showHistoryDetail(button.dataset.historyDetail)
+      .catch((error) => appendLog({ level: 'ERROR', message: error.message }));
+  });
+
   document.getElementById('closeWorkflowModalButton').addEventListener('click', () => closeWorkflowModal());
   document.getElementById('cancelWorkflowModalButton').addEventListener('click', () => closeWorkflowModal());
 
@@ -995,6 +1393,7 @@ async function init() {
   bindEvents();
   await renderWorkflows();
   await refreshCurrentRun();
+  await loadHistory();
   connectEvents();
 }
 

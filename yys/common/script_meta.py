@@ -18,6 +18,8 @@ class ConfigMeta:
         label: 前端展示的中文名称。
         group: 前端表单分组名，用于将相关字段聚合。
         help: 前端表单的 tooltip 帮助文本。
+        unit: 字段单位，用于前端展示。
+        sensitive: 是否属于敏感字段，前端展示时应脱敏。
         hot_reloadable: 是否支持热重载；为 True 时 PATCH 端点会立即注入到当前 run 的实例属性。
         field_type: 前端渲染的控件类型，支持 "text" / "number" / "select" / "checkbox"。
     """
@@ -28,6 +30,8 @@ class ConfigMeta:
     label: str = ""
     group: str = "基础"
     help: str = ""
+    unit: Optional[str] = None
+    sensitive: bool = False
     hot_reloadable: bool = False
     field_type: str = "text"
 

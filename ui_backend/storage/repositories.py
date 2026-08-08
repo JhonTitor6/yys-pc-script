@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import json
+import uuid
 from typing import Any
 
-from ui_backend.models import RunSourceType, RunStatus
+from ui_backend.models import (
+    RunSourceType,
+    RunStatus,
+    available_actions_for_status,
+)
 from ui_backend.storage.database import Database
 
 
@@ -12,6 +17,16 @@ def _row_to_dict(row: Any) -> dict[str, Any] | None:
     if row is None:
         return None
     return dict(row)
+
+
+def _load_json(value: Any, fallback: Any) -> Any:
+    """安全解析 JSON 列，兼容旧数据库中的空值。"""
+    if value in (None, ""):
+        return fallback
+    try:
+        return json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return fallback
 
 
 class WorkflowRepository:
@@ -28,14 +43,20 @@ class WorkflowRepository:
         trigger_type: str,
         trigger_config: dict[str, Any],
         failure_policy: str,
+        priority: int = 0,
+        success_interval_seconds: float = 0,
+        failure_interval_seconds: float = 0,
+        next_run_at: str | None = None,
     ) -> int:
         """创建编排任务并返回主键。"""
         with self.db.connect() as conn:
             cur = conn.execute(
                 """
                 INSERT INTO workflows
-                    (name, group_name, enabled, trigger_type, trigger_config_json, failure_policy)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (name, group_name, enabled, trigger_type, trigger_config_json,
+                     failure_policy, priority, success_interval_seconds,
+                     failure_interval_seconds, next_run_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     name,
@@ -44,6 +65,10 @@ class WorkflowRepository:
                     trigger_type,
                     json.dumps(trigger_config, ensure_ascii=False),
                     failure_policy,
+                    int(priority),
+                    float(success_interval_seconds),
+                    float(failure_interval_seconds),
+                    next_run_at,
                 ),
             )
             return int(cur.lastrowid)
@@ -55,7 +80,10 @@ class WorkflowRepository:
         result = [dict(row) for row in rows]
         for item in result:
             item["enabled"] = bool(item["enabled"])
-            item["trigger_config"] = json.loads(item.pop("trigger_config_json"))
+            item["trigger_config"] = _load_json(item.pop("trigger_config_json"), {})
+            item["priority"] = int(item.get("priority") or 0)
+            item["success_interval_seconds"] = float(item.get("success_interval_seconds") or 0)
+            item["failure_interval_seconds"] = float(item.get("failure_interval_seconds") or 0)
         return result
 
     def get(self, workflow_id: int) -> dict[str, Any] | None:
@@ -65,7 +93,10 @@ class WorkflowRepository:
         item = _row_to_dict(row)
         if item is not None:
             item["enabled"] = bool(item["enabled"])
-            item["trigger_config"] = json.loads(item.pop("trigger_config_json"))
+            item["trigger_config"] = _load_json(item.pop("trigger_config_json"), {})
+            item["priority"] = int(item.get("priority") or 0)
+            item["success_interval_seconds"] = float(item.get("success_interval_seconds") or 0)
+            item["failure_interval_seconds"] = float(item.get("failure_interval_seconds") or 0)
         return item
 
     def update(
@@ -77,11 +108,20 @@ class WorkflowRepository:
         trigger_type: str,
         trigger_config: dict[str, Any],
         failure_policy: str,
+        priority: int = 0,
+        success_interval_seconds: float = 0,
+        failure_interval_seconds: float = 0,
     ) -> bool:
         """更新编排任务，返回是否找到并更新。"""
         with self.db.connect() as conn:
             cur = conn.execute(
-                "UPDATE workflows SET name=?, group_name=?, enabled=?, trigger_type=?, trigger_config_json=?, failure_policy=? WHERE id=?",
+                """
+                UPDATE workflows
+                SET name=?, group_name=?, enabled=?, trigger_type=?, trigger_config_json=?,
+                    failure_policy=?, priority=?, success_interval_seconds=?,
+                    failure_interval_seconds=?, updated_at=CURRENT_TIMESTAMP
+                WHERE id=?
+                """,
                 (
                     name,
                     group_name,
@@ -89,6 +129,9 @@ class WorkflowRepository:
                     trigger_type,
                     json.dumps(trigger_config, ensure_ascii=False),
                     failure_policy,
+                    int(priority),
+                    float(success_interval_seconds),
+                    float(failure_interval_seconds),
                     workflow_id,
                 ),
             )
@@ -104,6 +147,9 @@ class WorkflowRepository:
         trigger_config: dict[str, Any],
         failure_policy: str,
         steps: list[dict[str, Any]],
+        priority: int = 0,
+        success_interval_seconds: float = 0,
+        failure_interval_seconds: float = 0,
     ) -> bool:
         """单事务内全量覆盖编排任务及其步骤，返回是否找到并更新。
 
@@ -111,7 +157,13 @@ class WorkflowRepository:
         """
         with self.db.connect() as conn:
             cur = conn.execute(
-                "UPDATE workflows SET name=?, group_name=?, enabled=?, trigger_type=?, trigger_config_json=?, failure_policy=? WHERE id=?",
+                """
+                UPDATE workflows
+                SET name=?, group_name=?, enabled=?, trigger_type=?, trigger_config_json=?,
+                    failure_policy=?, priority=?, success_interval_seconds=?,
+                    failure_interval_seconds=?, updated_at=CURRENT_TIMESTAMP
+                WHERE id=?
+                """,
                 (
                     name,
                     group_name,
@@ -119,6 +171,9 @@ class WorkflowRepository:
                     trigger_type,
                     json.dumps(trigger_config, ensure_ascii=False),
                     failure_policy,
+                    int(priority),
+                    float(success_interval_seconds),
+                    float(failure_interval_seconds),
                     workflow_id,
                 ),
             )
@@ -129,8 +184,9 @@ class WorkflowRepository:
                 conn.execute(
                     """
                     INSERT INTO workflow_steps
-                        (workflow_id, sort_order, step_type, script_id, config_json, condition_json, retry_count)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                        (workflow_id, sort_order, step_type, script_id, config_json,
+                         condition_json, retry_count, failure_policy)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         workflow_id,
@@ -140,6 +196,7 @@ class WorkflowRepository:
                         json.dumps(dict(step.get("config", {})), ensure_ascii=False),
                         json.dumps(dict(step.get("condition", {})), ensure_ascii=False),
                         int(step.get("retry_count", 0)),
+                        str(step.get("failure_policy", "inherit")),
                     ),
                 )
             return True
@@ -159,6 +216,26 @@ class WorkflowRepository:
             ).fetchone()
         return row is not None
 
+    def update_schedule_state(
+        self,
+        workflow_id: int,
+        next_run_at: str | None,
+        last_run_at: str | None = None,
+    ) -> bool:
+        """更新调度预览状态。"""
+        with self.db.connect() as conn:
+            cur = conn.execute(
+                """
+                UPDATE workflows
+                SET next_run_at=?,
+                    last_run_at=COALESCE(?, last_run_at),
+                    updated_at=CURRENT_TIMESTAMP
+                WHERE id=?
+                """,
+                (next_run_at, last_run_at, workflow_id),
+            )
+            return cur.rowcount > 0
+
 
 class WorkflowStepRepository:
     """编排步骤仓库。"""
@@ -175,14 +252,16 @@ class WorkflowStepRepository:
         config: dict[str, Any],
         condition: dict[str, Any],
         retry_count: int,
+        failure_policy: str = "inherit",
     ) -> int:
         """创建编排步骤并返回主键。"""
         with self.db.connect() as conn:
             cur = conn.execute(
                 """
                 INSERT INTO workflow_steps
-                    (workflow_id, sort_order, step_type, script_id, config_json, condition_json, retry_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (workflow_id, sort_order, step_type, script_id, config_json,
+                     condition_json, retry_count, failure_policy)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     workflow_id,
@@ -192,6 +271,7 @@ class WorkflowStepRepository:
                     json.dumps(config, ensure_ascii=False),
                     json.dumps(condition, ensure_ascii=False),
                     retry_count,
+                    failure_policy,
                 ),
             )
             return int(cur.lastrowid)
@@ -205,8 +285,9 @@ class WorkflowStepRepository:
             ).fetchall()
         result = [dict(row) for row in rows]
         for item in result:
-            item["config"] = json.loads(item.pop("config_json"))
-            item["condition"] = json.loads(item.pop("condition_json"))
+            item["config"] = _load_json(item.pop("config_json"), {})
+            item["condition"] = _load_json(item.pop("condition_json"), {})
+            item["failure_policy"] = str(item.get("failure_policy") or "inherit")
         return result
 
     def delete_by_workflow(self, workflow_id: int) -> int:
@@ -229,42 +310,130 @@ class RunRepository:
         config: dict[str, Any],
         workflow_id: int | None = None,
         workflow_step_id: int | None = None,
+        task_id: str | None = None,
+        step_id: int | None = None,
+        action_id: str | None = None,
+        retry_count: int = 0,
     ) -> int:
         """创建 run 记录并返回主键。"""
+        run_uuid = str(uuid.uuid4())
+        resolved_step_id = step_id if step_id is not None else workflow_step_id
         with self.db.connect() as conn:
             cur = conn.execute(
                 """
                 INSERT INTO runs
-                    (script_id, source_type, workflow_id, workflow_step_id, status, config_json)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (run_uuid, script_id, task_id, source_type, workflow_id,
+                     workflow_step_id, step_id, action_id, status, stage,
+                     progress_json, config_json, retry_count, available_actions_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    run_uuid,
                     script_id,
+                    task_id,
                     source_type.value,
                     workflow_id,
                     workflow_step_id,
+                    resolved_step_id,
+                    action_id,
                     RunStatus.QUEUED.value,
+                    RunStatus.QUEUED.value,
+                    json.dumps({}, ensure_ascii=False),
                     json.dumps(config, ensure_ascii=False),
+                    retry_count,
+                    json.dumps(available_actions_for_status(RunStatus.QUEUED), ensure_ascii=False),
                 ),
             )
             return int(cur.lastrowid)
 
-    def update_status(self, run_id: int, status: RunStatus, error_message: str | None = None) -> None:
-        """更新 run 状态。"""
+    def update_status(
+        self,
+        run_id: int,
+        status: RunStatus,
+        error_message: str | None = None,
+        error_code: str | None = None,
+        stage: str | None = None,
+        progress: dict[str, Any] | None = None,
+        available_actions: list[str] | None = None,
+    ) -> None:
+        """更新 run 状态和规范化运行观察字段。"""
         started_expr = "COALESCE(started_at, CURRENT_TIMESTAMP)" if status == RunStatus.RUNNING else "started_at"
         ended_expr = (
             "COALESCE(ended_at, CURRENT_TIMESTAMP)"
-            if status in {RunStatus.SUCCESS, RunStatus.ERROR, RunStatus.STOPPED}
+            if status
+            in {
+                RunStatus.SUCCESS,
+                RunStatus.ERROR,
+                RunStatus.STOPPED,
+                RunStatus.SKIPPED,
+                RunStatus.MANUAL,
+            }
             else "ended_at"
         )
+        values: list[Any] = [status.value, error_message, error_code]
+        assignments = [
+            "status = ?",
+            "error_message = ?",
+            "error_code = ?",
+            f"started_at = {started_expr}",
+            f"ended_at = {ended_expr}",
+            "stage = COALESCE(?, stage)",
+            "progress_json = COALESCE(?, progress_json)",
+            "available_actions_json = COALESCE(?, available_actions_json)",
+            "updated_at = CURRENT_TIMESTAMP",
+        ]
+        values.extend(
+            [
+                stage,
+                json.dumps(progress, ensure_ascii=False) if progress is not None else None,
+                json.dumps(
+                    available_actions
+                    if available_actions is not None
+                    else available_actions_for_status(status),
+                    ensure_ascii=False,
+                ),
+            ]
+        )
+        values.append(run_id)
         with self.db.connect() as conn:
             conn.execute(
                 f"""
                 UPDATE runs
-                SET status = ?, started_at = {started_expr}, ended_at = {ended_expr}, error_message = ?
+                SET {', '.join(assignments)}
                 WHERE id = ?
                 """,
-                (status.value, error_message, run_id),
+                values,
+            )
+
+    def update_observation(
+        self,
+        run_id: int,
+        stage: str | None = None,
+        progress: dict[str, Any] | None = None,
+    ) -> None:
+        """更新运行阶段和进度，不改变终态。"""
+        with self.db.connect() as conn:
+            conn.execute(
+                """
+                UPDATE runs
+                SET stage = COALESCE(?, stage),
+                    progress_json = COALESCE(?, progress_json),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (
+                    stage,
+                    json.dumps(progress, ensure_ascii=False) if progress is not None else None,
+                    run_id,
+                ),
+            )
+
+    def set_latest_evidence(self, run_id: int, evidence: dict[str, Any]) -> None:
+        """关联某次运行的最新证据摘要。"""
+        with self.db.connect() as conn:
+            conn.execute(
+                "UPDATE runs SET latest_evidence_json=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (json.dumps(evidence, ensure_ascii=False), run_id),
             )
 
     def mark_unfinished_as_error(self, message: str) -> int:
@@ -275,12 +444,19 @@ class RunRepository:
                 UPDATE runs
                 SET status = ?,
                     ended_at = COALESCE(ended_at, CURRENT_TIMESTAMP),
-                    error_message = ?
+                    error_code = ?,
+                    error_message = ?,
+                    stage = ?,
+                    available_actions_json = ?,
+                    updated_at = CURRENT_TIMESTAMP
                 WHERE status IN (?, ?, ?)
                 """,
                 (
                     RunStatus.ERROR.value,
+                    "BACKEND_RESTART",
                     message,
+                    "backend_restarted",
+                    json.dumps(available_actions_for_status(RunStatus.ERROR), ensure_ascii=False),
                     RunStatus.QUEUED.value,
                     RunStatus.RUNNING.value,
                     RunStatus.PAUSED.value,
@@ -292,10 +468,7 @@ class RunRepository:
         """按主键读取 run。"""
         with self.db.connect() as conn:
             row = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
-        item = _row_to_dict(row)
-        if item is not None:
-            item["config"] = json.loads(item.pop("config_json"))
-        return item
+        return self._normalize(row)
 
     def current(self) -> dict[str, Any] | None:
         """读取当前运行中的 run。"""
@@ -303,9 +476,55 @@ class RunRepository:
             row = conn.execute(
                 "SELECT * FROM runs WHERE status IN ('queued', 'running', 'paused') ORDER BY id DESC LIMIT 1"
             ).fetchone()
+        return self._normalize(row)
+
+    def list_history(
+        self,
+        script_id: str | None = None,
+        source_type: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """按筛选条件列出历史运行摘要。"""
+        clauses: list[str] = []
+        values: list[Any] = []
+        if script_id:
+            clauses.append("script_id = ?")
+            values.append(script_id)
+        if source_type:
+            clauses.append("source_type = ?")
+            values.append(source_type)
+        if status:
+            clauses.append("status = ?")
+            values.append(status)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        bounded_limit = max(1, min(int(limit), 200))
+        bounded_offset = max(0, int(offset))
+        values.extend([bounded_limit, bounded_offset])
+        with self.db.connect() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM runs {where} ORDER BY id DESC LIMIT ? OFFSET ?",
+                values,
+            ).fetchall()
+        return [item for row in rows if (item := self._normalize(row)) is not None]
+
+    def _normalize(self, row: Any) -> dict[str, Any] | None:
+        """把数据库行转换为兼容的规范化运行快照。"""
         item = _row_to_dict(row)
-        if item is not None:
-            item["config"] = json.loads(item.pop("config_json"))
+        if item is None:
+            return None
+        item["config"] = _load_json(item.pop("config_json"), {})
+        item["progress"] = _load_json(item.pop("progress_json", "{}"), {})
+        item["available_actions"] = _load_json(
+            item.pop("available_actions_json", "[]"),
+            available_actions_for_status(str(item.get("status", ""))),
+        )
+        latest_evidence = item.pop("latest_evidence_json", None)
+        item["latest_evidence"] = _load_json(latest_evidence, None)
+        item["run_id"] = int(item["id"])
+        item["step_id"] = item.get("step_id") or item.get("workflow_step_id")
+        item["task_id"] = item.get("task_id") or item.get("script_id")
         return item
 
 
@@ -332,6 +551,50 @@ class LogRepository:
                 (run_id,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+
+class EvidenceRepository:
+    """运行失败证据仓库。"""
+
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+    def append(
+        self,
+        run_id: int,
+        kind: str,
+        path: str | None = None,
+        description: str = "",
+        capture_error: str | None = None,
+    ) -> int:
+        """追加截图或证据捕获结果。"""
+        with self.db.connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO run_evidence (run_id, kind, path, description, capture_error)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (run_id, kind, path, description, capture_error),
+            )
+            return int(cur.lastrowid)
+
+    def list_by_run(self, run_id: int) -> list[dict[str, Any]]:
+        """列出某次运行的全部证据。"""
+        with self.db.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM run_evidence WHERE run_id = ? ORDER BY id",
+                (run_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def latest_by_run(self, run_id: int) -> dict[str, Any] | None:
+        """读取某次运行的最新证据。"""
+        with self.db.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM run_evidence WHERE run_id = ? ORDER BY id DESC LIMIT 1",
+                (run_id,),
+            ).fetchone()
+        return _row_to_dict(row)
 
 
 class SnapshotRepository:
@@ -361,6 +624,20 @@ class SnapshotRepository:
             return None
         item["state"] = json.loads(item.pop("state_json"))
         return item
+
+    def list_by_run(self, run_id: int) -> list[dict[str, Any]]:
+        """按时间顺序读取某次运行的全部状态快照。"""
+        with self.db.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM state_snapshots WHERE run_id = ? ORDER BY id",
+                (run_id,),
+            ).fetchall()
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["state"] = _load_json(item.pop("state_json"), {})
+            result.append(item)
+        return result
 
 
 class ScriptUserConfigRepository:
@@ -405,4 +682,5 @@ class Storage:
         self.runs = RunRepository(db)
         self.logs = LogRepository(db)
         self.snapshots = SnapshotRepository(db)
+        self.evidence = EvidenceRepository(db)
         self.script_user_configs = ScriptUserConfigRepository(db)

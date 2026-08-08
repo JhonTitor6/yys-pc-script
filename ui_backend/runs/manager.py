@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import inspect
+import json
 import threading
 import traceback
+from pathlib import Path
 from typing import Any
 
 from ui_backend.events.hub import EventHub
-from ui_backend.models import RunRequest, RunStatus
+from ui_backend.models import (
+    RunRequest,
+    RunSourceType,
+    RunStatus,
+    available_actions_for_status,
+)
 from ui_backend.scripts.registry import ScriptRegistry
 from ui_backend.storage.repositories import Storage
 
@@ -45,9 +52,14 @@ class RunManager:
                 config=merged_config,
                 workflow_id=request.workflow_id,
                 workflow_step_id=request.workflow_step_id,
+                task_id=request.task_id or request.script_id,
+                step_id=request.step_id or request.workflow_step_id,
+                action_id=request.action_id,
+                retry_count=request.retry_count,
             )
             self._active_run_id = run_id
 
+        script: Any | None = None
         try:
             script_class = self.registry.load_class(request.script_id)
             # 检测脚本类是否接受 config 关键字参数：soul_raid 走新构造注入（auto-registry Step 3）
@@ -71,15 +83,39 @@ class RunManager:
             with self._lock:
                 self._scripts[run_id] = script
                 self._threads[run_id] = thread
-                self.storage.runs.update_status(run_id, RunStatus.RUNNING)
+                self.storage.runs.update_status(
+                    run_id,
+                    RunStatus.RUNNING,
+                    stage="script_running",
+                    progress=self._progress_from_state(self._snapshot(script)),
+                )
                 self._append_log(run_id, "INFO", "脚本开始运行")
                 self._publish_status(run_id, RunStatus.RUNNING)
+                self._publish_run_snapshot(run_id)
                 thread.start()
         except Exception:
             traceback_text = traceback.format_exc()
-            self.storage.runs.update_status(run_id, RunStatus.ERROR, error_message=traceback_text)
+            evidence = self._capture_failure_evidence(
+                run_id,
+                script,
+                "脚本启动阶段无法捕获当前画面",
+            )
+            self.storage.runs.update_status(
+                run_id,
+                RunStatus.ERROR,
+                error_message=traceback_text,
+                error_code="SCRIPT_START_FAILED",
+                stage="start_failed",
+                available_actions=available_actions_for_status(RunStatus.ERROR),
+            )
             self._append_log(run_id, "ERROR", traceback_text)
-            self._publish_status(run_id, RunStatus.ERROR, error_message=traceback_text)
+            self._publish_status(
+                run_id,
+                RunStatus.ERROR,
+                error_message=traceback_text,
+                error_code="SCRIPT_START_FAILED",
+                evidence=evidence,
+            )
             self._clear_active(run_id)
             raise
         return run_id
@@ -94,7 +130,11 @@ class RunManager:
         with self._lock:
             if self._active_run_id != run_id:
                 return
-            self.storage.runs.update_status(run_id, RunStatus.PAUSED)
+            self.storage.runs.update_status(
+                run_id,
+                RunStatus.PAUSED,
+                stage="paused",
+            )
             self._append_log(run_id, "INFO", "脚本已暂停")
             self._publish_status(run_id, RunStatus.PAUSED)
 
@@ -108,25 +148,134 @@ class RunManager:
         with self._lock:
             if self._active_run_id != run_id:
                 return
-            self.storage.runs.update_status(run_id, RunStatus.RUNNING)
+            self.storage.runs.update_status(
+                run_id,
+                RunStatus.RUNNING,
+                stage="script_running",
+            )
             self._append_log(run_id, "INFO", "脚本已恢复")
             self._publish_status(run_id, RunStatus.RUNNING)
 
     def stop(self, run_id: int, timeout: float = 3.0) -> None:
         """停止当前活动脚本并等待线程退出。"""
         with self._lock:
+            if self._active_run_id != run_id:
+                run = self.storage.runs.get(run_id)
+                if run is not None and run.get("status") == RunStatus.ERROR.value:
+                    self.storage.runs.update_status(
+                        run_id,
+                        RunStatus.STOPPED,
+                        stage="stopped_after_error",
+                    )
+                    self._append_log(run_id, "INFO", "失败运行已标记为停止")
+                    self._publish_status(run_id, RunStatus.STOPPED)
+                    return
+                raise RuntimeError("运行记录不是当前活动脚本")
             script = self._ensure_active(run_id)
             stop = getattr(script, "stop", None)
         if callable(stop):
             stop()
         with self._lock:
-            self.storage.runs.update_status(run_id, RunStatus.STOPPED)
+            self.storage.runs.update_status(
+                run_id,
+                RunStatus.STOPPED,
+                stage="stopping",
+            )
             self._append_log(run_id, "INFO", "脚本已停止")
             self._publish_status(run_id, RunStatus.STOPPED)
 
         if not self.wait(run_id, timeout):
+            evidence = self._capture_failure_evidence(
+                run_id,
+                script,
+                "停止超时，记录停止时的当前画面",
+            )
+            self.storage.runs.update_status(
+                run_id,
+                RunStatus.STOPPED,
+                error_code="STOP_TIMEOUT",
+                stage="stop_timeout",
+            )
             self._append_log(run_id, "WARNING", "停止超时，线程可能仍在退出中")
+            self._publish_status(
+                run_id,
+                RunStatus.STOPPED,
+                error_code="STOP_TIMEOUT",
+                evidence=evidence,
+            )
             self._clear_active(run_id)
+
+    def retry(self, run_id: int) -> int:
+        """重试失败运行，返回新 run ID。"""
+        with self._lock:
+            if self._active_run_id is not None:
+                raise RuntimeError("已有脚本正在运行")
+            run = self.storage.runs.get(run_id)
+        if run is None:
+            raise KeyError(f"未知运行记录: {run_id}")
+        if run.get("status") != RunStatus.ERROR.value:
+            raise RuntimeError("只有失败运行可以重试")
+        request = RunRequest(
+            script_id=str(run["script_id"]),
+            config=dict(run.get("config", {})),
+            source_type=RunSourceType(str(run["source_type"])),
+            workflow_id=run.get("workflow_id"),
+            workflow_step_id=run.get("workflow_step_id"),
+            task_id=run.get("task_id"),
+            step_id=run.get("step_id"),
+            action_id=run.get("action_id"),
+            retry_count=int(run.get("retry_count") or 0) + 1,
+        )
+        self._append_log(run_id, "INFO", "已请求重试")
+        self._publish(
+            {
+                "type": "run_recovery_requested",
+                "run_id": run_id,
+                "action": "retry",
+            }
+        )
+        return self.start(request)
+
+    def skip(self, run_id: int) -> None:
+        """将失败运行标记为跳过，并发布审计事件。"""
+        self._mark_recovery_terminal(run_id, RunStatus.SKIPPED, "skip", "失败运行已跳过")
+
+    def manual_takeover(self, run_id: int) -> None:
+        """将失败运行交给人工接管。"""
+        self._mark_recovery_terminal(
+            run_id,
+            RunStatus.MANUAL,
+            "manual_takeover",
+            "已转入人工接管",
+        )
+
+    def _mark_recovery_terminal(
+        self,
+        run_id: int,
+        status: RunStatus,
+        action: str,
+        message: str,
+    ) -> None:
+        """完成失败运行的非重试恢复动作。"""
+        with self._lock:
+            if self._active_run_id == run_id:
+                raise RuntimeError("活动运行不能直接执行该恢复动作")
+            run = self.storage.runs.get(run_id)
+            if run is None:
+                raise KeyError(f"未知运行记录: {run_id}")
+            if run.get("status") != RunStatus.ERROR.value:
+                raise RuntimeError("只有失败运行可以执行恢复动作")
+            self.storage.runs.update_status(run_id, status, stage=action)
+            self._append_log(run_id, "INFO", message)
+            self._publish_status(run_id, status)
+            self._publish(
+                {
+                    "type": "run_recovery_completed",
+                    "run_id": run_id,
+                    "action": action,
+                    "status": status.value,
+                }
+            )
 
     def wait(self, run_id: int, timeout: float | None = None) -> bool:
         """等待指定运行线程退出，找不到线程时返回 True。"""
@@ -158,24 +307,35 @@ class RunManager:
         snapshot_thread = self._start_snapshot_pusher(run_id, script_id, script, stop_event)
         try:
             script.run()
-            state = self._snapshot(script)
-            self.storage.snapshots.append(run_id, script_id, state)
-            self._publish(
-                {
-                    "type": "state_snapshot",
-                    "run_id": run_id,
-                    "script_id": script_id,
-                    "state": state,
-                }
-            )
+            state = self._record_state_snapshot(run_id, script_id, script)
             if self._mark_success_if_not_stopped(run_id):
-                self._append_log(run_id, "INFO", "脚本运行完成")
-                self._publish_status(run_id, RunStatus.SUCCESS)
+                if self.storage.runs.get(run_id).get("status") == RunStatus.SUCCESS.value:
+                    self._append_log(run_id, "INFO", "脚本运行完成")
+                    self._publish_status(run_id, RunStatus.SUCCESS)
         except Exception:
             traceback_text = traceback.format_exc()
+            state = self._record_state_snapshot(run_id, script_id, script)
+            evidence = self._capture_failure_evidence(
+                run_id,
+                script,
+                "脚本异常时捕获当前画面",
+            )
             self._append_log(run_id, "ERROR", traceback_text)
-            if self._mark_error_if_not_stopped(run_id, traceback_text):
-                self._publish_status(run_id, RunStatus.ERROR, error_message=traceback_text)
+            if self._mark_error_if_not_stopped(
+                run_id,
+                traceback_text,
+                state=state,
+                evidence=evidence,
+            ):
+                current = self.storage.runs.get(run_id)
+                if current is not None and current.get("status") == RunStatus.ERROR.value:
+                    self._publish_status(
+                        run_id,
+                        RunStatus.ERROR,
+                        error_message=traceback_text,
+                        error_code="SCRIPT_EXCEPTION",
+                        evidence=evidence,
+                    )
         finally:
             stop_event.set()
             if snapshot_thread is not None:
@@ -208,6 +368,11 @@ class RunManager:
                     state = holder[0]
                     if not state:
                         continue
+                    self.storage.runs.update_observation(
+                        run_id,
+                        stage="script_running",
+                        progress=self._progress_from_state(state),
+                    )
                     try:
                         self._publish(
                             {
@@ -227,6 +392,48 @@ class RunManager:
         thread = threading.Thread(target=_pusher, daemon=True)
         thread.start()
         return thread
+
+    def _record_state_snapshot(
+        self,
+        run_id: int,
+        script_id: str,
+        script: Any,
+    ) -> dict[str, Any]:
+        """保存并发布一次脚本状态快照。"""
+        try:
+            state = self._snapshot(script)
+            progress = self._progress_from_state(state)
+            self.storage.snapshots.append(run_id, script_id, state)
+            self.storage.runs.update_observation(
+                run_id,
+                stage="script_running",
+                progress=progress,
+            )
+            self._publish(
+                {
+                    "type": "state_snapshot",
+                    "run_id": run_id,
+                    "script_id": script_id,
+                    "state": state,
+                    "progress": progress,
+                }
+            )
+        except Exception:
+            # 业务异常收尾阶段不能因快照失败而丢失原始错误。
+            state = {}
+        return state
+
+    def _progress_from_state(self, state: dict[str, Any]) -> dict[str, Any]:
+        """从通用脚本状态推导统一进度字段。"""
+        current = state.get("battle_count", state.get("current_battle_count"))
+        total = state.get("max_battle_count")
+        if not isinstance(current, (int, float)):
+            return {}
+        result: dict[str, Any] = {"current": current}
+        if isinstance(total, (int, float)) and total > 0:
+            result["total"] = total
+            result["percent"] = round(min(100.0, max(0.0, current / total * 100)), 1)
+        return result
 
     def _install_loguru_sink(self, run_id: int) -> int:
         """安装一个 loguru sink，把业务脚本的日志桥接到 storage 与 event_hub。"""
@@ -282,7 +489,10 @@ class RunManager:
         getter = getattr(script, "get_state_snapshot", None)
         if not callable(getter):
             return {}
-        state = getter()
+        try:
+            state = getter()
+        except Exception:
+            return {}
         if not isinstance(state, dict):
             return {}
         return state
@@ -298,14 +508,33 @@ class RunManager:
                     UPDATE runs
                     SET status = ?,
                         ended_at = COALESCE(ended_at, CURRENT_TIMESTAMP),
-                        error_message = NULL
+                        error_code = NULL,
+                        error_message = NULL,
+                        stage = ?,
+                        available_actions_json = ?,
+                        updated_at = CURRENT_TIMESTAMP
                     WHERE id = ? AND status != ?
                     """,
-                    (RunStatus.SUCCESS.value, run_id, RunStatus.STOPPED.value),
+                    (
+                        RunStatus.SUCCESS.value,
+                        "completed",
+                        "[]",
+                        run_id,
+                        RunStatus.STOPPED.value,
+                    ),
                 )
-                return cur.rowcount > 0
+                changed = cur.rowcount > 0
+                if changed and self._active_run_id == run_id:
+                    self._active_run_id = None
+                return changed
 
-    def _mark_error_if_not_stopped(self, run_id: int, error_message: str) -> bool:
+    def _mark_error_if_not_stopped(
+        self,
+        run_id: int,
+        error_message: str,
+        state: dict[str, Any] | None = None,
+        evidence: dict[str, Any] | None = None,
+    ) -> bool:
         with self._lock:
             run = self.storage.runs.get(run_id)
             if run is None or run["status"] == RunStatus.STOPPED.value:
@@ -316,17 +545,37 @@ class RunManager:
                     UPDATE runs
                     SET status = ?,
                         ended_at = COALESCE(ended_at, CURRENT_TIMESTAMP),
-                        error_message = ?
+                        error_code = ?,
+                        error_message = ?,
+                        stage = ?,
+                        progress_json = ?,
+                        available_actions_json = ?,
+                        latest_evidence_json = ?,
+                        updated_at = CURRENT_TIMESTAMP
                     WHERE id = ? AND status != ?
                     """,
                     (
                         RunStatus.ERROR.value,
+                        "SCRIPT_EXCEPTION",
                         error_message,
+                        "script_failed",
+                        json.dumps(
+                            self._progress_from_state(state or {}),
+                            ensure_ascii=False,
+                        ),
+                        json.dumps(
+                            available_actions_for_status(RunStatus.ERROR),
+                            ensure_ascii=False,
+                        ),
+                        json.dumps(evidence, ensure_ascii=False) if evidence else None,
                         run_id,
                         RunStatus.STOPPED.value,
                     ),
                 )
-                return cur.rowcount > 0
+                changed = cur.rowcount > 0
+                if changed and self._active_run_id == run_id:
+                    self._active_run_id = None
+                return changed
 
     def _ensure_active(self, run_id: int) -> Any:
         if self._active_run_id != run_id:
@@ -348,6 +597,8 @@ class RunManager:
         run_id: int,
         status: RunStatus,
         error_message: str | None = None,
+        error_code: str | None = None,
+        evidence: dict[str, Any] | None = None,
     ) -> None:
         event: dict[str, Any] = {
             "type": "run_status_changed",
@@ -356,7 +607,87 @@ class RunManager:
         }
         if error_message is not None:
             event["error_message"] = error_message
+        if error_code is not None:
+            event["error_code"] = error_code
+        if evidence is not None:
+            event["evidence"] = evidence
         self._publish(event)
+        self._publish_run_snapshot(run_id)
+
+    def _publish_run_snapshot(self, run_id: int) -> None:
+        """发布 API 与 WebSocket 共用的规范化运行快照。"""
+        run = self.storage.runs.get(run_id)
+        if run is None:
+            return
+        run["latest_snapshot"] = self.storage.snapshots.latest_by_run(run_id)
+        run["evidence"] = self.storage.evidence.list_by_run(run_id)
+        self._publish({"type": "run_snapshot", "snapshot": run, "run_id": run_id})
+
+    def _capture_failure_evidence(
+        self,
+        run_id: int,
+        script: Any | None,
+        description: str,
+    ) -> dict[str, Any]:
+        """尽力保存当前截图，并始终记录证据捕获结果。"""
+        evidence_dir = Path("config") / "run_evidence" / str(run_id)
+        evidence_dir.mkdir(parents=True, exist_ok=True)
+        target = evidence_dir / "failure.png"
+        capture_error: str | None = None
+        saved_path: str | None = None
+        try:
+            image = self._read_script_screenshot(script)
+            if image is None:
+                raise RuntimeError("脚本没有可用的截图缓存")
+            if hasattr(image, "save"):
+                image.save(str(target))
+            elif isinstance(image, (bytes, bytearray)):
+                target.write_bytes(bytes(image))
+            elif isinstance(image, (str, Path)) and Path(image).is_file():
+                target.write_bytes(Path(image).read_bytes())
+            else:
+                from PIL import Image
+
+                Image.fromarray(image).save(str(target))
+            if not target.is_file() or target.stat().st_size == 0:
+                raise RuntimeError("截图文件为空")
+            saved_path = str(target.resolve())
+        except Exception as exc:
+            capture_error = str(exc)
+
+        evidence_id = self.storage.evidence.append(
+            run_id,
+            kind="screenshot",
+            path=saved_path,
+            description=description,
+            capture_error=capture_error,
+        )
+        evidence = {
+            "id": evidence_id,
+            "run_id": run_id,
+            "kind": "screenshot",
+            "path": saved_path,
+            "description": description,
+            "capture_error": capture_error,
+        }
+        self.storage.runs.set_latest_evidence(run_id, evidence)
+        return evidence
+
+    def _read_script_screenshot(self, script: Any | None) -> Any | None:
+        """从脚本控制器或显式截图方法读取当前画面。"""
+        if script is None:
+            return None
+        getter = getattr(script, "capture_screenshot", None)
+        if callable(getter):
+            return getter()
+        controller = getattr(script, "win_controller", None)
+        if controller is None:
+            return None
+        updater = getattr(controller, "update_screenshot_cache", None)
+        if callable(updater):
+            updater()
+        finder = getattr(controller, "image_finder", None)
+        return getattr(finder, "screenshot_cache", None)
 
     def _publish_log(self, run_id: int, level: str, message: str) -> None:
         self._publish(

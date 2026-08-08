@@ -12,9 +12,9 @@
       <div class="brand-mark">阴</div>
       <button class="rail-button active" data-view="execute" title="执行">▶</button>
       <button class="rail-button" data-view="workflows" title="编排">⏱</button>
-      <button class="rail-button" data-view="progress" title="进度暂未开放" aria-disabled="true" disabled>▦</button>
-      <button class="rail-button" data-view="logs" title="日志暂未开放" aria-disabled="true" disabled>≡</button>
-      <button class="rail-button" data-view="settings" title="设置暂未开放" aria-disabled="true" disabled>⚙</button>
+      <button class="rail-button" data-view="progress" title="进度">▦</button>
+      <button class="rail-button" data-view="logs" title="历史日志">≡</button>
+      <button class="rail-button" data-view="settings" title="设置">⚙</button>
     </aside>
     <aside class="script-panel">
       <div class="panel-title">
@@ -31,13 +31,24 @@
             <h2 id="currentRunTitle">暂无运行脚本</h2>
           </div>
           <div class="run-actions">
+            <span id="connectionStatus" class="status-pill connection disconnected">未连接</span>
             <span id="runStatus" class="status-pill idle">空闲</span>
+            <button id="mainPauseButton" class="ghost-button" data-main-action="pause" disabled>暂停</button>
+            <button id="mainResumeButton" class="ghost-button" data-main-action="resume" disabled>恢复</button>
+            <button id="mainStopButton" class="danger-button" data-main-action="stop" disabled>停止</button>
+            <button id="mainRetryButton" class="ghost-button" data-main-action="retry" disabled>重试</button>
+            <button id="mainSkipButton" class="ghost-button" data-main-action="skip" disabled>跳过</button>
+            <button id="mainManualButton" class="ghost-button" data-main-action="manual_takeover" disabled>人工接管</button>
           </div>
         </header>
         <section class="run-summary">
           <div>
             <p class="eyebrow">参数</p>
             <p id="runConfigText" class="summary-value">未启动</p>
+            <p class="eyebrow">当前阶段</p>
+            <p id="runStage" class="summary-value">空闲</p>
+            <p id="runError" class="run-error" hidden></p>
+            <p id="progressText" class="progress-text">0%</p>
             <div class="progress-bar"><span id="progressBar"></span></div>
           </div>
           <div class="metric-grid">
@@ -69,10 +80,54 @@
         </header>
         <div id="workflowList" class="workflow-list"></div>
       </section>
+      <section id="progressView" class="view secondary-view">
+        <header class="workflows-view-header"><h2>进度与状态</h2></header>
+        <div id="progressDetail" class="detail-card">暂无运行快照</div>
+      </section>
+      <section id="logsView" class="view secondary-view">
+        <header class="workflows-view-header">
+          <h2>历史日志</h2>
+          <div class="history-toolbar">
+            <select id="historyStatusFilter" aria-label="历史状态过滤">
+              <option value="">全部状态</option>
+              <option value="success">已完成</option>
+              <option value="error">错误</option>
+              <option value="stopped">已停止</option>
+              <option value="skipped">已跳过</option>
+              <option value="manual">人工接管</option>
+            </select>
+            <button id="refreshHistoryButton" type="button" class="ghost-button">刷新</button>
+          </div>
+        </header>
+        <div id="historyList" class="history-list">暂无历史运行</div>
+        <div class="history-pagination">
+          <button id="historyPreviousButton" type="button" class="ghost-button" disabled>上一页</button>
+          <span id="historyPageText">第 1 页</span>
+          <button id="historyNextButton" type="button" class="ghost-button">下一页</button>
+        </div>
+        <div id="historyDetail" class="detail-card" hidden>选择一条运行记录查看详情</div>
+      </section>
+      <section id="settingsView" class="view secondary-view">
+        <header class="workflows-view-header"><h2>设置</h2></header>
+        <div class="detail-card">当前使用本地 FastAPI + WebSocket；多客户端并行和自动续跑暂未支持。</div>
+      </section>
+      <section id="globalRunBar" class="global-run-bar" hidden>
+        <div><span class="eyebrow">当前运行</span><strong id="globalRunTitle">—</strong></div>
+        <span id="globalRunStatus" class="status-pill idle">空闲</span>
+        <div class="run-actions">
+          <button class="ghost-button" data-global-action="pause" disabled>暂停</button>
+          <button class="ghost-button" data-global-action="resume" disabled>恢复</button>
+          <button class="danger-button" data-global-action="stop" disabled>停止</button>
+          <button class="ghost-button" data-global-action="retry" disabled>重试</button>
+          <button class="ghost-button" data-global-action="skip" disabled>跳过</button>
+          <button class="ghost-button" data-global-action="manual_takeover" disabled>人工接管</button>
+        </div>
+      </section>
     </main>
     <aside class="side-panel">
       <section class="side-card"><p class="eyebrow">调度预告</p><div id="schedulePreview">暂无启用任务</div></section>
       <section class="side-card"><p class="eyebrow">断点快照</p><div id="snapshotPreview">暂无快照</div></section>
+      <section class="side-card evidence-card"><p class="eyebrow">最新证据</p><div id="evidencePreview">暂无截图证据</div><img id="latestEvidence" alt="失败时的最新截图" hidden></section>
       <section class="side-card"><p class="eyebrow">关键日志</p><div id="keyLogPreview">暂无警告或错误</div></section>
     </aside>
   </div>
@@ -87,11 +142,31 @@
           <input type="hidden" name="workflow_id" value="">
           <label><span>名称</span><input name="name" required></label>
           <label><span>分组</span><input name="group_name"></label>
+          <div class="workflow-schedule-fields">
+            <label class="boolean-field"><input name="enabled" type="checkbox" value="true" checked><span>启用自动调度</span></label>
+            <label><span>优先级</span><input name="priority" type="number" min="0" value="0"></label>
+            <label><span>触发方式</span>
+              <select name="trigger_type">
+                <option value="manual">手动</option>
+                <option value="interval">按间隔</option>
+                <option value="scheduled_time">每日定时</option>
+              </select>
+            </label>
+            <label><span>默认间隔（秒）</span><input name="interval_seconds" type="number" min="0" value="0"></label>
+            <label><span>每日时间</span><input name="scheduled_time" type="time" value="09:00"></label>
+            <label><span>成功间隔（秒）</span><input name="success_interval_seconds" type="number" min="0" value="0"></label>
+            <label><span>失败间隔（秒）</span><input name="failure_interval_seconds" type="number" min="0" value="0"></label>
+          </div>
           <label><span>失败策略</span>
             <select name="failure_policy">
               <option value="stop_workflow">失败后停止</option>
               <option value="continue_next">失败后继续</option>
               <option value="retry_then_stop">重试后停止</option>
+              <option value="stop">停止工作流</option>
+              <option value="continue">继续下一步</option>
+              <option value="retry">按步骤次数重试</option>
+              <option value="skip">跳过失败步骤</option>
+              <option value="manual">转人工接管</option>
             </select>
           </label>
           <div id="workflowModalSteps" class="step-accordion-list"></div>

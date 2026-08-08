@@ -1,0 +1,29 @@
+{
+  "id": "desktop-workbench-p0-p1",
+  "name": "desktop-workbench-p0-p1",
+  "title": "P0/P1 桌面工作台可靠性与调度",
+  "description": "围绕运行可靠性、可观察性、任务工作台、历史记录和周期调度，完成 P0/P1 最小可用闭环。",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P0",
+  "creator": "JhonTitor6",
+  "assignee": "JhonTitor6",
+  "createdAt": "2026-08-08",
+  "completedAt": "2026-08-08",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "08-08-desktop-workbench-p0-reliability",
+    "08-08-desktop-workbench-p1-scheduling"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

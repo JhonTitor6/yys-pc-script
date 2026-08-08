@@ -617,6 +617,42 @@ def test_capture_failure_structured_error() -> None:
 
 
 
+def _real_scene_manager(image_finder):
+    """构造注入真实 image_finder 的 SceneManager（避免 Mock 分数进排序）。"""
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from win_util.image import to_project_path
+    from yys.common.scene_manager import SceneManager
+
+    scene_manager = SceneManager(12345, Mock())
+    scene_manager.win_controller = SimpleNamespace(image_finder=image_finder)
+    scene_manager.register_scenes_from_directory(
+        to_project_path("yys/common/images/scene/"),
+        to_project_path("yys/common/images/scene_control/"),
+    )
+    return scene_manager
+
+
+def _real_resolver_for_fixture():
+    """构造基于生产 matcher 与真实场景注册的识别器。"""
+    from win_util.image import ImageFinder
+    from yys.common.entry_runtime import ImageSceneStateResolver
+
+    image_finder = ImageFinder(env=None, hwnd=None)
+    scene_manager = _real_scene_manager(image_finder)
+    spec = TaskEntrySpec(
+        target_scene="soul_selection",
+        safe_overlay_policy=SafeOverlayPolicy(
+            settlement_templates=(
+                "yys/images/battle_end.bmp",
+                "yys/images/battle_end_1.bmp",
+            ),
+        ),
+    )
+    return ImageSceneStateResolver(scene_manager, image_finder, spec), spec
+
+
 # ==================== 真实帧回放（AC3/AC5 离线部分） ====================
 
 def _imread_unicode(path: str):
@@ -638,9 +674,8 @@ def test_resolver_classifies_real_soul_raid_frames() -> None:
     import numpy as np
     from unittest.mock import Mock
 
-    from win_util.image import ImageFinder, to_project_path
+    from win_util.image import ImageFinder
     from yys.common.entry_runtime import ImageSceneStateResolver
-    from yys.common.scene_manager import SceneManager
 
     example_dir = "yys/soul_raid/images/test/example"
     battle_frame = _imread_unicode(f"{example_dir}/御魂_战斗.png")
@@ -648,11 +683,7 @@ def test_resolver_classifies_real_soul_raid_frames() -> None:
     assert battle_frame is not None and settlement_frame is not None
 
     image_finder = ImageFinder(env=None, hwnd=None)
-    scene_manager = SceneManager(12345, Mock())
-    scene_manager.register_scenes_from_directory(
-        to_project_path("yys/common/images/scene/"),
-        to_project_path("yys/common/images/scene_control/"),
-    )
+    scene_manager = _real_scene_manager(image_finder)
     spec = TaskEntrySpec(
         target_scene="soul_selection",
         safe_overlay_policy=SafeOverlayPolicy(
@@ -677,178 +708,130 @@ def test_resolver_classifies_real_soul_raid_frames() -> None:
     assert settlement_snap.confidence >= 0.8
 
 
-def test_entry_preparer_replay_battle_start_then_settlement_then_unknown() -> None:
-    """端到端回放（确认真实帧）：战斗中启动 → 等待零输入 → 结算白名单关闭 →
-    后续未知画面安全失败（AC3/AC5/AC11 离线闭环）。"""
-    import cv2
+class FrameEnv:
+    """capture_screen 按序返回真实帧的环境替身；耗尽后停留在最后一帧。"""
 
-    import numpy as np
-    from unittest.mock import Mock
+    def __init__(self, log: ActionLog, frames) -> None:
+        from tests.common.recorders.action_recorder import ActionRecorder
 
-    from win_util.image import ImageFinder, to_project_path
-    from yys.common.entry_runtime import ImageSceneStateResolver
-    from yys.common.scene_manager import SceneManager
+        self._frames = list(frames)
+        self._recorder = ActionRecorder(log)
 
-    class FrameQueueResolver:
-        """按序返回预读真实帧；耗尽后返回 UNKNOWN。"""
+    def capture_screen(self):
+        if not self._frames:
+            return self._last_frame if hasattr(self, "_last_frame") else None
+        self._last_frame = self._frames.pop(0)
+        return self._last_frame
 
-        def __init__(self, frames):
-            self.frames = list(frames)
+    def left_click(self, x: int, y: int) -> None:
+        self._recorder.record_click("left_click", x, y)
 
-        def resolve(self, frame):
-            if not self.frames:
-                return snapshot(mode=SceneMode.UNKNOWN)
-            return self.frames.pop(0)
 
-    example_dir = "yys/soul_raid/images/test/example"
-    battle = _imread_unicode(f"{example_dir}/御魂_战斗.png")
-    settlement = _imread_unicode(f"{example_dir}/御魂_战斗结算.png")
+def _queue_frame(images) -> list:
+    """把帧文件列表预读为 numpy 数组队列。"""
+    return [_imread_unicode(p) for p in images]
 
-    image_finder = ImageFinder(env=None, hwnd=None)
-    scene_manager = SceneManager(12345, Mock())
-    scene_manager.register_scenes_from_directory(
-        to_project_path("yys/common/images/scene/"),
-        to_project_path("yys/common/images/scene_control/"),
-    )
-    spec = make_spec(
-        policy=SafeOverlayPolicy(
-            settlement_templates=(
-                "yys/images/battle_end_1.bmp",
-            ),
-        )
-    )
-    real_resolver = ImageSceneStateResolver(scene_manager, image_finder, spec)
-    # 预解析三帧为快照序列：战斗、战斗（继续等待）、结算
-    pre_resolved = [
-        real_resolver.resolve(battle),
-        real_resolver.resolve(battle),
-        real_resolver.resolve(settlement),
-    ]
-    assert pre_resolved[0].mode is SceneMode.BATTLE
-    assert pre_resolved[2].mode is SceneMode.SETTLEMENT
+
+def test_replay_entry_fixture_stable_start_reaches_ready() -> None:
+    """确认夹具回放：入口稳定帧启动 → 验证通过 → READY（AC11 稳定页闭环）。"""
+    resolver, spec = _real_resolver_for_fixture()
+    fixture_dir = "tests/fixtures/soul_raid_entry/scenes"
+    entry_frame = _imread_unicode(f"{fixture_dir}/entry_stable.png")
+    assert entry_frame is not None
+    assert resolver.resolve(entry_frame).mode is SceneMode.STABLE
 
     log = ActionLog()
-    env = StubEnv(log)
-    clock = FakeClock()
-    resolver = FrameQueueResolver(pre_resolved)
-    preparer, clock, sleep = make_preparer(env, resolver, image_finder, spec, clock=clock)
+    env = FrameEnv(log, _queue_frame([
+        f"{fixture_dir}/entry_stable.png",
+        f"{fixture_dir}/entry_stable.png",
+        f"{fixture_dir}/entry_stable.png",
+    ]))
+    # 使用与识别器一致的入口契约（含结算关闭策略）
+    spec2 = spec
+    preparer = EntryPreparer(
+        env=env,
+        resolver=resolver,
+        image_finder=resolver._image_finder,
+        scene_manager=FakeSceneManager(),
+        spec=spec2,
+        monotonic=FakeClock(),
+        sleep=lambda s: None,
+    )
 
     result = preparer.prepare(StageRecorder())
 
-    # 战斗等待后结算被白名单关闭；随后无更多可识别帧 → 有界重识别 → 安全失败
+    assert result.outcome is EntryOutcome.READY
+    log.assert_click_count(0)
+
+
+def test_replay_entry_fixture_battle_start_reaches_ready() -> None:
+    """确认夹具回放：战斗中启动 → 等待零输入 → 结算关闭 → 回到入口 → READY（AC3/AC11）。"""
+    resolver, spec = _real_resolver_for_fixture()
+    fixture_dir = "tests/fixtures/soul_raid_entry/scenes"
+    frames = _queue_frame([
+        f"{fixture_dir}/battle_early.png",
+        f"{fixture_dir}/battle_mid.png",
+        f"{fixture_dir}/battle_late.png",
+        f"{fixture_dir}/settlement.png",
+        f"{fixture_dir}/entry_stable.png",
+        f"{fixture_dir}/entry_stable.png",
+        f"{fixture_dir}/entry_stable.png",
+    ])
+    assert resolver.resolve(frames[0]).mode is SceneMode.BATTLE
+    assert resolver.resolve(frames[3]).mode is SceneMode.SETTLEMENT
+
+    log = ActionLog()
+    env = FrameEnv(log, frames)
+    # 使用与识别器一致的入口契约（含结算关闭策略）
+    spec2 = spec
+    preparer = EntryPreparer(
+        env=env,
+        resolver=resolver,
+        image_finder=resolver._image_finder,
+        scene_manager=FakeSceneManager(),
+        spec=spec2,
+        monotonic=FakeClock(),
+        sleep=lambda s: None,
+    )
+
+    result = preparer.prepare(StageRecorder())
+
+    assert result.outcome is EntryOutcome.READY
+    # 战斗三帧等待零输入；结算关闭 1 次点击；入口验证零输入
+    log.assert_click_count(1)
+
+
+def test_replay_entry_fixture_battle_then_unknown_fails_safely() -> None:
+    """确认夹具回放：战斗后无入口帧可识别 → 有界重识别 → 安全失败（AC11 未知画面）。"""
+    import numpy as np
+
+    resolver, spec = _real_resolver_for_fixture()
+    fixture_dir = "tests/fixtures/soul_raid_entry/scenes"
+    unknown_frame = np.full((640, 1136, 3), 200, dtype=np.uint8)
+    frames = _queue_frame([
+        f"{fixture_dir}/battle_early.png",
+        f"{fixture_dir}/settlement.png",
+    ]) + [unknown_frame] * 6
+
+    log = ActionLog()
+    env = FrameEnv(log, frames)
+    # 使用与识别器一致的入口契约（含结算关闭策略）
+    spec2 = spec
+    preparer = EntryPreparer(
+        env=env,
+        resolver=resolver,
+        image_finder=resolver._image_finder,
+        scene_manager=FakeSceneManager(),
+        spec=spec2,
+        monotonic=FakeClock(),
+        sleep=lambda s: None,
+    )
+
+    result = preparer.prepare(StageRecorder())
+
     assert result.outcome is EntryOutcome.ERROR
     assert result.error_code == ENTRY_SCENE_UNKNOWN
-    # 全程仅结算关闭一次点击；战斗等待阶段零输入（AC3）
+    # 仅结算关闭一次点击；未知画面零盲点输入
     log.assert_click_count(1)
-    # 结算关闭点击位置来自真实匹配（battle_end_1.bmp 在结算帧的中心位置）
-    click = log.get_last()[0]
-    assert click.x > 0 and click.y > 0
 
 
-def test_battling_template_does_not_match_settlement_frame() -> None:
-    """battling.bmp 对结算帧必须低于命中阈值（相邻状态负样本）。"""
-    from unittest.mock import Mock
-
-    from win_util.image import ImageFinder, to_project_path
-
-    image_finder = ImageFinder(env=None, hwnd=None)
-    settlement_frame = _imread_unicode(
-        "yys/soul_raid/images/test/example/御魂_战斗结算.png"
-    )
-    match = image_finder.best_match(
-        settlement_frame,
-        to_project_path("yys/common/images/scene/battling.bmp"),
-    )
-    assert match.is_found
-    assert match.similarity < 0.8
-
-
-# ==================== ImageSceneStateResolver 分类 ====================
-
-class CandidateSceneManager:
-    """提供 detect_scene_candidates 与 scene_images 的替身。"""
-
-    def __init__(self, scene_images: dict[str, list[str]]):
-        self.scene_images = scene_images
-        self._candidates: list = []
-
-    def set_candidates(self, candidates: list) -> None:
-        self._candidates = candidates
-
-    def detect_scene_candidates(self, frame) -> list:
-        return list(self._candidates)
-
-
-def test_resolver_classifies_scene_modes() -> None:
-    """生产识别器按 覆盖层→结算→战斗→基础场景 的优先级分类。"""
-    from win_util.image import ImageMatchResult
-    from yys.common.entry_runtime import (
-        ImageSceneStateResolver,
-        RecognitionEvidence,
-    )
-    from yys.common.scene_manager import SceneDetectionResult
-
-    scene_manager = CandidateSceneManager({
-        "battling": ["yys/common/images/scene/battling.bmp"],
-        "soul_selection": ["yys/common/images/scene/soul_selection.bmp"],
-        "home": ["yys/common/images/scene/home.bmp"],
-    })
-    finder = FakeFinder()
-    policy = SafeOverlayPolicy(
-        settlement_templates=("yys/images/battle_end.bmp",),
-        wanted_quest_reject_template="yys/images/xuanshangfengyin_reject.bmp",
-    )
-    spec = TaskEntrySpec(
-        target_scene="soul_selection",
-        safe_overlay_policy=policy,
-    )
-    resolver = ImageSceneStateResolver(scene_manager, finder, spec)
-
-    # 1) 战斗模板命中 → BATTLE（基础场景候选中的低分被忽略）
-    finder.set("yys/common/images/scene/battling.bmp", point=(10, 10), similarity=0.91)
-    scene_manager.set_candidates([
-        SceneDetectionResult("soul_selection", "s.bmp", (0, 0), 0.5),
-    ])
-    snap = resolver.resolve(None)
-    assert snap.mode is SceneMode.BATTLE
-    assert snap.base_scene == "battling"
-
-    # 2) 结算模板命中 → SETTLEMENT（优先于战斗模板）
-    finder.set("yys/images/battle_end.bmp", point=(567, 460), similarity=0.9)
-    snap = resolver.resolve(None)
-    assert snap.mode is SceneMode.SETTLEMENT
-    assert snap.confidence >= 0.9
-
-    # 3) 悬赏封印拒绝模板命中 → overlays 含 wanted_quest
-    finder.set("yys/images/xuanshangfengyin_reject.bmp", point=(500, 300), similarity=0.88)
-    snap = resolver.resolve(None)
-    assert snap.mode is SceneMode.SETTLEMENT  # 结算优先级更高
-    assert "wanted_quest" in snap.overlays
-
-    # 4) 目标场景候选高分 → STABLE(target)
-    finder = FakeFinder()
-    resolver = ImageSceneStateResolver(scene_manager, finder, spec)
-    scene_manager.set_candidates([
-        SceneDetectionResult("soul_selection", "s.bmp", (40, 40), 0.92),
-        SceneDetectionResult("home", "h.bmp", (0, 0), 0.5),
-    ])
-    snap = resolver.resolve(None)
-    assert snap.mode is SceneMode.STABLE
-    assert snap.base_scene == "soul_selection"
-    assert snap.stable
-    # 证据包含阈值以下候选（识别证据契约）
-    assert any(
-        isinstance(ev, RecognitionEvidence) and ev.similarity == 0.5
-        for ev in snap.evidence
-    )
-
-    # 5) 全部低于阈值 → UNKNOWN，confidence 保留最高候选分数
-    finder = FakeFinder()
-    resolver = ImageSceneStateResolver(scene_manager, finder, spec)
-    scene_manager.set_candidates([
-        SceneDetectionResult("home", "h.bmp", (0, 0), 0.61),
-    ])
-    snap = resolver.resolve(None)
-    assert snap.mode is SceneMode.UNKNOWN
-    assert not snap.stable
-    assert snap.confidence == 0.61

@@ -714,13 +714,18 @@ class EntryPreparer:
             )
             return None
 
-    def _find_template(self, template_path: str) -> Optional[ImageMatchResult]:
-        """查找模板位置（只读）。"""
+    def _find_template(
+        self, template_path: str, threshold: float = 0.8
+    ) -> Optional[ImageMatchResult]:
+        """查找模板位置；低于命中阈值视为未命中（只读，不发送输入）。"""
         frame = self._last_frame
         if frame is None:
             return None
         img = np.array(frame) if not isinstance(frame, np.ndarray) else frame
-        return self._image_finder.best_match(img, template_path)
+        result = self._image_finder.best_match(img, template_path)
+        if result is None or not result.is_found or result.similarity < threshold:
+            return None
+        return result
 
     def _click_env(self, point: Tuple[int, int]) -> None:
         """通过注入环境点击（GuardedEnvironment 负责动作预算与观察记录）。"""

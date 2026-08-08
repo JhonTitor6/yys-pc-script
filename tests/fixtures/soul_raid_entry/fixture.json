@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "scenario_id": "soul_raid_entry",
+  "client_size": [
+    1136,
+    640
+  ],
+  "initial_scene": "entry_stable",
+  "scenes": {
+    "entry_stable": "scenes/entry_stable.png",
+    "battle_early": "scenes/battle_early.png",
+    "battle_mid": "scenes/battle_mid.png",
+    "battle_late": "scenes/battle_late.png",
+    "settlement": "scenes/settlement.png"
+  },
+  "transitions": [
+    {
+      "from_scene": "entry_stable",
+      "to_scene": "battle_early",
+      "action": "left_click",
+      "region": [
+        1055,
+        567,
+        1079,
+        591
+      ],
+      "button": "yys/soul_raid/images/yuhun_tiaozhan.bmp"
+    }
+  ],
+  "expected_actions": []
+}

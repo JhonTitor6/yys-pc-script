@@ -305,3 +305,51 @@ class TestSceneIdentityNormalization(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestSceneSubdirectoryTemplates(unittest.TestCase):
+    """子目录多图注册（产品契约：PRD R1——同场景多模板统一归一）。"""
+
+    def setUp(self):
+        self.mock_hwnd = 199268
+        self.test_dir = tempfile.mkdtemp()
+        self.scene_dir = os.path.join(self.test_dir, "scene")
+        self.control_dir = os.path.join(self.test_dir, "scene_control")
+        os.makedirs(self.scene_dir, exist_ok=True)
+        os.makedirs(self.control_dir, exist_ok=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.test_dir)
+
+    def test_subdirectory_images_join_same_scene(self):
+        """子目录内图片注册到目录名场景，与根目录同名场景合并。"""
+        with open(os.path.join(self.scene_dir, "soul_selection.bmp"), 'w') as f:
+            f.write("legacy")
+        sub = os.path.join(self.scene_dir, "soul_selection")
+        os.makedirs(sub, exist_ok=True)
+        with open(os.path.join(sub, "v2.bmp"), 'w') as f:
+            f.write("v2")
+        with open(os.path.join(sub, "v3.png"), 'w') as f:
+            f.write("v3")
+
+        manager = SceneManager(self.mock_hwnd, Mock())
+        manager.register_scenes_from_directory(self.scene_dir, self.control_dir)
+
+        images = manager.scene_images["soul_selection"]
+        self.assertEqual(len(images), 3)
+        self.assertTrue(any(p.endswith("soul_selection.bmp") for p in images))
+        self.assertTrue(any(p.endswith("v2.bmp") for p in images))
+        self.assertTrue(any(p.endswith("v3.png") for p in images))
+
+    def test_subdirectory_name_normalized(self):
+        """子目录名经别名归一化（battle/ → battling）。"""
+        sub = os.path.join(self.scene_dir, "battle")
+        os.makedirs(sub, exist_ok=True)
+        with open(os.path.join(sub, "t.bmp"), 'w') as f:
+            f.write("t")
+
+        manager = SceneManager(self.mock_hwnd, Mock())
+        manager.register_scenes_from_directory(self.scene_dir, self.control_dir)
+
+        self.assertIn("battling", manager.scene_images)
+        self.assertNotIn("battle", manager.scene_images)

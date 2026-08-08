@@ -194,7 +194,27 @@ class SceneManager:
         # 注册场景图片
         if os.path.exists(scene_dir):
             for filename in os.listdir(scene_dir):
-                if filename.lower().endswith(('.bmp', '.png', '.jpg', '.jpeg')) and filename != "scene_control":
+                if filename == "scene_control":
+                    continue
+                full_path = os.path.join(scene_dir, filename)
+                if os.path.isdir(full_path):
+                    # 子目录：目录名即场景名，目录内全部图片归属同一场景
+                    # （同一场景的多分辨率/多版本模板，PRD R1 场景身份归一）
+                    scene_name = self.normalize_scene_name(filename)
+                    for sub_filename in sorted(os.listdir(full_path)):
+                        if not sub_filename.lower().endswith(
+                            (".bmp", ".png", ".jpg", ".jpeg")
+                        ):
+                            continue
+                        sub_image = os.path.join(full_path, sub_filename)
+                        if scene_name not in self.scene_images:
+                            self.scene_images[scene_name] = []
+                        self.scene_images[scene_name].append(sub_image)
+                        logger.debug(
+                            f"注册场景: {scene_name}, 图片: {sub_image}"
+                        )
+                    continue
+                if filename.lower().endswith(('.bmp', '.png', '.jpg', '.jpeg')):
                     scene_name = self.normalize_scene_name(os.path.splitext(filename)[0])
                     image_path = os.path.join(scene_dir, filename)
 

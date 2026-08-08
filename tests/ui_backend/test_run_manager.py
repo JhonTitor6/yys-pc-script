@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from ui_backend.events.hub import EventHub
-from ui_backend.models import RunRequest, RunStatus
+from ui_backend.models import RunRequest, RunSourceType, RunStatus
 from ui_backend.runs.manager import RunManager
 from ui_backend.storage.database import Database
 from ui_backend.storage.repositories import Storage
@@ -549,3 +549,292 @@ def test_run_manager_end_to_end_soul_raid_max_battle_count_injected(
     # 验证 init 时 config 包含 request_config
     assert "accept_wq_type" in init_call["config"]
     assert init_call["config"]["accept_wq_type"] == 2
+
+
+# ==================== 新入口契约（Step 4/5） ====================
+
+class EntryFakeScript(FakeScript):
+    """带 entry_spec 的假脚本：准备结果与阻塞行为通过类属性注入（start 前设置）。"""
+
+    entry_spec = None
+    PREPARE_RESULT: Any = None
+    BLOCKING = False
+    BLOCKING_STAGE = "waiting_safe_entry_timeout"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.prepare_calls: list[Any] = []
+        self.business_calls = 0
+        self._command_queue: list[str] = []
+
+    def prepare_entry(self, reporter: Any = None) -> Any:
+        from yys.common.entry_runtime import EntryOutcome, EntryPreparationResult
+
+        self.prepare_calls.append(reporter)
+        if self.BLOCKING:
+            if reporter is not None:
+                reporter.on_stage_change(self.BLOCKING_STAGE)
+            while not self.stopped:
+                if self._command_queue:
+                    command = self._command_queue.pop(0)
+                    if command == "manual_takeover":
+                        return EntryPreparationResult(
+                            outcome=EntryOutcome.MANUAL,
+                            stage="manual_takeover",
+                            reason="已转入人工接管",
+                        )
+                    if command == "continue_waiting":
+                        return EntryPreparationResult(
+                            outcome=EntryOutcome.READY, stage="ready"
+                        )
+                    if command == "stop":
+                        return EntryPreparationResult(
+                            outcome=EntryOutcome.STOPPED,
+                            stage="stopped",
+                            reason="用户停止",
+                        )
+                time.sleep(0.01)
+            return EntryPreparationResult(
+                outcome=EntryOutcome.STOPPED, stage="stopped", reason="已停止"
+            )
+        if self.PREPARE_RESULT is not None:
+            return self.PREPARE_RESULT
+        return EntryPreparationResult(outcome=EntryOutcome.READY, stage="ready")
+
+    def run_business(self) -> None:
+        self.business_calls += 1
+        self.run()
+
+    def request_entry_command(self, command: str) -> bool:
+        self._command_queue.append(command)
+        return True
+
+
+def _entry_fake_script() -> type[EntryFakeScript]:
+    """返回声明了 entry_spec 的假脚本类。"""
+    from yys.common.entry_runtime import TaskEntrySpec
+
+    class _Registered(EntryFakeScript):
+        entry_spec = TaskEntrySpec(target_scene="soul_selection")
+
+    return _Registered
+
+
+def test_entry_spec_ready_reaches_business_then_success(tmp_path: Path) -> None:
+    """新契约：入口 READY 后才进入业务运行；终态 success。"""
+    script_cls = _entry_fake_script()
+    script_cls.PREPARE_RESULT = None  # 默认 READY
+    registry = FakeRegistry(scripts={"fake": script_cls})
+    manager = create_run_manager(tmp_path, registry)
+
+    run_id = manager.start(RunRequest(script_id="fake", config={"max_battle_count": 1}))
+    manager.wait(run_id, timeout=2.0)
+
+    run = manager.storage.runs.get(run_id)
+    assert run is not None
+    assert run["status"] == RunStatus.SUCCESS.value
+    script_instance = manager._scripts.get(run_id)
+    if script_instance is not None:
+        assert script_instance.business_calls == 1
+        assert len(script_instance.prepare_calls) == 1
+
+
+def test_entry_spec_prepare_error_marks_entry_failed(tmp_path: Path) -> None:
+    """入口准备失败 → error/entry_failed + 稳定错误码；不写业务成功。"""
+    from yys.common.entry_runtime import EntryOutcome, EntryPreparationResult
+
+    script_cls = _entry_fake_script()
+    script_cls.PREPARE_RESULT = EntryPreparationResult(
+        outcome=EntryOutcome.ERROR,
+        stage="entry_failed",
+        error_code="ENTRY_SCENE_UNKNOWN",
+        reason="无法识别当前画面",
+    )
+    registry = FakeRegistry(scripts={"fake": script_cls})
+    manager = create_run_manager(tmp_path, registry)
+
+    run_id = manager.start(RunRequest(script_id="fake", config={}))
+    manager.wait(run_id, timeout=2.0)
+
+    run = manager.storage.runs.get(run_id)
+    assert run is not None
+    assert run["status"] == RunStatus.ERROR.value
+    assert run["stage"] == "entry_failed"
+    assert run["error_code"] == "ENTRY_SCENE_UNKNOWN"
+    assert manager.current_run_id() is None  # 执行槽已释放
+    assert run["status"] != RunStatus.SUCCESS.value
+
+
+def test_entry_spec_manual_takeover_releases_slot(tmp_path: Path) -> None:
+    """准备阶段转人工接管 → manual/manual_takeover 终态并释放执行槽。"""
+    from yys.common.entry_runtime import EntryOutcome, EntryPreparationResult
+
+    script_cls = _entry_fake_script()
+    script_cls.PREPARE_RESULT = EntryPreparationResult(
+        outcome=EntryOutcome.MANUAL, stage="manual_takeover", reason="已转入人工接管"
+    )
+    registry = FakeRegistry(scripts={"fake": script_cls})
+    manager = create_run_manager(tmp_path, registry)
+
+    run_id = manager.start(RunRequest(script_id="fake", config={}))
+    manager.wait(run_id, timeout=2.0)
+
+    run = manager.storage.runs.get(run_id)
+    assert run is not None
+    assert run["status"] == RunStatus.MANUAL.value
+    assert run["stage"] == "manual_takeover"
+    assert run["available_actions"] == ["retry"]
+    assert manager.current_run_id() is None
+
+
+def test_continue_waiting_rejected_outside_timeout_stage(tmp_path: Path) -> None:
+    """continue_waiting 仅在 waiting_safe_entry_timeout 阶段可用。"""
+    script_cls = _entry_fake_script()
+    script_cls.BLOCKING = True
+    script_cls.BLOCKING_STAGE = "preparing"  # 上报 preparing 而非 timeout
+    registry = FakeRegistry(scripts={"fake": script_cls})
+    manager = create_run_manager(tmp_path, registry)
+
+    run_id = manager.start(RunRequest(script_id="fake", config={}))
+    deadline = time.time() + 2.0
+    while time.time() < deadline:
+        run = manager.storage.runs.get(run_id)
+        if run is not None and run.get("stage") == "preparing":
+            break
+        time.sleep(0.01)
+
+    with pytest.raises(RuntimeError, match="仅战斗等待超时阶段"):
+        manager.continue_waiting(run_id)
+
+    manager.stop(run_id)
+    manager.wait(run_id, timeout=2.0)
+
+
+def test_manual_takeover_command_during_timeout(tmp_path: Path) -> None:
+    """等待超时阶段请求人工接管：命令转发给准备器，run 终结为 manual。"""
+    script_cls = _entry_fake_script()
+    script_cls.BLOCKING = True
+    script_cls.BLOCKING_STAGE = "waiting_safe_entry_timeout"
+    registry = FakeRegistry(scripts={"fake": script_cls})
+    manager = create_run_manager(tmp_path, registry)
+
+    run_id = manager.start(RunRequest(script_id="fake", config={}))
+    deadline = time.time() + 2.0
+    while time.time() < deadline:
+        run = manager.storage.runs.get(run_id)
+        if run is not None and run.get("stage") == "waiting_safe_entry_timeout":
+            break
+        time.sleep(0.01)
+
+    manager.manual_takeover(run_id)
+    manager.wait(run_id, timeout=2.0)
+
+    run = manager.storage.runs.get(run_id)
+    assert run is not None
+    assert run["status"] == RunStatus.MANUAL.value
+    assert run["stage"] == "manual_takeover"
+    assert manager.current_run_id() is None
+
+
+def test_stop_during_preparation_terminates_run(tmp_path: Path) -> None:
+    """准备阶段停止：线程退出、run 终态为 stopped、执行槽释放。"""
+    script_cls = _entry_fake_script()
+    script_cls.BLOCKING = True
+    script_cls.BLOCKING_STAGE = "waiting_safe_entry_timeout"
+    registry = FakeRegistry(scripts={"fake": script_cls})
+    manager = create_run_manager(tmp_path, registry)
+
+    run_id = manager.start(RunRequest(script_id="fake", config={}))
+    deadline = time.time() + 2.0
+    while time.time() < deadline:
+        run = manager.storage.runs.get(run_id)
+        if run is not None and run.get("stage") == "waiting_safe_entry_timeout":
+            break
+        time.sleep(0.01)
+
+    manager.stop(run_id)
+    manager.wait(run_id, timeout=2.0)
+
+    run = manager.storage.runs.get(run_id)
+    assert run is not None
+    assert run["status"] == RunStatus.STOPPED.value
+    assert manager.current_run_id() is None
+
+
+def test_manual_run_retry_creates_related_run(tmp_path: Path) -> None:
+    """manual run 的“重新识别并重试”创建关联新 run：parent_run_id + retry_count+1。"""
+    from yys.common.entry_runtime import EntryOutcome, EntryPreparationResult
+
+    script_cls = _entry_fake_script()
+    script_cls.PREPARE_RESULT = EntryPreparationResult(
+        outcome=EntryOutcome.MANUAL, stage="manual_takeover"
+    )
+    registry = FakeRegistry(scripts={"fake": script_cls})
+    manager = create_run_manager(tmp_path, registry)
+
+    run_id = manager.start(RunRequest(script_id="fake", config={"max_battle_count": 3}))
+    manager.wait(run_id, timeout=2.0)
+    assert manager.storage.runs.get(run_id)["status"] == RunStatus.MANUAL.value
+
+    new_run_id = manager.retry(run_id)
+    manager.wait(new_run_id, timeout=2.0)
+
+    new_run = manager.storage.runs.get(new_run_id)
+    assert new_run is not None
+    assert new_run["parent_run_id"] == run_id
+    assert new_run["retry_count"] == 1
+    assert new_run["script_id"] == "fake"
+    assert new_run["config"].get("max_battle_count") == 3
+    # 原 run 保持不可变
+    original = manager.storage.runs.get(run_id)
+    assert original is not None
+    assert original["status"] == RunStatus.MANUAL.value
+    assert original["retry_count"] == 0
+
+
+def test_error_run_retry_keeps_workflow_context(tmp_path: Path) -> None:
+    """error run 重试保留工作流上下文并建立 parent 关联（AC13）。"""
+    from yys.common.entry_runtime import EntryOutcome, EntryPreparationResult
+
+    script_cls = _entry_fake_script()
+    script_cls.PREPARE_RESULT = EntryPreparationResult(
+        outcome=EntryOutcome.ERROR,
+        stage="entry_failed",
+        error_code="ENTRY_TRANSITION_FAILED",
+        reason="失败",
+    )
+    registry = FakeRegistry(scripts={"fake": script_cls})
+    manager = create_run_manager(tmp_path, registry)
+
+    # 建真实 workflow 以满足外键约束，并验证重试保留工作流上下文（AC13）
+    workflow_id = manager.storage.workflows.create(
+        name="测试工作流",
+        group_name="测试组",
+        enabled=True,
+        trigger_type="manual",
+        trigger_config={},
+        failure_policy="retry",
+    )
+    request = RunRequest(
+        script_id="fake",
+        config={"max_battle_count": 5},
+        source_type=RunSourceType.WORKFLOW,
+        workflow_id=workflow_id,
+        task_id="wf-task",
+        step_id=11,
+        action_id="act-1",
+    )
+    run_id = manager.start(request)
+    manager.wait(run_id, timeout=2.0)
+    assert manager.storage.runs.get(run_id)["status"] == RunStatus.ERROR.value
+
+    new_run_id = manager.retry(run_id)
+    manager.wait(new_run_id, timeout=2.0)
+
+    new_run = manager.storage.runs.get(new_run_id)
+    assert new_run is not None
+    assert new_run["parent_run_id"] == run_id
+    assert new_run["workflow_id"] == workflow_id
+    assert new_run["action_id"] == "act-1"
+    assert new_run["source_type"] == RunSourceType.WORKFLOW.value
+    assert new_run["retry_count"] == 1

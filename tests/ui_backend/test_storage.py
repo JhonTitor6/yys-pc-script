@@ -137,3 +137,73 @@ def test_run_repository_marks_unfinished_runs_as_error(tmp_path: Path) -> None:
     assert running["error_message"] == message
     assert paused["error_message"] == message
     assert success["status"] == RunStatus.SUCCESS.value
+
+
+def test_old_schema_upgrades_idempotently_with_parent_run_id(tmp_path: Path) -> None:
+    """产品契约（quality-guidelines §3 / AC12）：旧库启动后幂等升级，读写正常。"""
+    import sqlite3
+
+    db_path = tmp_path / "legacy.db"
+    # 构造缺少 parent_run_id 列的旧 schema（runs 表与历史版本一致）
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_uuid TEXT NOT NULL DEFAULT '',
+            script_id TEXT NOT NULL,
+            task_id TEXT,
+            source_type TEXT NOT NULL,
+            workflow_id INTEGER,
+            workflow_step_id INTEGER,
+            step_id INTEGER,
+            action_id TEXT,
+            status TEXT NOT NULL,
+            stage TEXT NOT NULL DEFAULT 'queued',
+            progress_json TEXT NOT NULL DEFAULT '{}',
+            config_json TEXT NOT NULL,
+            started_at TEXT,
+            ended_at TEXT,
+            error_code TEXT,
+            error_message TEXT,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            available_actions_json TEXT NOT NULL DEFAULT '[]',
+            latest_evidence_json TEXT,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+    )
+    conn.execute(
+        "INSERT INTO runs (script_id, source_type, status, stage, config_json) "
+        "VALUES ('legacy_script', 'manual', 'success', 'completed', '{}')"
+    )
+    conn.commit()
+    conn.close()
+
+    # 首次启动升级
+    database = Database(db_path)
+    database.initialize()
+    storage = Storage(database)
+    upgraded = storage.runs.get(1)
+    assert upgraded is not None
+    assert upgraded["parent_run_id"] is None
+    assert upgraded["script_id"] == "legacy_script"
+
+    # 升级后可正常写入（含 parent_run_id）
+    child_id = storage.runs.create(
+        script_id="soul_raid",
+        source_type=RunSourceType.MANUAL,
+        config={},
+        parent_run_id=1,
+    )
+    child = storage.runs.get(child_id)
+    assert child is not None
+    assert child["parent_run_id"] == 1
+
+    # 幂等：再次启动不报错且数据保持
+    database.initialize()
+    storage2 = Storage(database)
+    again = storage2.runs.get(1)
+    assert again is not None
+    assert again["status"] == "success"
+    assert again["parent_run_id"] is None

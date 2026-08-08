@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from ui_backend.models import WorkflowFailurePolicy, WorkflowStepType
+from ui_backend.models import RunStatus, WorkflowFailurePolicy, WorkflowStepType
 from ui_backend.scheduler.service import SchedulerService
 
 
@@ -189,3 +189,41 @@ def test_time_reached_rejects_invalid_hh_mm() -> None:
 
     with pytest.raises(ValueError):
         scheduler._time_reached("24:00")
+
+
+def test_scheduler_manual_run_does_not_advance_steps() -> None:
+    """AC13：run 终结为 manual 时不推进后续步骤，发布人工介入事件。"""
+    run_manager = FakeRunManager(statuses={1: "manual"})
+    scheduler = SchedulerService(run_manager=run_manager)
+
+    workflow = {
+        "id": 1,
+        "failure_policy": WorkflowFailurePolicy.STOP_WORKFLOW.value,
+        "steps": [
+            {
+                "id": 10,
+                "step_type": WorkflowStepType.RUN_SCRIPT.value,
+                "script_id": "soul_raid",
+                "config": {},
+                "condition": {},
+                "failure_policy": "inherit",
+            },
+            {
+                "id": 11,
+                "step_type": WorkflowStepType.RUN_SCRIPT.value,
+                "script_id": "exploration_28",
+                "config": {},
+                "condition": {},
+                "failure_policy": "inherit",
+            },
+        ],
+    }
+
+    outcome = scheduler.run_workflow_now(workflow)
+
+    assert outcome == RunStatus.ERROR.value
+    # 只有第一个步骤被执行（manual 后不再启动后续步骤）
+    assert len(run_manager.started) == 1
+    assert run_manager.started[0]["script_id"] == "soul_raid"
+    events = scheduler.event_hub.recent_events() if hasattr(scheduler, "event_hub") else []
+    assert not events

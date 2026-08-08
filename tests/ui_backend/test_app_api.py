@@ -366,3 +366,100 @@ def _wait_for_workflow_error(
                 return event
         time.sleep(0.01)
     return None
+
+
+# ==================== 新入口契约 API（Step 6） ====================
+
+def _patch_window_lookup(monkeypatch: Any) -> None:
+    """把游戏窗口查找替换为固定句柄（真实脚本离线可构造）。"""
+    monkeypatch.setattr(
+        "yys.common.event_script_base.find_window", lambda *a, **k: 12345
+    )
+
+
+def test_continue_waiting_api_rejects_when_no_active_timeout(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """continue-waiting 仅在等待超时阶段可用；非活动/非超时返回 409。"""
+    _patch_window_lookup(monkeypatch)
+    from fastapi.testclient import TestClient
+
+    from ui_backend.app import create_app
+
+    app = create_app(db_path=tmp_path / "ui.db", api_token="")
+    client = TestClient(app)
+
+    # 启动真实脚本（无窗口内容 → 入口准备失败 → error 终态，非活动）
+    resp = client.post(
+        "/api/runs/start",
+        json={"script_id": "soul_raid", "config": {"max_battle_count": 1}},
+    )
+    assert resp.status_code == 200
+    run_id = resp.json()["id"]
+    deadline = time.time() + 5.0
+    while time.time() < deadline:
+        detail = client.get(f"/api/runs/{run_id}").json()
+        if detail.get("status") == "error":
+            break
+        time.sleep(0.05)
+
+    resp = client.post(f"/api/runs/{run_id}/continue-waiting")
+    assert resp.status_code == 409
+    assert "等待超时" in resp.json()["detail"] or "活动" in resp.json()["detail"]
+
+
+def test_start_api_passes_parent_run_id(tmp_path: Path, monkeypatch: Any) -> None:
+    """start API 透传 parent_run_id（关联重试）。"""
+    _patch_window_lookup(monkeypatch)
+    from fastapi.testclient import TestClient
+
+    from ui_backend.app import create_app
+
+    app = create_app(db_path=tmp_path / "ui.db", api_token="")
+    client = TestClient(app)
+
+    resp = client.post(
+        "/api/runs/start",
+        json={
+            "script_id": "soul_raid",
+            "config": {"max_battle_count": 1},
+            "parent_run_id": 3,
+        },
+    )
+    assert resp.status_code == 200
+    run_id = resp.json()["id"]
+    detail = client.get(f"/api/runs/{run_id}").json()
+    assert detail["parent_run_id"] == 3
+
+
+def test_retry_manual_run_via_api(tmp_path: Path, monkeypatch: Any) -> None:
+    """manual run 通过 API 重试创建关联新 run（AC12）。"""
+    _patch_window_lookup(monkeypatch)
+    from fastapi.testclient import TestClient
+
+    from ui_backend.app import create_app
+
+    app = create_app(db_path=tmp_path / "ui.db", api_token="")
+    client = TestClient(app)
+    storage = app.state.storage
+
+    manual_id = storage.runs.create(
+        script_id="soul_raid",
+        source_type=RunSourceType.MANUAL,
+        config={"max_battle_count": 2},
+        retry_count=1,
+    )
+    storage.runs.update_status(manual_id, RunStatus.MANUAL, stage="manual_takeover")
+    assert client.get(f"/api/runs/{manual_id}").json()["available_actions"] == ["retry"]
+
+    resp = client.post(f"/api/runs/{manual_id}/retry")
+    assert resp.status_code == 200
+    new_run_id = resp.json()["id"]
+    detail = client.get(f"/api/runs/{new_run_id}").json()
+    assert detail["parent_run_id"] == manual_id
+    assert detail["retry_count"] == 2
+
+    # 原 run 不可变
+    original = client.get(f"/api/runs/{manual_id}").json()
+    assert original["status"] == "manual"
+    assert original["retry_count"] == 1

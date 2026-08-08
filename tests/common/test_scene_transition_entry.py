@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from tests.common.environment.mock_environment import MockEnvironment
 from tests.common.recorders.action_log import ActionLog
 from yys.common.event_script_base import YYSBaseScript
@@ -68,20 +70,19 @@ def test_entry_scene_goto_fails_does_not_enter_main_loop() -> None:
 
 
 def test_business_scripts_declare_entry_scene() -> None:
-    """3 个可稳定定位入口的核心脚本必须声明 entry_scene。
+    """2 个可稳定定位入口的核心脚本必须声明 entry_scene；御魂改用 entry_spec。
 
-    防止：基类默认值被反向改、entry_scene 字面量被误改。
+    产品契约：PRD AC10——现有探索、结界突破入口不得退化；
+    AC2——御魂通过 TaskEntrySpec 声明新入口契约（任务 08-08）。
     """
     from yys.exploration.exploration_script import ExplorationScript
     from yys.realm_raid.realm_raid_script import RealmRaidScript
-    from yys.soul_raid.soul_raid_script import SoulRaidScript
 
-    expected_map = {
+    legacy_map = {
         ExplorationScript: "exploration_chapter_28",
         RealmRaidScript: "barrier_breakthrough",
-        SoulRaidScript: "soul_selection",
     }
-    for cls, expected in expected_map.items():
+    for cls, expected in legacy_map.items():
         # 字面量匹配
         assert cls.entry_scene == expected, (
             f"{cls.__name__}.entry_scene 期望 {expected!r}，实际 {cls.entry_scene!r}"
@@ -91,6 +92,67 @@ def test_business_scripts_declare_entry_scene() -> None:
         # 非 None（基类默认 None，覆盖后必须非 None）
         assert cls.entry_scene is not None, f"{cls.__name__}.entry_scene 为 None"
 
+
+def test_soul_raid_declares_entry_spec() -> None:
+    """御魂作为首个试点声明 TaskEntrySpec(target_scene="soul_selection")。"""
+    from yys.soul_raid.soul_raid_script import SoulRaidScript
+
+    spec = SoulRaidScript.entry_spec
+    assert spec is not None
+    assert spec.target_scene == "soul_selection"
+    # 新契约下御魂不再使用旧 entry_scene 跳转
+    assert SoulRaidScript.entry_scene is None or SoulRaidScript.entry_scene == ""
+
+
+def test_entry_spec_prepare_ready_then_business() -> None:
+    """声明 entry_spec 的脚本：run() 先 prepare，READY 后才进入业务主循环。"""
+    log = ActionLog()
+    env = MockEnvironment(action_log=log)
+    script = _ProbeScript(script_name="probe", env=env)
+    from yys.common.entry_runtime import (
+        EntryOutcome,
+        EntryPreparationResult,
+        TaskEntrySpec,
+    )
+
+    script.entry_spec = TaskEntrySpec(target_scene="soul_selection")
+    ready = EntryPreparationResult(outcome=EntryOutcome.READY, stage="ready")
+    script.prepare_entry = MagicMock(return_value=ready)  # type: ignore[method-assign]
+    script.run_business = MagicMock()  # type: ignore[method-assign]
+
+    script.run()
+
+    script.prepare_entry.assert_called_once()
+    script.run_business.assert_called_once()
+
+
+def test_entry_spec_prepare_failure_raises_structured_error() -> None:
+    """入口准备失败抛出 EntryPreparationError，禁止正常 return 后误报业务成功。"""
+    log = ActionLog()
+    env = MockEnvironment(action_log=log)
+    script = _ProbeScript(script_name="probe", env=env)
+    from yys.common.entry_runtime import (
+        EntryOutcome,
+        EntryPreparationError,
+        EntryPreparationResult,
+        TaskEntrySpec,
+    )
+
+    script.entry_spec = TaskEntrySpec(target_scene="soul_selection")
+    failed = EntryPreparationResult(
+        outcome=EntryOutcome.ERROR,
+        stage="entry_failed",
+        error_code="ENTRY_SCENE_UNKNOWN",
+        reason="无法识别当前画面",
+    )
+    script.prepare_entry = MagicMock(return_value=failed)  # type: ignore[method-assign]
+    script.run_business = MagicMock()  # type: ignore[method-assign]
+
+    with pytest.raises(EntryPreparationError) as ctx:
+        script.run()
+
+    assert ctx.value.result.error_code == "ENTRY_SCENE_UNKNOWN"
+    script.run_business.assert_not_called()
 
 def test_abyss_shadows_entry_scene_is_disabled() -> None:
     """当前版本不为狭间暗域声明统一入口场景。"""

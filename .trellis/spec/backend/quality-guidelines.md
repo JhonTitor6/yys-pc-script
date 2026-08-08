@@ -85,6 +85,9 @@ mock replay, observe-only mode, action limits, or emergency stop.
 - If MSMF cannot open the requested codec, release that writer before falling back to
   OpenCV's default backend. The session's existing `isOpened()` check remains the final
   failure boundary.
+- After releasing a Windows video writer, finalizing the recording directory may briefly
+  raise `PermissionError` while the OS closes the MP4 handle. Retry the rename within a
+  bounded window, and preserve the `.partial` directory if all attempts fail.
 - `WindowsEnvironment` defaults to `capture_mode="print_window"` so ordinary background
   automation retains its existing behavior. The interactive recorder and guarded
   `--execute` path select `capture_mode="foreground"` because hardware-accelerated battle
@@ -138,6 +141,7 @@ mock replay, observe-only mode, action limits, or emergency stop.
 | Grace seconds are zero or negative | Raise `ValueError` |
 | MSMF opens the MP4 writer | Use it without probing GStreamer |
 | MSMF cannot open the MP4 writer | Release it, try the default backend once, then fail through `isOpened()` |
+| Windows directory finalization gets a transient `PermissionError` | Retry the rename for a bounded interval; preserve `.partial` if the final attempt fails |
 | Action number would exceed `max_actions` | Block the action and set `action_limit` |
 | Runtime reaches `timeout_seconds` | Set `timeout` and stop the event loop |
 | Consecutive unknown frames reach `unknown_limit` | Set `unknown_scene` and stop |
@@ -152,6 +156,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
 - Good: a `SceneManager` click calls `self.win_controller.mouse`, so injected guards and
   replay environments observe it.
 - Good: Windows MP4 creation explicitly passes `cv2.CAP_MSMF`.
+- Good: recording finalization retries transient Windows MP4-handle `PermissionError` and
+  still exposes `.partial` evidence after the bounded retry window.
 - Good: the recorder activates the game, captures its visible client rectangle, and
   validates visual variance before listening for input.
 - Good: guarded execute uses foreground capture after confirmation, while guarded observe

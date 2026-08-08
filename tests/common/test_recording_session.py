@@ -207,6 +207,50 @@ def test_recording_session_finalizes_atomic_directory(tmp_path: Path) -> None:
     assert monitor.stopped
 
 
+def test_recording_session_retries_windows_finalize_permission_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Windows 视频句柄短暂占用时应重试目录收尾。"""
+    monkeypatch.setattr(session_module.os, "name", "nt")
+    original_rename = Path.rename
+    rename_attempts = 0
+    sleep_calls: list[float] = []
+
+    def flaky_rename(source: Path, target: Path) -> Path:
+        nonlocal rename_attempts
+        if source.name == "retry-recording.partial" and rename_attempts < 2:
+            rename_attempts += 1
+            raise PermissionError(5, "拒绝访问")
+        return original_rename(source, target)
+
+    monkeypatch.setattr(Path, "rename", flaky_rename)
+    monkeypatch.setattr(session_module.time, "sleep", sleep_calls.append)
+
+    def create_writer(
+        path: Path,
+        _codec: str,
+        _fps: float,
+        _size: tuple[int, int],
+    ) -> FakeVideoWriter:
+        return FakeVideoWriter(path)
+
+    session = RecordingSession(
+        env=StaticEnvironment(),
+        scenario="realm_raid",
+        output_root=tmp_path,
+        recording_id="retry-recording",
+        video_writer_factory=create_writer,
+    )
+
+    output_dir = session.run(ImmediateStopMonitor(session))
+
+    assert output_dir == tmp_path / "realm_raid" / "retry-recording"
+    assert rename_attempts == 2
+    assert len(sleep_calls) == 2
+    assert not (tmp_path / "realm_raid" / "retry-recording.partial").exists()
+
+
 def test_recording_session_preserves_partial_directory_on_codec_error(
     tmp_path: Path,
 ) -> None:

@@ -10,7 +10,7 @@
 前置条件：
   - Node 20+ 和 npm 已安装
   - conda 环境 win_macro 已就绪（默认路径 D:/ProgramData/anaconda3/envs/win_macro）
-  - 首次运行会联网下载 EasyOCR 模型（约 200MB）
+  - 首次运行会把当前 Python 环境内的 RapidOCR 模型复制到 assets/（无需联网下载）
 
 注意：
   - Windows PowerShell 5.x 不支持 `n 转义在 Write-Host 中的展开，所以空行都用
@@ -72,8 +72,8 @@ try {
         throw "PyInstaller 产物 dist\backend\yys-backend.exe 不存在"
     }
 
-    # 4) 预下载 OCR 模型
-    Write-StepHeader "[4/5] 预下载 EasyOCR 模型..."
+    # 4) 准备 OCR 模型
+    Write-StepHeader "[4/5] 准备 OCR 模型..."
     if ($SkipOcrDownload) {
         Write-Host "  - 跳过（-SkipOcrDownload）"
     }

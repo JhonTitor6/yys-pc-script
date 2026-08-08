@@ -2,7 +2,7 @@
 """
 yys-pc-script Python 后端 PyInstaller 打包配置（--onedir）
 
-产物：dist/backend/yys-backend.exe + _internal/
+产物：dist/backend/yys-backend.exe + 运行时依赖目录/
 electron-builder 通过 extraResources 把整个 dist/backend 注入到
   resources/backend/，再被 gui/main.js 启动。
 
@@ -10,6 +10,7 @@ electron-builder 通过 extraResources 把整个 dist/backend 注入到
 与开发模式 Path("config")、Path("yys/logs") 行为一致。
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -18,6 +19,42 @@ from PyInstaller.utils.hooks import collect_data_files
 block_cipher = None
 
 PROJECT_ROOT = Path(SPECPATH).resolve()
+
+# Conda 环境的运行库位于 Library/bin。PyInstaller 的依赖扫描不会自动把
+# 该目录加入搜索路径，导致打包后的 _ssl、Pillow、SQLite 或 OpenCV 无法启动。
+PYTHON_ENV_ROOT = Path(sys.executable).resolve().parent
+CONDA_LIBRARY_BIN = PYTHON_ENV_ROOT / "Library" / "bin"
+if CONDA_LIBRARY_BIN.is_dir():
+    os.environ["PATH"] = os.pathsep.join(
+        [str(CONDA_LIBRARY_BIN), str(PYTHON_ENV_ROOT), os.environ.get("PATH", "")]
+    )
+
+RUNTIME_DLL_NAMES = [
+    "libssl-3-x64.dll",
+    "libcrypto-3-x64.dll",
+    "liblzma.dll",
+    "libbz2.dll",
+    "ffi.dll",
+    "freetype.dll",
+    "openjp2.dll",
+    "libjpeg.dll",
+    "libtiff.dll",
+    "libwebp.dll",
+    "libwebpdemux.dll",
+    "libwebpmux.dll",
+    "lcms2.dll",
+    "sqlite3.dll",
+]
+
+RUNTIME_BINARIES = [
+    (str(CONDA_LIBRARY_BIN / name), ".")
+    for name in RUNTIME_DLL_NAMES
+    if (CONDA_LIBRARY_BIN / name).is_file()
+]
+RUNTIME_BINARIES.extend(
+    (str(path), ".")
+    for path in sorted(CONDA_LIBRARY_BIN.glob("opencv_*.dll"))
+)
 
 
 def collect_module_data(module_name: str, include_globs: list[str], exclude_globs: list[str] | None = None):
@@ -118,7 +155,6 @@ WIN_UTIL_MODULES = [
     "win_util.mouse",
     "win_util.keyboard",
     "win_util.ocr",
-    "win_util.window",
     "win_util.controller",
 ]
 
@@ -139,17 +175,12 @@ THIRD_PARTY_MODULES = [
     "onnxruntime",
     "onnxruntime.capi._pybind_state",
     "onnxruntime.capi.onnxruntime_pybind11_state",
-    "onnxruntime.providers",
-    "onnxruntime.providers.cpu",
-    "onnxruntime.providers.cpu.cpu_execution_provider",
     # rapidocr
     "rapidocr_onnxruntime",
-    "rapidocr_onnxruntime.rapid_ocr",
     "rapidocr_onnxruntime.ch_ppocr_det",
     "rapidocr_onnxruntime.ch_ppocr_rec",
     "rapidocr_onnxruntime.ch_ppocr_cls",
     "rapidocr_onnxruntime.utils",
-    "rapidocr_onnxruntime.onnx_wrapper",
     # 保留
     "cv2",
     "mss",
@@ -223,7 +254,7 @@ if ocr_easy_dir.is_dir() and any(ocr_easy_dir.iterdir()):
 a = Analysis(
     ["web_server.py"],
     pathex=[str(PROJECT_ROOT)],
-    binaries=[],
+    binaries=RUNTIME_BINARIES,
     datas=DATAS,
     hiddenimports=HIDDENIMPORTS,
     hookspath=[],
@@ -268,6 +299,9 @@ exe = EXE(
     upx=False,
     console=False,                 # 不弹黑窗（windowed 模式）
     disable_windowed_traceback=False,
+    # PyInstaller 6 默认把支持文件放进 _internal；项目运行时约定资源与
+    # yys-backend.exe 同级，因此显式恢复旧式 onedir 布局。
+    contents_directory=".",
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,

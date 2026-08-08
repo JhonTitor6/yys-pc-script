@@ -28,6 +28,8 @@ from .contracts import (
 )
 
 _SCENARIO_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
+_FINALIZE_RETRY_COUNT = 5
+_FINALIZE_RETRY_DELAY_SECONDS = 0.2
 
 
 class InputMonitor(Protocol):
@@ -212,7 +214,7 @@ class RecordingSession:
             self._write_metadata(partial_dir, status, self._stop_reason)
         if final_dir.exists():
             raise FileExistsError(f"录制目标目录已经存在: {final_dir}")
-        partial_dir.rename(final_dir)
+        self._finalize_directory(partial_dir, final_dir)
         return final_dir
 
     def _capture_loop(
@@ -314,6 +316,19 @@ class RecordingSession:
             raise FileExistsError(f"录制标识已经存在: {self._recording_id}")
         partial_dir.mkdir()
         return partial_dir, final_dir
+
+    @staticmethod
+    def _finalize_directory(partial_dir: Path, final_dir: Path) -> None:
+        """完成录制目录改名，兼容 Windows 视频句柄延迟释放。"""
+        retry_count = _FINALIZE_RETRY_COUNT if os.name == "nt" else 1
+        for attempt in range(retry_count):
+            try:
+                partial_dir.rename(final_dir)
+                return
+            except PermissionError:
+                if attempt + 1 >= retry_count:
+                    raise
+                time.sleep(_FINALIZE_RETRY_DELAY_SECONDS)
 
     def _write_metadata(
         self,

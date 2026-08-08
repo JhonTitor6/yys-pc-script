@@ -5,12 +5,12 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from ui_backend.events.hub import EventHub
-from ui_backend.models import RunRequest, ScriptDefinition
+from ui_backend.models import RunRequest, RunSourceType, ScriptDefinition
 from ui_backend.runs.manager import RunManager
 from ui_backend.scheduler.service import SchedulerService
 from ui_backend.scripts.registry import ScriptRegistry
@@ -57,7 +57,7 @@ def create_app(db_path: Path | str | None = None, api_token: str | None = None) 
     registry = ScriptRegistry()
     event_hub = EventHub()
     run_manager = RunManager(storage=storage, registry=registry, event_hub=event_hub)
-    scheduler = SchedulerService(run_manager)
+    scheduler = SchedulerService(run_manager, storage=storage, event_hub=event_hub)
 
     app.state.database = database
     app.state.storage = storage
@@ -66,6 +66,16 @@ def create_app(db_path: Path | str | None = None, api_token: str | None = None) 
     app.state.run_manager = run_manager
     app.state.scheduler = scheduler
     app.state.api_token = resolved_token
+
+    @app.on_event("startup")
+    async def start_scheduler() -> None:
+        """在应用生命周期启动周期调度线程。"""
+        app.state.scheduler.start()
+
+    @app.on_event("shutdown")
+    async def stop_scheduler() -> None:
+        """在应用生命周期停止周期调度线程。"""
+        app.state.scheduler.stop()
 
     @app.get("/api/scripts")
     def list_scripts() -> list[dict[str, Any]]:
@@ -99,7 +109,51 @@ def create_app(db_path: Path | str | None = None, api_token: str | None = None) 
     @app.get("/api/runs/current")
     def get_current_run() -> dict[str, Any] | None:
         """读取当前运行中的脚本记录。"""
-        return app.state.storage.runs.current()
+        current = app.state.storage.runs.current()
+        return _run_with_runtime_evidence(app.state.storage, current)
+
+    @app.get("/api/runs")
+    def list_runs(
+        script_id: str | None = None,
+        source_type: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """查询历史运行摘要。"""
+        return app.state.storage.runs.list_history(
+            script_id=script_id,
+            source_type=source_type,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+
+    @app.get("/api/runs/{run_id}")
+    def get_run_detail(run_id: int) -> dict[str, Any]:
+        """读取单次运行的配置、日志、快照和证据。"""
+        run = app.state.storage.runs.get(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="运行记录不存在")
+        detail = _run_with_runtime_evidence(app.state.storage, run)
+        detail["logs"] = app.state.storage.logs.list_by_run(run_id)
+        detail["snapshots"] = _list_snapshots(app.state.storage, run_id)
+        detail["evidence"] = app.state.storage.evidence.list_by_run(run_id)
+        workflow_id = run.get("workflow_id")
+        if workflow_id is not None:
+            workflow = app.state.storage.workflows.get(int(workflow_id))
+            if workflow is not None:
+                detail["workflow"] = _workflow_with_steps(app.state.storage, workflow)
+                step_id = run.get("step_id") or run.get("workflow_step_id")
+                detail["workflow_step"] = next(
+                    (
+                        step
+                        for step in detail["workflow"]["steps"]
+                        if int(step["id"]) == int(step_id)
+                    ),
+                    None,
+                ) if step_id is not None else None
+        return detail
 
     @app.post("/api/runs/start")
     def start_run(payload: dict[str, Any]) -> dict[str, int]:
@@ -107,6 +161,13 @@ def create_app(db_path: Path | str | None = None, api_token: str | None = None) 
         request = RunRequest(
             script_id=str(payload["script_id"]),
             config=dict(payload.get("config", {})),
+            source_type=RunSourceType(str(payload.get("source_type", RunSourceType.MANUAL.value))),
+            workflow_id=payload.get("workflow_id"),
+            workflow_step_id=payload.get("workflow_step_id"),
+            task_id=_optional_str(payload.get("task_id")),
+            step_id=payload.get("step_id"),
+            action_id=_optional_str(payload.get("action_id")),
+            retry_count=int(payload.get("retry_count", 0)),
         )
         return {"id": app.state.run_manager.start(request)}
 
@@ -128,6 +189,38 @@ def create_app(db_path: Path | str | None = None, api_token: str | None = None) 
         app.state.run_manager.stop(run_id)
         return {"status": "ok"}
 
+    @app.post("/api/runs/{run_id}/retry")
+    def retry_run(run_id: int) -> dict[str, int]:
+        """重试失败运行。"""
+        try:
+            return {"id": app.state.run_manager.retry(run_id)}
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/runs/{run_id}/skip")
+    def skip_run(run_id: int) -> dict[str, str]:
+        """跳过失败运行。"""
+        try:
+            app.state.run_manager.skip(run_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"status": "ok"}
+
+    @app.post("/api/runs/{run_id}/manual-takeover")
+    def manual_takeover_run(run_id: int) -> dict[str, str]:
+        """将失败运行转入人工接管。"""
+        try:
+            app.state.run_manager.manual_takeover(run_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"status": "ok"}
+
     @app.get("/api/runs/{run_id}/logs")
     def list_run_logs(run_id: int) -> list[dict[str, Any]]:
         """列出指定运行记录的日志。"""
@@ -135,11 +228,24 @@ def create_app(db_path: Path | str | None = None, api_token: str | None = None) 
 
     @app.get("/api/runs/{run_id}/snapshots")
     def list_run_snapshots(run_id: int) -> list[dict[str, Any]]:
-        """读取指定运行记录的最新状态快照。"""
-        latest = app.state.storage.snapshots.latest_by_run(run_id)
-        if latest is None:
-            return []
-        return [latest]
+        """读取指定运行记录的全部状态快照。"""
+        return app.state.storage.snapshots.list_by_run(run_id)
+
+    @app.get("/api/runs/{run_id}/evidence")
+    def list_run_evidence(run_id: int) -> list[dict[str, Any]]:
+        """读取某次运行的截图和证据记录。"""
+        if app.state.storage.runs.get(run_id) is None:
+            raise HTTPException(status_code=404, detail="运行记录不存在")
+        return app.state.storage.evidence.list_by_run(run_id)
+
+    @app.get("/api/runs/{run_id}/evidence/latest")
+    def get_latest_run_evidence(run_id: int) -> FileResponse:
+        """返回某次运行最新的可读截图。"""
+        evidence = app.state.storage.evidence.latest_by_run(run_id)
+        path = Path(str(evidence.get("path"))) if evidence and evidence.get("path") else None
+        if path is None or not path.is_file():
+            raise HTTPException(status_code=404, detail="暂无可读取截图")
+        return FileResponse(path, media_type="image/png", filename=path.name)
 
     @app.get("/api/workflows")
     def list_workflows() -> list[dict[str, Any]]:
@@ -161,6 +267,10 @@ def create_app(db_path: Path | str | None = None, api_token: str | None = None) 
             trigger_type=str(payload["trigger_type"]),
             trigger_config=dict(payload.get("trigger_config", {})),
             failure_policy=str(payload["failure_policy"]),
+            priority=int(payload.get("priority", 0)),
+            success_interval_seconds=float(payload.get("success_interval_seconds", 0)),
+            failure_interval_seconds=float(payload.get("failure_interval_seconds", 0)),
+            next_run_at=_optional_str(payload.get("next_run_at")),
         )
         for step in payload.get("steps", []):
             current_storage.workflow_steps.create(
@@ -171,6 +281,7 @@ def create_app(db_path: Path | str | None = None, api_token: str | None = None) 
                 config=dict(step.get("config", {})),
                 condition=dict(step.get("condition", {})),
                 retry_count=int(step.get("retry_count", 0)),
+                failure_policy=str(step.get("failure_policy", "inherit")),
             )
         return {"id": workflow_id}
 
@@ -187,6 +298,9 @@ def create_app(db_path: Path | str | None = None, api_token: str | None = None) 
             trigger_config=dict(payload.get("trigger_config", {})),
             failure_policy=str(payload["failure_policy"]),
             steps=list(payload.get("steps", [])),
+            priority=int(payload.get("priority", 0)),
+            success_interval_seconds=float(payload.get("success_interval_seconds", 0)),
+            failure_interval_seconds=float(payload.get("failure_interval_seconds", 0)),
         )
         if not found:
             return JSONResponse({"detail": "编排任务不存在"}, status_code=404)
@@ -221,6 +335,33 @@ def create_app(db_path: Path | str | None = None, api_token: str | None = None) 
         thread.start()
         return {"status": "started"}
 
+    @app.post("/api/workflows/{workflow_id}/enable", response_model=None)
+    def enable_workflow(workflow_id: int) -> dict[str, str] | JSONResponse:
+        """启用周期工作流。"""
+        return _set_workflow_enabled(app.state.storage, workflow_id, True)
+
+    @app.post("/api/workflows/{workflow_id}/disable", response_model=None)
+    def disable_workflow(workflow_id: int) -> dict[str, str] | JSONResponse:
+        """停用周期工作流。"""
+        return _set_workflow_enabled(app.state.storage, workflow_id, False)
+
+    @app.get("/api/workflows/{workflow_id}/schedule-preview", response_model=None)
+    def workflow_schedule_preview(workflow_id: int) -> dict[str, Any] | JSONResponse:
+        """返回单个工作流的下一次运行预览。"""
+        workflow = _find_workflow(app.state.storage, workflow_id)
+        if workflow is None:
+            return JSONResponse({"detail": "编排任务不存在"}, status_code=404)
+        return app.state.scheduler.preview_workflow(workflow)
+
+    @app.get("/api/scheduler/preview")
+    def scheduler_preview() -> list[dict[str, Any]]:
+        """返回全部已启用工作流的调度预览。"""
+        return [
+            app.state.scheduler.preview_workflow(workflow)
+            for workflow in app.state.storage.workflows.list_all()
+            if workflow.get("enabled")
+        ]
+
     @app.websocket("/ws/events")
     async def events_websocket(websocket: WebSocket) -> None:
         """推送近期事件并保持 WebSocket 连接。"""
@@ -230,7 +371,25 @@ def create_app(db_path: Path | str | None = None, api_token: str | None = None) 
         current_event_hub = app.state.event_hub
         await current_event_hub.connect(websocket)
         try:
-            for event in current_event_hub.recent_events():
+            current = _run_with_runtime_evidence(
+                app.state.storage,
+                app.state.storage.runs.current(),
+            )
+            after_seq_raw = websocket.query_params.get("after_seq")
+            after_seq = int(after_seq_raw) if after_seq_raw else None
+            bootstrap_events = current_event_hub.recent_events(after_seq=after_seq)
+            snapshot_event: dict[str, Any] = {
+                "type": "run_snapshot",
+                "snapshot": current,
+                "run_id": current.get("run_id") if current else None,
+            }
+            # 保留旧客户端把首条无活动事件当作日志读取的兼容字段。
+            if current is None and bootstrap_events:
+                first_message = bootstrap_events[0].get("message")
+                if first_message is not None:
+                    snapshot_event["message"] = first_message
+            await websocket.send_json(snapshot_event)
+            for event in bootstrap_events:
                 await websocket.send_json(event)
             while True:
                 await websocket.receive_text()
@@ -271,6 +430,25 @@ def _workflow_with_steps(storage: Storage, workflow: dict[str, Any]) -> dict[str
     return item
 
 
+def _run_with_runtime_evidence(
+    storage: Storage,
+    run: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """把数据库 run 补齐当前快照和证据，供 API/WebSocket 共用。"""
+    if run is None:
+        return None
+    item = dict(run)
+    run_id = int(item["id"])
+    item["latest_snapshot"] = storage.snapshots.latest_by_run(run_id)
+    item["evidence"] = storage.evidence.list_by_run(run_id)
+    return item
+
+
+def _list_snapshots(storage: Storage, run_id: int) -> list[dict[str, Any]]:
+    """返回历史详情可用的状态快照列表。"""
+    return storage.snapshots.list_by_run(run_id)
+
+
 def _run_workflow_in_background(app: FastAPI, workflow: dict[str, Any]) -> None:
     """在线程中执行编排任务，并将后台异常发布到事件流。"""
     try:
@@ -291,3 +469,27 @@ def _find_workflow(storage: Storage, workflow_id: int) -> dict[str, Any] | None:
         if int(workflow["id"]) == workflow_id:
             return workflow
     return None
+
+
+def _set_workflow_enabled(
+    storage: Storage,
+    workflow_id: int,
+    enabled: bool,
+) -> dict[str, str] | JSONResponse:
+    """更新工作流启用状态。"""
+    workflow = storage.workflows.get(workflow_id)
+    if workflow is None:
+        return JSONResponse({"detail": "编排任务不存在"}, status_code=404)
+    found = storage.workflows.update(
+        workflow_id=workflow_id,
+        name=str(workflow["name"]),
+        group_name=str(workflow["group_name"]),
+        enabled=enabled,
+        trigger_type=str(workflow["trigger_type"]),
+        trigger_config=dict(workflow.get("trigger_config", {})),
+        failure_policy=str(workflow["failure_policy"]),
+        priority=int(workflow.get("priority", 0)),
+        success_interval_seconds=float(workflow.get("success_interval_seconds", 0)),
+        failure_interval_seconds=float(workflow.get("failure_interval_seconds", 0)),
+    )
+    return {"status": "ok"} if found else JSONResponse({"detail": "编排任务不存在"}, status_code=404)

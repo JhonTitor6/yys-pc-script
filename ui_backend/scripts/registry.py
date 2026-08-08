@@ -88,13 +88,24 @@ class ScriptRegistry:
         return cast(list[dict[str, Any]], schema)
 
     def _parse_field(self, item: dict[str, Any]) -> ConfigField:
+        field_type = str(item["field_type"])
+        if field_type == "checkbox":
+            field_type = "boolean"
         return ConfigField(
             key=str(item["key"]),
             label=str(item["label"]),
-            field_type=cast(FieldType, item["field_type"]),
+            field_type=cast(FieldType, field_type),
             default=item.get("default"),
             min_value=cast(int | float | None, item.get("min_value")),
             max_value=cast(int | float | None, item.get("max_value")),
             options=cast(list[dict[str, Any]], item.get("options", [])),
             hot_reloadable=cast(bool, item.get("hot_reloadable", True)),
+            description=str(
+                item.get("description")
+                or item.get("help")
+                or item.get("label")
+                or item["key"]
+            ),
+            unit=cast(str | None, item.get("unit")),
+            sensitive=bool(item.get("sensitive", False)),
         )

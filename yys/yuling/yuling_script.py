@@ -57,6 +57,9 @@ class AutoYuling(YYSBaseScript):
                 "max_value": config_meta.max_value,
                 "options": list(config_meta.options or []),
                 "hot_reloadable": config_meta.hot_reloadable,
+                "description": config_meta.help,
+                "unit": config_meta.unit,
+                "sensitive": config_meta.sensitive,
             })
         return result
 

@@ -238,6 +238,13 @@ function normalizeConfigValue(value, field) {
   if (field?.field_type === 'boolean') {
     return value === true || value === 'true';
   }
+  if (field?.field_type === 'select') {
+    const matchedOption = (field.options || []).find((item) => {
+      const optionValue = item.value ?? item.label ?? '';
+      return String(optionValue) === String(value);
+    });
+    return matchedOption ? (matchedOption.value ?? matchedOption.label ?? '') : value;
+  }
   return value;
 }
 

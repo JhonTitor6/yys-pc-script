@@ -139,3 +139,37 @@ def test_battle_running_template_does_not_match_recorded_summary() -> None:
     )
 
     assert point == (-1, -1)
+
+
+def test_recorded_grid_reward_closes_without_counting_battle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """正式录制中的九宫格奖励画面应关闭，但不能增加战斗次数。"""
+    monkeypatch.setattr(event_module.time, "sleep", lambda _seconds: None)
+    action_log = ActionLog()
+    env = _create_environment("refresh", "settlement_reward", action_log)
+    script = RealmRaidScript(env=env)
+    script.image_finder.update_screenshot_cache()
+
+    triggered_event = script._trigger_event_from_screenshot_cache()
+
+    assert triggered_event == "yys/images/battle_end_1.bmp"
+    assert script._cur_battle_count == 0
+    action_log.assert_click_count(1)
+
+
+def test_recorded_milestone_reward_closes_without_counting_battle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """正式录制中的里程碑奖励弹窗应关闭，但不能增加战斗次数。"""
+    monkeypatch.setattr(event_module.time, "sleep", lambda _seconds: None)
+    action_log = ActionLog()
+    env = _create_environment("refresh", "milestone_reward", action_log)
+    script = RealmRaidScript(env=env)
+    script.image_finder.update_screenshot_cache()
+
+    triggered_event = script._trigger_event_from_screenshot_cache()
+
+    assert triggered_event == "yys/images/battle_end_1.bmp"
+    assert script._cur_battle_count == 0
+    action_log.assert_click_count(1)

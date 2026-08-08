@@ -10,6 +10,7 @@
     "last_attack_dialog": "scenes/last_attack_dialog.png",
     "last_battle": "scenes/last_battle.png",
     "settlement_reward": "scenes/settlement_reward.png",
+    "milestone_reward": "scenes/milestone_reward.png",
     "new_grid": "scenes/new_grid.png"
   },
   "transitions": [

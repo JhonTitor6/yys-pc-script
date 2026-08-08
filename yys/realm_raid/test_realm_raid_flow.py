@@ -337,11 +337,40 @@ def test_battle_loss_keeps_round_progress(
     """战斗失败沿用公共结算，但不能清空本轮已尝试目标。"""
     monkeypatch.setattr(script, "bg_left_click", Mock())
     script.round_state.attempted_cells.add((1, 2))
+    script._on_battling((48, 593))
 
     script._on_battle_end((500, 300))
 
     assert script._cur_battle_count == 1
     assert script.round_state.attempted_cells == {(1, 2)}
+
+
+def test_unrelated_reward_dialog_is_dismissed_without_counting(
+    script: RealmRaidScript,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """没有对应战斗时，结界奖励弹窗只关闭，不增加战斗次数。"""
+    click = Mock()
+    monkeypatch.setattr(script, "bg_left_click", click)
+
+    script._on_battle_end((500, 300))
+
+    assert script._cur_battle_count == 0
+    click.assert_called_once_with((500, 300), x_range=30, y_range=50)
+
+
+def test_one_battle_counts_only_first_matching_settlement(
+    script: RealmRaidScript,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """同一场战斗后重复出现同模板奖励画面时只能计数一次。"""
+    monkeypatch.setattr(script, "bg_left_click", Mock())
+    script._on_battling((48, 593))
+
+    script._on_battle_end((500, 300))
+    script._on_battle_end((500, 300))
+
+    assert script._cur_battle_count == 1
 
 
 def test_max_battle_count_has_explicit_stop_reason(

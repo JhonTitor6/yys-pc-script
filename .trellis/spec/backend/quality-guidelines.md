@@ -55,6 +55,10 @@ mock replay, observe-only mode, action limits, or emergency stop.
 - Realm-raid automatic group change requires both a victory-count increase since the
   current round started and a real match for `realm_raid_record_zero.bmp`. Either signal
   alone is insufficient.
+- A settlement image that is also reused by realm-raid milestone rewards must not be
+  treated as proof of a battle by itself. Arm settlement counting from a confirmed attack
+  or persistent battle marker, consume the arm on the first matching settlement, and still
+  dismiss an unarmed reward dialog without increasing the battle count.
 - Every long-lived runtime state must own at least one registered image event. A real
   frame is considered known by `RunGuard` only when `_trigger_event_from_screenshot_cache`
   returns a registered event; adding a fixture scene or a `SceneManager` template alone
@@ -122,6 +126,7 @@ mock replay, observe-only mode, action limits, or emergency stop.
 | Search rectangle is narrower or shorter than its template placement | Fix the bounds and add a real-fixture regression |
 | Realm-raid record is zero but no victory was gained this round | Keep the current round; this can be the quit-three sequence |
 | Victory increased but record-zero template is absent | Keep the current round and wait for reliable visual evidence |
+| Realm-raid settlement image appears without an armed attack/battle state | Dismiss the reward dialog, keep the battle count unchanged, and continue scene detection |
 | Battle frame matches no registered image event | Count as unknown and stop at `unknown_limit`; add a confirmed state marker rather than increasing the limit |
 | Battle-running marker matches | Return a known event, reset the unknown counter, and send no input |
 | Battle marker disappears before a settlement template appears | Keep unknown count at zero only for the marker-refreshed trailing grace; recognize settlement normally when it appears |
@@ -164,6 +169,9 @@ mock replay, observe-only mode, action limits, or emergency stop.
   the battle marker cancels the remaining grace as soon as it appears.
 - Good: each persistent battle-marker match refreshes a five-second, input-free trailing
   grace; the victory template appears during that interval and ends grace normally.
+- Good: realm raid consumes one armed settlement on the first matching reward image;
+  the same image used by a 3/6/9-grid milestone reward is dismissed without a second
+  battle count.
 - Good: an explicitly authorized debugging process passes
   `--confirmation-phrase "RUN realm_raid"` and still uses foreground capture, action
   limits, timeout, unknown limits, F12, and one-process-one-run behavior.
@@ -188,6 +196,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
   matching cannot place an image outside the supplied search buffer.
 - Bad: treating “攻略记录 0” alone as a new realm-raid group. The first target's
   quit-three sequence also occurs while the record is zero.
+- Bad: incrementing the realm-raid battle counter whenever `battle_end_1.bmp` matches;
+  milestone rewards and a repeated settlement frame can use the same image.
 - Bad: assuming that a scene present in a replay fixture is automatically known to the
   event loop. `SceneReplayEnvironment`, `SceneManager`, and registered image events are
   separate layers.
@@ -231,6 +241,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
   while failed retry does not.
 - Business integration: a real battle marker produces no input and refreshes a bounded
   settlement-transition grace; three unknown observations during that grace do not stop.
+- Realm raid: a recorded milestone reward image is dismissed without incrementing the
+  battle counter, while one armed battle settlement increments it exactly once.
 - CLI: non-interactive startup without a phrase and any mismatched phrase fail before
   window construction; an exact authorized phrase reaches the same guarded execute
   orchestration without calling interactive input.

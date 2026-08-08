@@ -337,14 +337,19 @@ class YYSBaseScript(EventBaseScript, metaclass=_ABCMetaRelaxDel):
         self._cur_battle_victory_count += 1
         time.sleep(BATTLE_VICTORY_SLEEP)
 
+    def _should_count_battle_end(self, _point: tuple[int, int]) -> bool:
+        """判断当前结算画面是否计入战斗次数；默认所有结算画面都计数。"""
+        return True
+
     def _on_battle_end(self, point: tuple):
         """战斗结束（失败/奖励）处理"""
         # 不可去掉。如果不等一会，没点掉导致触发多次的话，会多次触发_cur_battle_count+=1
         time.sleep(BATTLE_END_SLEEP)
         # 使用匹配到的实际位置点击
         self.bg_left_click(point, x_range=BATTLE_END_CLICK_RANGE_X, y_range=BATTLE_END_CLICK_RANGE_Y)
-        self._cur_battle_count += 1
-        self._log_battle_count()
+        if self._should_count_battle_end(point):
+            self._cur_battle_count += 1
+            self._log_battle_count()
         time.sleep(BATTLE_END_CLICK_SLEEP)
 
     def _log_battle_count(self):

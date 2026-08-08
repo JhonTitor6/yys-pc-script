@@ -136,6 +136,7 @@ class RealmRaidScript(YYSBaseScript):
         self.attackable_barrier_list: list[RealmTarget] = []
         self.round_state = RealmRaidRoundState()
         self.stop_reason: Optional[RealmRaidStopReason] = None
+        self._battle_result_armed = False
 
         # 注册结界突破特定的图像匹配事件
         self._register_image_match_event(ImageMatchConfig("yys/realm_raid/images/realm_raid_not_enough.bmp", similarity=0.85),
@@ -235,6 +236,7 @@ class RealmRaidScript(YYSBaseScript):
 
     def _on_attack(self, point: tuple[int, int]) -> None:
         """点击进攻；每个新九宫格只执行一次退三次流程。"""
+        self._battle_result_armed = True
         self.bg_left_click(point, x_range=10, y_range=10)
         if not self.quit_3_times_config or self.round_state.quit_three_completed:
             self._allow_battle_transition()
@@ -246,10 +248,19 @@ class RealmRaidScript(YYSBaseScript):
 
     def _on_battling(self, _point: tuple[int, int]) -> None:
         """确认战斗仍在进行，并为随后的结算动画保留短暂宽限。"""
+        self._battle_result_armed = True
         if self._run_guard is not None:
             self._run_guard.allow_unknown_for(
                 self.BATTLE_SETTLEMENT_GRACE_SECONDS,
             )
+
+    def _should_count_battle_end(self, _point: tuple[int, int]) -> bool:
+        """只把与本轮真实战斗关联的首个结算画面计入次数。"""
+        if not self._battle_result_armed:
+            self.logger.debug("忽略未关联战斗的奖励结算画面")
+            return False
+        self._battle_result_armed = False
+        return True
 
     def _allow_battle_transition(self) -> None:
         """真实运行时容忍进攻后的短暂加载动画。"""
@@ -366,6 +377,7 @@ class RealmRaidScript(YYSBaseScript):
         self.attackable_barrier_list = []
         self.round_state = RealmRaidRoundState()
         self.stop_reason = None
+        self._battle_result_armed = False
 
     def after_iteration(self) -> None:
         """记录达到最大战斗次数的明确停机原因。"""

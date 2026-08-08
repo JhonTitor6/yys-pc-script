@@ -79,3 +79,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: 结界突破结算计数修复
+
+**Date**: 2026-08-08
+**Task**: 结界突破结算计数修复
+**Branch**: `master`
+
+### Summary
+
+修复里程碑奖励弹窗复用结算图片导致战斗次数重复减少；补充真实关键帧夹具和回归测试，45 项通过。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5c568f3` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

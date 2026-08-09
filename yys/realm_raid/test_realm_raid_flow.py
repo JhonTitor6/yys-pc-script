@@ -21,7 +21,9 @@ def script(monkeypatch: pytest.MonkeyPatch) -> RealmRaidScript:
     """创建不执行真实等待的结界突破脚本。"""
     monkeypatch.setattr(realm_module.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(realm_module, "random_sleep", lambda _start, _end: None)
-    return RealmRaidScript(env=MockEnvironment())
+    script = RealmRaidScript(env=MockEnvironment())
+    monkeypatch.setattr(script.win_controller, "update_screenshot_cache", Mock())
+    return script
 
 
 def test_targets_are_scanned_in_row_major_order(
@@ -93,6 +95,11 @@ def test_automatic_new_grid_resets_round_before_target_selection(
         "bg_find_pic_by_cache",
         Mock(return_value=(100, 540)),
     )
+    monkeypatch.setattr(
+        script.image_finder,
+        "bg_find_pic_all_by_cache",
+        Mock(return_value=[(i, i, 0.9) for i in range(9)]),
+    )
     monkeypatch.setattr(script, "get_all_attackable_barrier", Mock(return_value=[target]))
     monkeypatch.setattr(script, "bg_left_click", click)
     script.round_state.attempted_cells.add((0, 0))
@@ -107,6 +114,37 @@ def test_automatic_new_grid_resets_round_before_target_selection(
     assert script.round_state.quit_three_completed is False
     assert script.round_state.attempted_cells == {(0, 0)}
     click.assert_called_once_with((200, 180), x_range=5, y_range=5)
+
+
+def test_record_zero_on_partial_grid_does_not_reset_round(
+    script: RealmRaidScript,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """打了一半的旧组即使 record_zero 模板命中，也不能误判自动换组。"""
+    target = RealmTarget(row=0, col=0, point=(200, 180))
+    monkeypatch.setattr(
+        script.image_finder,
+        "bg_find_pic_by_cache",
+        Mock(return_value=(100, 540)),
+    )
+    monkeypatch.setattr(
+        script.image_finder,
+        "bg_find_pic_all_by_cache",
+        Mock(return_value=[(i, i, 0.9) for i in range(3)]),
+    )
+    monkeypatch.setattr(script.image_finder, "screenshot_cache", None)
+    monkeypatch.setattr(script, "get_all_attackable_barrier", Mock(return_value=[target]))
+    monkeypatch.setattr(script, "bg_left_click", Mock())
+    script.round_state.attempted_cells.add((0, 0))
+    script.round_state.quit_three_completed = True
+    script.round_state.victory_count_at_start = 1
+    script._cur_battle_victory_count = 2
+
+    script._on_attackable_barrier((999, 999))
+
+    assert script.round_state.generation == 1
+    assert script.round_state.quit_three_completed is True
+    assert script.round_state.attempted_cells == {(0, 0)}
 
 
 def test_record_zero_during_quit_sequence_does_not_reset_round(
@@ -141,11 +179,50 @@ def test_repeatedly_missing_unattempted_target_stops(
     monkeypatch.setattr(script, "bg_left_click", Mock())
     monkeypatch.setattr(script, "stop", stop)
 
-    script._on_attackable_barrier((999, 999))
-    script._on_attackable_barrier((999, 999))
+    script._on_attackable_barrier((999, 999))  # 首次尝试
+    script._on_attackable_barrier((999, 999))  # 重试 1
+    script._on_attackable_barrier((999, 999))  # 重试 2
+    script._on_attackable_barrier((999, 999))  # 重试 3
+    script._on_attackable_barrier((999, 999))  # 超过重试上限
+
+    stop.assert_called_once_with()
+    assert script.stop_reason is RealmRaidStopReason.NO_ATTACKABLE_TARGET
+
+
+def test_retry_reattempts_attackable_but_attempted_target(
+    script: RealmRaidScript,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """点击未生效（结界仍可攻击）时应限次重试，而不是立即停机。"""
+    target = RealmTarget(row=0, col=0, point=(200, 180))
+    click = Mock()
+    monkeypatch.setattr(script, "get_all_attackable_barrier", Mock(return_value=[target]))
+    monkeypatch.setattr(script, "bg_left_click", click)
+    script.round_state.attempted_cells.add((0, 0))
+
     script._on_attackable_barrier((999, 999))
     script._on_attackable_barrier((999, 999))
 
+    assert click.call_count == 2
+    assert script.round_state.retry_count == 2
+    assert script.stop_reason is None
+
+
+def test_no_attackable_barrier_counts_observations(
+    script: RealmRaidScript,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """九宫格内没有可攻击结界时维持原有观测计数停机逻辑。"""
+    stop = Mock()
+    monkeypatch.setattr(script, "get_all_attackable_barrier", Mock(return_value=[]))
+    monkeypatch.setattr(script, "bg_left_click", Mock())
+    monkeypatch.setattr(script, "stop", stop)
+
+    for _ in range(3):
+        script._on_attackable_barrier((999, 999))
+
+    assert script.round_state.no_target_observations == 3
+    assert script.round_state.retry_count == 0
     stop.assert_called_once_with()
     assert script.stop_reason is RealmRaidStopReason.NO_ATTACKABLE_TARGET
 

@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from typing import Annotated, Any, Optional, TYPE_CHECKING, TypedDict, get_type_hints
+import os
+
+import cv2
 
 # 仅在本脚本作为 __main__ 进程运行时生效：在父类 from-import 之前修改包级属性，
 # 让 YYSBaseScript 的 BATTLE_END_CLICK_SLEEP 绑定为 3。其他独立脚本进程不受影响。
@@ -42,6 +46,7 @@ class RealmRaidRoundState:
     attempted_cells: set[tuple[int, int]] = field(default_factory=set)
     current_cell: Optional[tuple[int, int]] = None
     no_target_observations: int = 0
+    retry_count: int = 0
 
 
 class RealmRaidStopReason(str, Enum):
@@ -81,6 +86,10 @@ class RealmRaidScript(YYSBaseScript):
     """结界突破脚本：循环攻击可攻击的结界。"""
     BATTLE_TRANSITION_GRACE_SECONDS = 12.0
     BATTLE_SETTLEMENT_GRACE_SECONDS = 5.0
+    # 可攻击但已尝试结界的最多重试次数（点击未生效进入不了挑战时重试）
+    MAX_TARGET_RETRY_COUNT = 3
+    # 新九宫格应几乎满员可见；低于此数视为 record_zero 模板误报（打了一半的旧组）
+    MIN_NEW_GRID_VISIBLE_TARGETS = 6
 
     SCRIPT_META = ScriptMeta(
         display_name="结界突破",
@@ -169,6 +178,8 @@ class RealmRaidScript(YYSBaseScript):
 
     def _on_attackable_barrier(self, _point: tuple[int, int]) -> None:
         """按从左到右、从上到下的顺序选择本轮尚未尝试的目标。"""
+        # 点击前刷新截图缓存，避免基于陈旧画面定位
+        self.win_controller.update_screenshot_cache()
         if self._is_automatic_new_round():
             self.logger.info("检测到攻略记录归零，开始自动换组后的新九宫格")
             self._start_new_round()
@@ -182,13 +193,26 @@ class RealmRaidScript(YYSBaseScript):
             None,
         )
         if target is None:
-            self.round_state.no_target_observations += 1
-            self.logger.info("当前九宫格没有尚未尝试的结界")
-            if self.round_state.no_target_observations >= 3:
+            if not self.attackable_barrier_list:
+                self.round_state.no_target_observations += 1
+                self.logger.info("当前九宫格没有可攻击的结界")
+                if self.round_state.no_target_observations >= 3:
+                    self._stop_with_reason(RealmRaidStopReason.NO_ATTACKABLE_TARGET)
+                return
+            # 有结界可攻击但均已尝试过：多半是上次点击未生效（未进入挑战），限次重试
+            if self.round_state.retry_count >= self.MAX_TARGET_RETRY_COUNT:
                 self._stop_with_reason(RealmRaidStopReason.NO_ATTACKABLE_TARGET)
-            return
+                return
+            target = self.attackable_barrier_list[0]
+            self.round_state.retry_count += 1
+            self.logger.info(
+                f"可攻击结界均已尝试，重试第{self.round_state.retry_count}/"
+                f"{self.MAX_TARGET_RETRY_COUNT}次"
+            )
+        else:
+            self.round_state.no_target_observations = 0
+            self.round_state.retry_count = 0
         cell = (target.row, target.col)
-        self.round_state.no_target_observations = 0
         self.round_state.current_cell = cell
         self.round_state.attempted_cells.add(cell)
         self.bg_left_click(target.point, x_range=5, y_range=5)
@@ -235,7 +259,30 @@ class RealmRaidScript(YYSBaseScript):
             x1=280,
             y1=620,
         )
-        return point is not None and point != (-1, -1)
+        if point is None or point == (-1, -1):
+            return False
+        # 二次验证：新组九宫格几乎满员可见；打了一半的旧组通常只剩少数可攻击结界，
+        # 此时 record_zero 命中是模板误报（录制对比两者该区域相似度仅差 0.01）。
+        visible_targets = self.image_finder.bg_find_pic_all_by_cache(
+            "yys/realm_raid/images/realm_raid_user_realm.bmp"
+        )
+        if len(visible_targets) < self.MIN_NEW_GRID_VISIBLE_TARGETS:
+            self._save_record_zero_region()
+            return False
+        return True
+
+    def _save_record_zero_region(self) -> None:
+        """诊断用：保存攻略记录区域截图，用于校验 record_zero 模板。"""
+        try:
+            cache = self.image_finder.screenshot_cache
+            if cache is None:
+                return
+            os.makedirs("logs", exist_ok=True)
+            path = f"logs/record_zero_mismatch_{datetime.now():%Y%m%d_%H%M%S}.png"
+            cv2.imwrite(path, cache[480:620, 0:280])
+            self.logger.info(f"已保存攻略记录区域截图: {path}")
+        except Exception:
+            self.logger.exception("保存攻略记录区域截图失败")
 
     def _on_attack(self, point: tuple[int, int]) -> None:
         """点击进攻；每个新九宫格只执行一次退三次流程。"""
@@ -368,6 +415,7 @@ class RealmRaidScript(YYSBaseScript):
             "round_victory_count_at_start": self.round_state.victory_count_at_start,
             "quit_three_completed": self.round_state.quit_three_completed,
             "attempted_target_count": len(self.round_state.attempted_cells),
+            "retry_count": self.round_state.retry_count,
             "current_cell": self.round_state.current_cell,
             "no_target_observations": self.round_state.no_target_observations,
             "stop_reason": self.stop_reason.value if self.stop_reason else None,

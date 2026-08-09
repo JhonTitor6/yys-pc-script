@@ -4,184 +4,151 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>阴阳师脚本工作台</title>
+  <script>
+    (() => {
+      const saved = window.localStorage.getItem('yys-gui-theme');
+      document.documentElement.dataset.theme = saved === 'dark' ? 'dark' : 'light';
+    })();
+  </script>
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="rail">
-      <div class="brand-mark">阴</div>
-      <button class="rail-button active" data-view="execute" title="执行">▶</button>
-      <button class="rail-button" data-view="workflows" title="编排">⏱</button>
-      <button class="rail-button" data-view="progress" title="进度">▦</button>
-      <button class="rail-button" data-view="logs" title="历史日志">≡</button>
-      <button class="rail-button" data-view="settings" title="设置">⚙</button>
-    </aside>
-    <aside class="script-panel">
-      <div class="panel-title">
-        <p>脚本列表</p>
-        <h1>执行工作台</h1>
+  <svg class="icon-sprite" aria-hidden="true" focusable="false">
+    <symbol id="icon-play" viewBox="0 0 24 24"><path d="M8 5.8v12.4a1.5 1.5 0 0 0 2.27 1.29l9.7-6.2a1.5 1.5 0 0 0 0-2.54l-9.7-6.2A1.5 1.5 0 0 0 8 5.8Z" fill="currentColor"/></symbol>
+    <symbol id="icon-pause" viewBox="0 0 24 24"><path d="M8 5.5v13M16 5.5v13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="icon-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M19 8.5A7 7 0 0 0 6.4 6.7L4.5 8.5M4.5 5v3.5H8M5 15.5a7 7 0 0 0 12.6 1.8l1.9-1.8M19.5 19v-3.5H16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-arrow-right" viewBox="0 0 24 24"><path d="m9.5 5 7 7-7 7M16 12H7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-workflow" viewBox="0 0 24 24"><path d="M5 5h5v5H5zM14 14h5v5h-5zM10 7.5h4a2 2 0 0 1 2 2V14M7.5 10v4a2 2 0 0 0 2 2H14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-history" viewBox="0 0 24 24"><path d="M4.2 10a8 8 0 1 1 1.9 6.2M4 5v5h5M12 7v5l3.4 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24"><path d="m9.7 4.1.5-1.1h3.6l.5 1.1 1.4.8 1.2-.2 1.8 3.1-.8.9v1.7l.8.9-1.8 3.1-1.2-.2-1.4.8-.5 1.1h-3.6l-.5-1.1-1.4-.8-1.2.2-1.8-3.1.8-.9V8.7l-.8-.9 1.8-3.1 1.2.2 1.4-.8Z" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linejoin="round"/><circle cx="12" cy="9.6" r="2.5" fill="none" stroke="currentColor" stroke-width="1.55"/></symbol>
+    <symbol id="icon-panel" viewBox="0 0 24 24"><path d="M4 5.5h16v13H4zM9 5.5v13M6.5 8.5h.01M6.5 11.5h.01M6.5 14.5h.01" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+    <symbol id="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2.8v2M12 19.2v2M21.2 12h-2M4.8 12h-2M18.5 5.5l-1.4 1.4M6.9 17.1l-1.4 1.4M18.5 18.5l-1.4-1.4M6.9 6.9 5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+    <symbol id="icon-moon" viewBox="0 0 24 24"><path d="M18.7 15.9A7.5 7.5 0 0 1 8.1 5.3 7.5 7.5 0 1 0 18.7 15.9Z" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+    <symbol id="icon-minimize" viewBox="0 0 24 24"><path d="M5 17.5h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="icon-maximize" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+    <symbol id="icon-restore" viewBox="0 0 24 24"><path d="M8 8h10v10M6 16V6h10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12.5 4.3 4.3L19 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="icon-flag" viewBox="0 0 24 24"><path d="M6 20V4m1 1h10l-2.2 3L17 11H7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </svg>
+
+  <div class="app-frame">
+    <header class="window-chrome" aria-label="窗口标题栏">
+      <div class="window-brand" data-drag-region>
+        <span class="stamp window-stamp" aria-hidden="true">阴</span>
+        <strong>阴阳师脚本工作台</strong>
+        <span>桌面自动化工具</span>
       </div>
-      <div id="scriptList" class="script-list"></div>
-    </aside>
-    <main class="main-panel">
-      <section id="executeView" class="view active">
-        <header class="run-header">
-          <div>
-            <p class="eyebrow">当前运行</p>
-            <h2 id="currentRunTitle">暂无运行脚本</h2>
+      <div class="window-controls">
+        <button type="button" class="window-control" data-window-action="minimize" aria-label="最小化"><svg class="icon"><use href="#icon-minimize"></use></svg></button>
+        <button type="button" class="window-control" data-window-action="toggle-maximize" aria-label="最大化"><svg class="icon"><use href="#icon-maximize"></use></svg></button>
+        <button type="button" class="window-control close" data-window-action="close" aria-label="关闭"><svg class="icon"><use href="#icon-close"></use></svg></button>
+      </div>
+    </header>
+
+    <div class="app-shell">
+      <aside class="app-nav" id="appNav" aria-label="主导航">
+        <div class="nav-brand">
+          <span class="stamp brand-stamp" aria-hidden="true">阴</span>
+          <span class="nav-brand-copy"><strong>阴阳师</strong><small>PC SCRIPT</small></span>
+        </div>
+        <button id="navToggle" class="nav-toggle" type="button" aria-label="折叠导航" data-tooltip="折叠导航" aria-expanded="true"><svg class="icon"><use href="#icon-panel"></use></svg><span>导航</span></button>
+        <nav class="primary-nav" aria-label="一级导航">
+          <button class="nav-item active" type="button" data-view="run" aria-label="运行" data-tooltip="运行" aria-current="page"><svg class="icon"><use href="#icon-play"></use></svg><span>运行</span></button>
+          <button class="nav-item" type="button" data-view="workflows" aria-label="工作流" data-tooltip="工作流"><svg class="icon"><use href="#icon-workflow"></use></svg><span>工作流</span></button>
+          <button class="nav-item" type="button" data-view="history" aria-label="历史" data-tooltip="历史"><svg class="icon"><use href="#icon-history"></use></svg><span>历史</span></button>
+          <button class="nav-item" type="button" data-view="settings" aria-label="设置" data-tooltip="设置"><svg class="icon"><use href="#icon-settings"></use></svg><span>设置</span></button>
+        </nav>
+        <div class="nav-footer"><span class="stamp nav-footer-stamp" aria-hidden="true">式</span><span>本地工作台</span></div>
+      </aside>
+
+      <div class="app-column">
+        <header class="topbar">
+          <div class="topbar-page">
+            <h1 id="pageTitle">运行</h1>
+            <span id="connectionStatus" class="status-pill connection disconnected" role="status" aria-live="polite">未连接</span>
           </div>
-          <div class="run-actions">
-            <span id="connectionStatus" class="status-pill connection disconnected">未连接</span>
-            <span id="runStatus" class="status-pill idle">空闲</span>
-            <button id="mainPauseButton" class="ghost-button" data-main-action="pause" disabled>暂停</button>
-            <button id="mainResumeButton" class="ghost-button" data-main-action="resume" disabled>恢复</button>
-            <button id="mainStopButton" class="danger-button" data-main-action="stop" disabled>停止</button>
-            <button id="mainContinueButton" class="ghost-button" data-main-action="continue_waiting" disabled>继续等待 3 分钟</button>
-            <button id="mainRetryButton" class="ghost-button" data-main-action="retry" disabled>重试</button>
-            <button id="mainSkipButton" class="ghost-button" data-main-action="skip" disabled>跳过</button>
-            <button id="mainManualButton" class="ghost-button" data-main-action="manual_takeover" disabled>人工接管</button>
+          <div class="topbar-run" id="globalRunBar">
+            <div class="topbar-run-copy"><span>当前运行</span><strong id="currentRunTitle">无</strong></div>
+            <span id="currentRunProgress" class="topbar-run-progress" hidden>—</span>
+            <span id="globalRunStatus" class="status-pill idle">空闲</span>
+            <button id="viewRunButton" class="link-button" type="button" data-view-run>查看运行</button>
+            <button id="mainStopButton" class="button danger compact-button" type="button" data-run-action="stop" hidden><svg class="icon"><use href="#icon-stop"></use></svg>停止</button>
           </div>
+          <button id="themeToggle" class="icon-button" type="button" aria-label="切换深色主题" title="切换主题"><svg class="icon"><use href="#icon-moon"></use></svg></button>
         </header>
-        <section class="run-summary">
-          <div>
-            <p class="eyebrow">参数</p>
-            <p id="runConfigText" class="summary-value">未启动</p>
-            <p class="eyebrow">当前阶段</p>
-            <p id="runStage" class="summary-value">空闲</p>
-            <p id="runError" class="run-error" hidden></p>
-            <p id="progressText" class="progress-text">0%</p>
-            <div class="progress-bar"><span id="progressBar"></span></div>
-          </div>
-          <div class="metric-grid">
-            <div class="metric"><p>已战斗</p><strong id="battleCount">0 / 0</strong></div>
-            <div class="metric"><p>胜利</p><strong id="victoryCount">0</strong></div>
-            <div class="metric"><p>运行来源</p><strong id="runSource">-</strong></div>
-          </div>
-        </section>
-        <section class="log-panel">
-          <div class="log-header">
-            <span>实时日志</span>
-            <div class="log-actions">
-              <select id="logLevelFilter">
-                <option value="DEBUG">DEBUG+</option>
-                <option value="INFO" selected>INFO+</option>
-                <option value="WARNING">WARN+</option>
-                <option value="ERROR">ERROR</option>
-              </select>
-              <button id="clearLogButton">清空</button>
+
+        <main id="mainContent" class="app-main" tabindex="-1">
+          <section id="runView" class="page page-run view active" aria-labelledby="runPageTitle">
+            <h2 id="runPageTitle" class="sr-only" tabindex="-1">运行</h2>
+            <div class="run-workspace">
+              <aside class="run-config-panel surface-block" aria-label="脚本配置">
+                <div class="run-pane-header">
+                  <h2>脚本配置</h2>
+                  <span id="configStatus" class="config-summary-state">未选择</span>
+                </div>
+                <div class="run-config-scroll">
+                  <div id="scriptList" class="script-picker"></div>
+                  <div id="configFields" class="config-fields"></div>
+                </div>
+                <div class="run-pane-actions">
+                  <p id="configFeedback" class="run-pane-hint" role="status" aria-live="polite">选择脚本后配置参数即可启动。</p>
+                  <div class="action-row">
+                    <button id="configResetButton" class="button quiet" type="button" data-config-action="reset">恢复默认</button>
+                    <button id="configSaveButton" class="button quiet" type="button" data-config-action="save">保存配置</button>
+                    <button id="configStartButton" class="button primary" type="button" data-config-action="start"><svg class="icon"><use href="#icon-play"></use></svg>启动任务</button>
+                  </div>
+                </div>
+              </aside>
+
+              <section class="run-execution-panel surface-block" aria-label="执行现场">
+                <div id="executionPanel" class="run-execution-scroll"></div>
+              </section>
             </div>
-          </div>
-          <div id="logBody" class="log-body"></div>
-        </section>
-      </section>
-      <section id="workflowsView" class="view">
-        <header class="workflows-view-header">
-          <h2>编排任务</h2>
-          <button id="newWorkflowButton" type="button" class="primary-button">+ 新建编排</button>
-        </header>
-        <div id="workflowList" class="workflow-list"></div>
-      </section>
-      <section id="progressView" class="view secondary-view">
-        <header class="workflows-view-header"><h2>进度与状态</h2></header>
-        <div id="progressDetail" class="detail-card">暂无运行快照</div>
-      </section>
-      <section id="logsView" class="view secondary-view">
-        <header class="workflows-view-header">
-          <h2>历史日志</h2>
-          <div class="history-toolbar">
-            <select id="historyStatusFilter" aria-label="历史状态过滤">
-              <option value="">全部状态</option>
-              <option value="success">已完成</option>
-              <option value="error">错误</option>
-              <option value="stopped">已停止</option>
-              <option value="skipped">已跳过</option>
-              <option value="manual">人工接管</option>
-            </select>
-            <button id="refreshHistoryButton" type="button" class="ghost-button">刷新</button>
-          </div>
-        </header>
-        <div id="historyList" class="history-list">暂无历史运行</div>
-        <div class="history-pagination">
-          <button id="historyPreviousButton" type="button" class="ghost-button" disabled>上一页</button>
-          <span id="historyPageText">第 1 页</span>
-          <button id="historyNextButton" type="button" class="ghost-button">下一页</button>
-        </div>
-        <div id="historyDetail" class="detail-card" hidden>选择一条运行记录查看详情</div>
-      </section>
-      <section id="settingsView" class="view secondary-view">
-        <header class="workflows-view-header"><h2>设置</h2></header>
-        <div class="detail-card">当前使用本地 FastAPI + WebSocket；多客户端并行和自动续跑暂未支持。</div>
-      </section>
-      <section id="globalRunBar" class="global-run-bar" hidden>
-        <div><span class="eyebrow">当前运行</span><strong id="globalRunTitle">—</strong></div>
-        <span id="globalRunStatus" class="status-pill idle">空闲</span>
-        <div class="run-actions">
-          <button class="ghost-button" data-global-action="pause" disabled>暂停</button>
-          <button class="ghost-button" data-global-action="resume" disabled>恢复</button>
-          <button class="danger-button" data-global-action="stop" disabled>停止</button>
-          <button class="ghost-button" data-global-action="continue_waiting" disabled>继续等待 3 分钟</button>
-          <button class="ghost-button" data-global-action="retry" disabled>重试</button>
-          <button class="ghost-button" data-global-action="skip" disabled>跳过</button>
-          <button class="ghost-button" data-global-action="manual_takeover" disabled>人工接管</button>
-        </div>
-      </section>
-    </main>
-    <aside class="side-panel">
-      <section class="side-card"><p class="eyebrow">调度预告</p><div id="schedulePreview">暂无启用任务</div></section>
-      <section class="side-card"><p class="eyebrow">断点快照</p><div id="snapshotPreview">暂无快照</div></section>
-      <section class="side-card evidence-card"><p class="eyebrow">最新证据</p><div id="evidencePreview">暂无截图证据</div><img id="latestEvidence" alt="失败时的最新截图" hidden></section>
-      <section class="side-card"><p class="eyebrow">关键日志</p><div id="keyLogPreview">暂无警告或错误</div></section>
-    </aside>
-  </div>
-  <div id="workflowModal" class="modal-overlay" hidden>
-    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="workflowModalTitle">
-      <div class="modal-header">
-        <h3 id="workflowModalTitle">新建编排</h3>
-        <button id="closeWorkflowModalButton" type="button" class="modal-close" aria-label="关闭">✕</button>
-      </div>
-      <div class="modal-body">
-        <form id="workflowModalForm" class="workflow-editor">
-          <input type="hidden" name="workflow_id" value="">
-          <label><span>名称</span><input name="name" required></label>
-          <label><span>分组</span><input name="group_name"></label>
-          <div class="workflow-schedule-fields">
-            <label class="boolean-field"><input name="enabled" type="checkbox" value="true" checked><span>启用自动调度</span></label>
-            <label><span>优先级</span><input name="priority" type="number" min="0" value="0"></label>
-            <label><span>触发方式</span>
-              <select name="trigger_type">
-                <option value="manual">手动</option>
-                <option value="interval">按间隔</option>
-                <option value="scheduled_time">每日定时</option>
-              </select>
-            </label>
-            <label><span>默认间隔（秒）</span><input name="interval_seconds" type="number" min="0" value="0"></label>
-            <label><span>每日时间</span><input name="scheduled_time" type="time" value="09:00"></label>
-            <label><span>成功间隔（秒）</span><input name="success_interval_seconds" type="number" min="0" value="0"></label>
-            <label><span>失败间隔（秒）</span><input name="failure_interval_seconds" type="number" min="0" value="0"></label>
-          </div>
-          <label><span>失败策略</span>
-            <select name="failure_policy">
-              <option value="stop_workflow">失败后停止</option>
-              <option value="continue_next">失败后继续</option>
-              <option value="retry_then_stop">重试后停止</option>
-              <option value="stop">停止工作流</option>
-              <option value="continue">继续下一步</option>
-              <option value="retry">按步骤次数重试</option>
-              <option value="skip">跳过失败步骤</option>
-              <option value="manual">转人工接管</option>
-            </select>
-          </label>
-          <div id="workflowModalSteps" class="step-accordion-list"></div>
-        </form>
-      </div>
-      <div class="modal-footer">
-        <button id="addModalStep" type="button" class="ghost-button">+ 添加步骤</button>
-        <span class="spacer"></span>
-        <button id="cancelWorkflowModalButton" type="button" class="ghost-button">取消</button>
-        <button id="saveWorkflowModalButton" type="submit" class="primary-button" form="workflowModalForm">保存</button>
+          </section>
+
+          <section id="workflowsView" class="page generic-page view" aria-labelledby="workflowPageTitle" hidden>
+            <div id="workflowListView">
+              <header class="page-command"><div><h2 id="workflowPageTitle" tabindex="-1">工作流</h2><p>把多个脚本步骤组织成可复用的本地任务。</p></div><button id="newWorkflowButton" class="button primary" type="button"><svg class="icon"><use href="#icon-plus"></use></svg>新建工作流</button></header>
+              <div id="workflowList" class="workflow-list"></div>
+            </div>
+            <div id="workflowEditorView" hidden>
+              <header class="page-command"><div><button id="workflowBackButton" class="link-button back-link" type="button">← 返回工作流</button><h2 id="workflowEditorTitle" tabindex="-1">新建工作流</h2><p id="workflowEditorState">未保存</p></div><button id="workflowSaveButton" class="button primary" type="submit" form="workflowEditorForm">保存工作流</button></header>
+              <form id="workflowEditorForm" class="workflow-editor">
+                <div id="workflowEditorFeedback" class="form-feedback" role="status" aria-live="polite"></div>
+                <div class="workflow-editor-grid">
+                  <section class="settings-section"><div class="section-heading"><h3>基本信息</h3><p>名称、调度和失败处理方式。</p></div><div id="workflowEditorBasic"></div></section>
+                  <section class="settings-section"><div class="section-heading"><h3>步骤</h3><p>按顺序执行脚本或等待条件。</p></div><div id="workflowEditorSteps" class="step-list"></div><button id="addWorkflowStepButton" class="button quiet" type="button">+ 添加步骤</button></section>
+                </div>
+              </form>
+            </div>
+          </section>
+
+          <section id="historyView" class="page generic-page view" aria-labelledby="historyPageTitle" hidden>
+            <div id="historyListView">
+              <header class="page-command"><div><h2 id="historyPageTitle" tabindex="-1">历史</h2><p>查看已完成、失败和人工接管的运行记录。</p></div><button id="refreshHistoryButton" class="button quiet" type="button">刷新</button></header>
+              <div class="history-toolbar"><label><span>脚本</span><select id="historyScriptFilter" aria-label="按脚本筛选"><option value="">全部脚本</option></select></label><label><span>状态</span><select id="historyStatusFilter" aria-label="按状态筛选"><option value="">全部状态</option><option value="success">已完成</option><option value="error">错误</option><option value="stopped">已停止</option><option value="skipped">已跳过</option><option value="manual">人工接管</option></select></label></div>
+              <div id="historyList" class="history-table-wrap"></div>
+              <div class="history-pagination"><button id="historyPreviousButton" class="button quiet" type="button" disabled>上一页</button><span id="historyPageText">第 1 页</span><button id="historyNextButton" class="button quiet" type="button" disabled>下一页</button></div>
+            </div>
+            <section id="historyDetailView" class="history-detail-view" hidden></section>
+          </section>
+
+          <section id="settingsView" class="page generic-page view" aria-labelledby="settingsPageTitle" hidden>
+            <header class="page-command"><div><h2 id="settingsPageTitle" tabindex="-1">设置</h2><p>主题与本地工作台偏好。</p></div></header>
+            <div class="settings-grid">
+              <section class="settings-section"><div class="section-heading"><h3>外观</h3><p>默认浅色，选择会保存在本地。</p></div><div class="theme-options" id="themeOptions"><button type="button" class="theme-option" data-theme-option="light">浅色主题</button><button type="button" class="theme-option" data-theme-option="dark">深色主题</button></div></section>
+              <section class="settings-section"><div class="section-heading"><h3>应用信息</h3><p>当前桌面端运行能力。</p></div><dl class="info-list"><div><dt>后端</dt><dd>本地 FastAPI + WebSocket</dd></div><div><dt>运行模式</dt><dd>单执行槽，配置运行中只读</dd></div><div><dt>字体</dt><dd>系统字体</dd></div></dl></section>
+            </div>
+          </section>
+        </main>
       </div>
     </div>
   </div>
+
+  <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
   <script src="./renderer.js"></script>
 </body>
 </html>

@@ -8,5 +8,12 @@ contextBridge.exposeInMainWorld('desktopBridge', {
   },
   minimizeWindow: () => ipcRenderer.send('minimize-window'),
   maximizeWindow: () => ipcRenderer.send('maximize-window'),
-  closeWindow: () => ipcRenderer.send('close-window')
+  closeWindow: () => ipcRenderer.send('close-window'),
+  windowAction: (action) => ipcRenderer.invoke('window-action', action),
+  isMaximized: () => ipcRenderer.invoke('is-maximized'),
+  onWindowState: (callback) => {
+    const listener = (_event, windowState) => callback(windowState);
+    ipcRenderer.on('window-state', listener);
+    return () => ipcRenderer.removeListener('window-state', listener);
+  }
 });

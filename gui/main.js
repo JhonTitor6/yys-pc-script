@@ -303,6 +303,9 @@ function createWindow() {
     height: saved?.height ?? DEFAULT_BOUNDS.height,
     minWidth: MIN_WIDTH,
     minHeight: MIN_HEIGHT,
+    frame: false,
+    backgroundColor: '#f2f4f4',
+    autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -327,8 +330,13 @@ function createWindow() {
   };
   mainWindow.on('resize', scheduleSave);
   mainWindow.on('move', scheduleSave);
-  mainWindow.on('maximize', scheduleSave);
-  mainWindow.on('unmaximize', scheduleSave);
+  const sendWindowState = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.webContents.send('window-state', { maximized: mainWindow.isMaximized() });
+  };
+  mainWindow.on('maximize', () => { scheduleSave(); sendWindowState(); });
+  mainWindow.on('unmaximize', () => { scheduleSave(); sendWindowState(); });
+  mainWindow.on('ready-to-show', sendWindowState);
   mainWindow.on('close', () => {
     if (saveTimer) clearTimeout(saveTimer);
     saveWindowBounds(mainWindow);
@@ -364,6 +372,25 @@ ipcMain.on('maximize-window', () => {
 ipcMain.on('close-window', () => {
   if (mainWindow) mainWindow.close();
 });
+
+if (typeof ipcMain.handle === 'function') {
+  ipcMain.handle('window-action', (event, action) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || win.isDestroyed()) return { maximized: false };
+    if (action === 'minimize') win.minimize();
+    if (action === 'toggle-maximize') {
+      if (win.isMaximized()) win.unmaximize();
+      else win.maximize();
+    }
+    if (action === 'close') win.close();
+    return { maximized: win.isMaximized() };
+  });
+
+  ipcMain.handle('is-maximized', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    return Boolean(win && !win.isDestroyed() && win.isMaximized());
+  });
+}
 
 app.whenReady().then(async () => {
   try {

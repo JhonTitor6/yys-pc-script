@@ -594,3 +594,29 @@ boundary. The minimum regression set is:
 
 Tests must assert product contracts and observable behavior. They must not merely repeat the
 implementation's current helper branches or private field assignments.
+
+### 7. Frozen GUI Runtime and Configuration Contract (2026-08-09)
+
+The GUI runtime contract is frozen in
+`docs/specs/2026-08-09-gui-runtime-config-contract-design.md`. The following rules are
+mandatory for implementation:
+
+- `available_actions` in the normalized run snapshot is the only source for GUI control
+  visibility and permission. The GUI must not infer actions from logs, local flags, stage
+  labels, or demo toggles.
+- The action matrix is status-and-stage based: preparation and normal queued states allow
+  stop; `script_running` allows pause and stop; `waiting_safe_entry_timeout` allows continue
+  waiting, manual takeover, and stop; paused allows resume and stop; error allows retry,
+  skip, stop, and manual takeover; manual allows retry; terminal states allow no actions.
+- `config_schema` and `default_config` from `GET /api/scripts` are the authority for form
+  fields, types, ranges, options, and request keys. Prototype aliases such as
+  `battleCount` must never cross the API boundary.
+- `PATCH /api/scripts/{script_id}/config` persists the next-run preference and must be
+  treated as `applied: false`. Active-run configuration is read-only in the GUI regardless
+  of the field's `hot_reloadable` metadata.
+- A new runtime action or configuration field requires the storage/normalization, API or
+  event schema, UI derivation, and contract tests to be updated together. A UI-only action
+  or field is incomplete.
+- Contract tests must cover the exact action matrix, schema-driven payload keys, the
+  `boss_damage_limit` range and payload, the `applied: false` behavior, and configuration
+  locking until the run reaches a terminal state.

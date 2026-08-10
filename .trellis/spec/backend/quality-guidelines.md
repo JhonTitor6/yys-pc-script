@@ -56,8 +56,12 @@ mock replay, observe-only mode, action limits, or emergency stop.
 - An image-search rectangle must fully contain the template at every valid match
   position. The right/bottom search boundary cannot cut through the template.
 - Realm-raid automatic group change requires both a victory-count increase since the
-  current round started and a real match for `realm_raid_record_zero.bmp`. Either signal
-  alone is insufficient.
+  current round started, a real match for `realm_raid_record_zero.bmp`, and all nine
+  grid cells independently recognized as attackable. Raw `bg_find_pic_all_by_cache`
+  match counts are not cell counts because one target can yield many nearby matches.
+- `RealmRaidScript.max_battle_count` is the victory target. Total settlements remain
+  observable through `_cur_battle_count`, but losses and quit-three exits must not satisfy
+  the RealmRaid stop condition; other scripts retain their existing total-battle semantics.
 - A settlement image that is also reused by realm-raid milestone rewards must not be
   treated as proof of a battle by itself. Arm settlement counting from a confirmed attack
   or persistent battle marker, consume the arm on the first matching settlement, and still
@@ -133,6 +137,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
 | Search rectangle is narrower or shorter than its template placement | Fix the bounds and add a real-fixture regression |
 | Realm-raid record is zero but no victory was gained this round | Keep the current round; this can be the quit-three sequence |
 | Victory increased but record-zero template is absent | Keep the current round and wait for reliable visual evidence |
+| Victory increased and record-zero matches, but fewer than nine grid cells are attackable | Keep the current round; this is a partial old grid with a false-positive record template |
+| Realm-raid total battles reach the configured target before victories do | Continue; stop only when the victory target is reached |
 | Realm-raid settlement image appears without an armed attack/battle state | Dismiss the reward dialog, keep the battle count unchanged, and continue scene detection |
 | Battle frame matches no registered image event | Count as unknown and stop at `unknown_limit`; add a confirmed state marker rather than increasing the limit |
 | Battle-running marker matches | Return a known event, reset the unknown counter, and send no input |
@@ -185,6 +191,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
 - Good: realm raid consumes one armed settlement on the first matching reward image;
   the same image used by a 3/6/9-grid milestone reward is dismissed without a second
   battle count.
+- Good: realm raid counts attackable targets once per fixed grid cell and recognizes an
+  automatic new group only when all nine cells are present.
 - Good: an explicitly authorized debugging process passes
   `--confirmation-phrase "RUN realm_raid"` and still uses foreground capture, action
   limits, timeout, unknown limits, F12, and one-process-one-run behavior.
@@ -209,6 +217,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
   matching cannot place an image outside the supplied search buffer.
 - Bad: treating “攻略记录 0” alone as a new realm-raid group. The first target's
   quit-three sequence also occurs while the record is zero.
+- Bad: using the number of raw template-match coordinates as the number of visible realm
+  targets, or stopping RealmRaid from total battle settlements instead of victories.
 - Bad: incrementing the realm-raid battle counter whenever `battle_end_1.bmp` matches;
   milestone rewards and a repeated settlement frame can use the same image.
 - Bad: assuming that a scene present in a replay fixture is automatically known to the
@@ -242,7 +252,11 @@ mock replay, observe-only mode, action limits, or emergency stop.
 - Recorded replay: the record-zero template matches the sanitized new-grid frame inside
   the exact production search rectangle.
 - Realm raid: record zero without a new victory does not reset a round; record zero plus
-  a new victory resets before selecting the next target.
+  a new victory and nine independently recognized cells resets before selecting the next
+  target; partial grids from eight through one never reset even if raw matching produces
+  many coordinates.
+- Realm raid: reaching the total-battle target with fewer victories continues, while
+  reaching the victory target stops with `max_battle_count` as the explicit reason.
 - Guarded real-frame regression: each long-lived state marker must be triggered through
   the production event loop, and its no-op callback must leave the action log empty.
 - Marker persistence regression: verify representative early/middle/late recorded frames
@@ -379,12 +393,14 @@ if find_record_zero():
 if (
     self._cur_battle_victory_count > self.round_state.victory_count_at_start
     and find_record_zero()
+    and len(get_all_attackable_barrier()) == 9
 ):
     self._start_new_round()
 ```
 
-The state signal and visual signal jointly distinguish an actual automatic group change
-from the initial zero-record screen seen during the quit-three sequence.
+The state signal and two independent visual signals distinguish an actual automatic group
+change from the initial zero-record screen and partial old grids. The grid helper checks
+the nine fixed cells; a raw template matcher does not deduplicate nearby coordinates.
 
 #### Wrong (guarded battle recognition)
 

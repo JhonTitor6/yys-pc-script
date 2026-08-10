@@ -2,12 +2,8 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
 from enum import Enum
 from typing import Annotated, Any, Optional, TYPE_CHECKING, TypedDict, get_type_hints
-import os
-
-import cv2
 
 # 仅在本脚本作为 __main__ 进程运行时生效：在父类 from-import 之前修改包级属性，
 # 让 YYSBaseScript 的 BATTLE_END_CLICK_SLEEP 绑定为 3。其他独立脚本进程不受影响。
@@ -88,9 +84,6 @@ class RealmRaidScript(YYSBaseScript):
     BATTLE_SETTLEMENT_GRACE_SECONDS = 5.0
     # 可攻击但已尝试结界的最多重试次数（点击未生效进入不了挑战时重试）
     MAX_TARGET_RETRY_COUNT = 3
-    # 新九宫格应几乎满员可见；低于此数视为 record_zero 模板误报（打了一半的旧组）
-    MIN_NEW_GRID_VISIBLE_TARGETS = 6
-
     SCRIPT_META = ScriptMeta(
         display_name="结界突破",
         category="日常",
@@ -180,10 +173,10 @@ class RealmRaidScript(YYSBaseScript):
         """按从左到右、从上到下的顺序选择本轮尚未尝试的目标。"""
         # 点击前刷新截图缓存，避免基于陈旧画面定位
         self.win_controller.update_screenshot_cache()
-        if self._is_automatic_new_round():
+        self.attackable_barrier_list = self.get_all_attackable_barrier()
+        if self._is_automatic_new_round(self.attackable_barrier_list):
             self.logger.info("检测到攻略记录归零，开始自动换组后的新九宫格")
             self._start_new_round()
-        self.attackable_barrier_list = self.get_all_attackable_barrier()
         target = next(
             (
                 candidate
@@ -246,7 +239,7 @@ class RealmRaidScript(YYSBaseScript):
         self.logger.debug(f"找到{len(all_realms)}个结界")
         return all_realms
 
-    def _is_automatic_new_round(self) -> bool:
+    def _is_automatic_new_round(self, visible_targets: list[RealmTarget]) -> bool:
         """依据胜场增长和攻略记录归零识别游戏自动换组。"""
         if not self.round_state.attempted_cells:
             return False
@@ -261,28 +254,7 @@ class RealmRaidScript(YYSBaseScript):
         )
         if point is None or point == (-1, -1):
             return False
-        # 二次验证：新组九宫格几乎满员可见；打了一半的旧组通常只剩少数可攻击结界，
-        # 此时 record_zero 命中是模板误报（录制对比两者该区域相似度仅差 0.01）。
-        visible_targets = self.image_finder.bg_find_pic_all_by_cache(
-            "yys/realm_raid/images/realm_raid_user_realm.bmp"
-        )
-        if len(visible_targets) < self.MIN_NEW_GRID_VISIBLE_TARGETS:
-            self._save_record_zero_region()
-            return False
-        return True
-
-    def _save_record_zero_region(self) -> None:
-        """诊断用：保存攻略记录区域截图，用于校验 record_zero 模板。"""
-        try:
-            cache = self.image_finder.screenshot_cache
-            if cache is None:
-                return
-            os.makedirs("logs", exist_ok=True)
-            path = f"logs/record_zero_mismatch_{datetime.now():%Y%m%d_%H%M%S}.png"
-            cv2.imwrite(path, cache[480:620, 0:280])
-            self.logger.info(f"已保存攻略记录区域截图: {path}")
-        except Exception:
-            self.logger.exception("保存攻略记录区域截图失败")
+        return len(visible_targets) == 9
 
     def _on_attack(self, point: tuple[int, int]) -> None:
         """点击进攻；每个新九宫格只执行一次退三次流程。"""
@@ -431,13 +403,13 @@ class RealmRaidScript(YYSBaseScript):
         self._battle_result_armed = False
 
     def after_iteration(self) -> None:
-        """记录达到最大战斗次数的明确停机原因。"""
+        """胜利次数达到目标后停止，失败不推进 RealmRaid 达标条件。"""
+        random_sleep(0.05, 0.1)
         if (
-            self._cur_battle_count >= self.max_battle_count
+            self._cur_battle_victory_count >= self.max_battle_count
             and self.stop_reason is None
         ):
-            self.stop_reason = RealmRaidStopReason.MAX_BATTLE_COUNT
-        super().after_iteration()
+            self._stop_with_reason(RealmRaidStopReason.MAX_BATTLE_COUNT)
 
 
 if __name__ == '__main__':

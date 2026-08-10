@@ -87,20 +87,18 @@ def test_automatic_new_grid_resets_round_before_target_selection(
     script: RealmRaidScript,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """有新增胜场且攻略记录归零时，应先重置轮次再选择新组同位置目标。"""
-    target = RealmTarget(row=0, col=0, point=(200, 180))
+    """产品契约：完整新九宫格出现时，应先重置轮次再选择新组目标。"""
+    targets = [
+        RealmTarget(row=index // 3, col=index % 3, point=(200 + index, 180))
+        for index in range(9)
+    ]
     click = Mock()
     monkeypatch.setattr(
         script.image_finder,
         "bg_find_pic_by_cache",
         Mock(return_value=(100, 540)),
     )
-    monkeypatch.setattr(
-        script.image_finder,
-        "bg_find_pic_all_by_cache",
-        Mock(return_value=[(i, i, 0.9) for i in range(9)]),
-    )
-    monkeypatch.setattr(script, "get_all_attackable_barrier", Mock(return_value=[target]))
+    monkeypatch.setattr(script, "get_all_attackable_barrier", Mock(return_value=targets))
     monkeypatch.setattr(script, "bg_left_click", click)
     script.round_state.attempted_cells.add((0, 0))
     script.round_state.quit_three_completed = True
@@ -113,15 +111,20 @@ def test_automatic_new_grid_resets_round_before_target_selection(
     assert script.round_state.victory_count_at_start == 2
     assert script.round_state.quit_three_completed is False
     assert script.round_state.attempted_cells == {(0, 0)}
-    click.assert_called_once_with((200, 180), x_range=5, y_range=5)
+    click.assert_called_once_with(targets[0].point, x_range=5, y_range=5)
 
 
+@pytest.mark.parametrize("remaining_count", [8, 7, 6, 5, 3, 1])
 def test_record_zero_on_partial_grid_does_not_reset_round(
     script: RealmRaidScript,
     monkeypatch: pytest.MonkeyPatch,
+    remaining_count: int,
 ) -> None:
-    """打了一半的旧组即使 record_zero 模板命中，也不能误判自动换组。"""
-    target = RealmTarget(row=0, col=0, point=(200, 180))
+    """产品契约：任意部分旧九宫格即使 record_zero 误命中也不能重置。"""
+    targets = [
+        RealmTarget(row=index // 3, col=index % 3, point=(200 + index, 180))
+        for index in range(remaining_count)
+    ]
     monkeypatch.setattr(
         script.image_finder,
         "bg_find_pic_by_cache",
@@ -130,10 +133,9 @@ def test_record_zero_on_partial_grid_does_not_reset_round(
     monkeypatch.setattr(
         script.image_finder,
         "bg_find_pic_all_by_cache",
-        Mock(return_value=[(i, i, 0.9) for i in range(3)]),
+        Mock(return_value=[(i, i, 0.9) for i in range(100)]),
     )
-    monkeypatch.setattr(script.image_finder, "screenshot_cache", None)
-    monkeypatch.setattr(script, "get_all_attackable_barrier", Mock(return_value=[target]))
+    monkeypatch.setattr(script, "get_all_attackable_barrier", Mock(return_value=targets))
     monkeypatch.setattr(script, "bg_left_click", Mock())
     script.round_state.attempted_cells.add((0, 0))
     script.round_state.quit_three_completed = True
@@ -144,7 +146,7 @@ def test_record_zero_on_partial_grid_does_not_reset_round(
 
     assert script.round_state.generation == 1
     assert script.round_state.quit_three_completed is True
-    assert script.round_state.attempted_cells == {(0, 0)}
+    assert (0, 0) in script.round_state.attempted_cells
 
 
 def test_record_zero_during_quit_sequence_does_not_reset_round(
@@ -450,15 +452,31 @@ def test_one_battle_counts_only_first_matching_settlement(
     assert script._cur_battle_count == 1
 
 
-def test_max_battle_count_has_explicit_stop_reason(
+def test_total_battle_count_does_not_stop_before_victory_target(
     script: RealmRaidScript,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """达到最大次数时状态快照应包含明确原因。"""
+    """产品契约：失败计入总战斗数，但不得推进 RealmRaid 达标停机。"""
     stop = Mock()
     monkeypatch.setattr(script, "stop", stop)
     script.max_battle_count = 1
     script._cur_battle_count = 1
+
+    script.after_iteration()
+
+    stop.assert_not_called()
+    assert script.stop_reason is None
+
+
+def test_victory_target_has_explicit_stop_reason(
+    script: RealmRaidScript,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """产品契约：RealmRaid 胜利次数达到目标后立即停止并记录原因。"""
+    stop = Mock()
+    monkeypatch.setattr(script, "stop", stop)
+    script.max_battle_count = 1
+    script._cur_battle_victory_count = 1
 
     script.after_iteration()
 

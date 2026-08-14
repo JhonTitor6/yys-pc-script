@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 7
-- **Last Active**: 2026-08-11
+- **Total Sessions**: 8
+- **Last Active**: 2026-08-14
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~250 | Active |
+| `journal-1.md` | ~283 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 8 | 2026-08-14 | 修复狭间暗域当前界面启动失败 | `b4e6dae` | `master` |
 | 7 | 2026-08-11 | 修复结界突破重复退三次与胜利次数停机 | `6ca0096` | `master` |
 | 6 | 2026-08-09 | 完成 GUI 现代化工作台实现 | `16f0f2e` | `master` |
 | 5 | 2026-08-08 | 通用入口与恢复运行时（御魂试点） | `531218e`, `6421685`, `053add5`, `ab07cba`, `de95018`, `e7cfbfd` | `master` |

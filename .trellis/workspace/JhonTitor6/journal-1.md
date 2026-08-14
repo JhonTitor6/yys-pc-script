@@ -248,3 +248,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: 修复狭间暗域当前界面启动失败
+
+**Date**: 2026-08-14
+**Task**: 修复狭间暗域当前界面启动失败
+**Branch**: `master`
+
+### Summary
+
+复用现有场景识别分流启动状态：具体暗域直接继续，战斗和未知页面安全停止，仅 Home 执行入口手势；37 个定向测试通过。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b4e6dae` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -805,7 +805,33 @@ class Main(YYSBaseScript):
     def on_run(self) -> None:
         """启动时调用"""
         super().on_run()
-        if not self.goto_abyss_shadows():
+        self.win_controller.update_screenshot_cache()
+        detection = self.scene_manager.detect_current_scene()
+        current_scene = detection.scene_name if detection is not None else None
+
+        if current_scene in self.scene_name_list:
+            self.cur_scene_index = self.scene_name_list.index(current_scene)
+            self._current_area = current_scene
+            self._state = AbyssShadowsState.SCENE
+            self.logger.info(f"已在狭间暗域区域: {current_scene}")
+            return
+
+        if current_scene == "abyss_enemy_selection":
+            self._state = AbyssShadowsState.ENEMY_SELECTION
+            self.logger.info("已在狭间暗域敌人选择界面")
+            return
+
+        if current_scene == "battling":
+            self.logger.error("当前处于战斗中，请等待战斗安全结束后重试")
+            self.stop()
+            return
+
+        if current_scene not in {"home", "abyss_selection"}:
+            self.logger.error(f"无法从当前场景启动狭间暗域: {current_scene or 'unknown'}")
+            self.stop()
+            return
+
+        if current_scene == "home" and not self.goto_abyss_shadows():
             self.logger.error("未能从 Home 进入狭间暗域，停止脚本")
             self.stop()
             return

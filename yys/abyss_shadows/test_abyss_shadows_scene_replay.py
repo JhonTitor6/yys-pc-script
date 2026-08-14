@@ -59,7 +59,11 @@ class TestAbyssShadowsSceneReplay(unittest.TestCase):
         script.max_battle_count = 1
         script._cur_battle_count = 0
         script._cur_battle_victory_count = 0
+        script.scene_name_list = ["abyss_dragon", "abyss_fox", "abyss_leopard", "abyss_peacock"]
         script.scene_manager = MagicMock()
+        script.scene_manager.detect_current_scene.return_value = MagicMock(
+            scene_name="home",
+        )
         script.scene_manager.goto_scene.return_value = True
 
         script.on_run()
@@ -128,6 +132,9 @@ class TestAbyssShadowsSceneReplay(unittest.TestCase):
 
         # 创建 mock scene_manager，关联到 env 的场景切换
         mock_scene_manager = MagicMock()
+        mock_scene_manager.detect_current_scene.return_value = MagicMock(
+            scene_name="abyss_selection",
+        )
 
         def mock_goto_scene(scene_name):
             """scene_manager.goto_scene 也更新 env 场景"""
@@ -186,6 +193,9 @@ class TestAbyssShadowsSceneReplay(unittest.TestCase):
 
         # 创建 mock scene_manager，关联到 env 的场景切换
         mock_scene_manager = MagicMock()
+        mock_scene_manager.detect_current_scene.return_value = MagicMock(
+            scene_name="abyss_selection",
+        )
 
         def mock_goto_scene(scene_name):
             """scene_manager.goto_scene 也更新 env 场景"""

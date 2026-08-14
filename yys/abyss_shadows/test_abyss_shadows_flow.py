@@ -389,6 +389,50 @@ class TestAbyssShadowsFlow(unittest.TestCase):
 
     # ==================== 场景流转测试 ====================
 
+    def test_on_run_handles_current_scene_without_blind_home_actions(self) -> None:
+        """已在暗域时直接继续，战斗或未知页面安全停止。"""
+        # 产品契约来源：08-14-abyss-current-scene-start PRD AC2、AC3、AC4、AC6。
+        safe_scenes = [
+            (scene_name, index, AbyssShadowsState.SCENE)
+            for index, scene_name in enumerate(self.script.scene_name_list)
+        ] + [("abyss_enemy_selection", None, AbyssShadowsState.ENEMY_SELECTION)]
+
+        for scene_name, expected_index, expected_state in safe_scenes:
+            with self.subTest(scene_name=scene_name):
+                script = self._create_mock_script_instance()
+                script.scene_manager.detect_current_scene.return_value = MagicMock(
+                    scene_name=scene_name,
+                )
+                script.goto_abyss_shadows = MagicMock(return_value=True)
+
+                script.on_run()
+
+                self.assertEqual(script._state, expected_state)
+                if expected_index is not None:
+                    self.assertEqual(script.cur_scene_index, expected_index)
+                    self.assertEqual(script._current_area, scene_name)
+                script.goto_abyss_shadows.assert_not_called()
+                script.scene_manager.goto_scene.assert_not_called()
+
+        for scene_name in ("battling", None):
+            with self.subTest(scene_name=scene_name):
+                script = self._create_mock_script_instance()
+                script.scene_manager.detect_current_scene.return_value = (
+                    MagicMock(scene_name=scene_name) if scene_name else None
+                )
+                script.goto_abyss_shadows = MagicMock(return_value=True)
+                script.stop = MagicMock()
+                script.win_controller.mouse.reset_mock()
+                script.win_controller.keyboard.reset_mock()
+
+                script.on_run()
+
+                script.stop.assert_called_once_with()
+                script.goto_abyss_shadows.assert_not_called()
+                script.scene_manager.goto_scene.assert_not_called()
+                self.assertEqual(script.win_controller.mouse.mock_calls, [])
+                self.assertEqual(script.win_controller.keyboard.mock_calls, [])
+
     def test_on_abyss_shadows_selection_navigates_to_dragon(self):
         """验证在狭间暗域选择界面时导航到神龙暗域"""
         # 调用选择界面回调

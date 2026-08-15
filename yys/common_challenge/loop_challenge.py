@@ -94,6 +94,7 @@ class LoopChallenge(YYSBaseScript):
         """
         super().__init__(script_name, config=config, env=env)
         self._register_image_match_event(ImageMatchConfig("yys/common_challenge/images/challenge.bmp"), self.bg_left_click)
+        self._register_image_match_event(ImageMatchConfig("yys/common_challenge/images/gained_reward.bmp"), self._on_battle_end)
         self._reset_rest_state()
 
     def on_run(self):
@@ -102,7 +103,7 @@ class LoopChallenge(YYSBaseScript):
 
     def _on_battle_end(self, point: tuple):
         """战斗结束处理：累计次数，达到阈值时休息。"""
-        super()._on_battle_end(point)
+        super()._on_battle_end((960, 535))
         self._battles_since_rest += 1
         if self._battles_since_rest >= self._rest_every_n:
             self._take_rest()

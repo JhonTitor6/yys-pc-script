@@ -182,7 +182,8 @@ class WindowsEnvironment(GameEnvironment):
 
         def collect(hwnd: int, _: object) -> bool:
             title = win32gui.GetWindowText(hwnd)
-            if title_part in title:
+            # 工作台标题也包含“阴阳师”，不能被当成游戏窗口激活和截图。
+            if title_part in title and title != "阴阳师脚本工作台":
                 matches.append(hwnd)
             return True
 

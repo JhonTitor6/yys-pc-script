@@ -1,5 +1,7 @@
 """生产环境抽象迁移的兼容性测试。"""
 
+from collections.abc import Callable
+
 import pytest
 from PIL import Image
 
@@ -135,3 +137,28 @@ def test_windows_environment_rejects_unknown_capture_mode() -> None:
     """未知截图模式应在创建环境时立即失败。"""
     with pytest.raises(ValueError, match="不支持的截图模式"):
         WindowsEnvironment(hwnd=123, capture_mode="unknown")
+
+
+def test_windows_environment_ignores_workbench_when_finding_game_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """游戏窗口和工作台同时匹配时必须选择游戏窗口。"""
+    titles = {
+        101: "阴阳师脚本工作台",
+        202: "阴阳师-网易游戏",
+    }
+
+    def enum_windows(callback: Callable[[int, object], bool], extra: object) -> None:
+        for hwnd in titles:
+            callback(hwnd, extra)
+
+    monkeypatch.setattr(windows_module.win32gui, "EnumWindows", enum_windows)
+    monkeypatch.setattr(
+        windows_module.win32gui,
+        "GetWindowText",
+        lambda hwnd: titles[hwnd],
+    )
+
+    environment = WindowsEnvironment(hwnd=None, window_title="阴阳师")
+
+    assert environment.hwnd == 202

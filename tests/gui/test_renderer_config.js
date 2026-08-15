@@ -115,10 +115,12 @@ function testScreenshotCropperContract() {
   assert.ok(html.includes('id="captureScreenshotButton"'));
   assert.ok(html.includes('id="screenshotCropDialog"'));
   assert.ok(html.includes('id="screenshotLibrary"'));
+  assert.ok(html.includes('id="openScreenshotDirectoryButton"'));
   assert.ok(html.includes('<script src="./node_modules/cropperjs/dist/cropper.min.js"></script>'));
   assert.ok(!html.match(/https?:\/\/[^"']*cropper/i));
   assert.ok(renderer.includes("apiPost('/api/screenshots/capture')"));
   assert.ok(renderer.includes("apiGet('/api/screenshots')"));
+  assert.ok(renderer.includes('openScreenshotDirectory'));
   assert.ok(renderer.includes('data-image-preview-screenshot'));
   assert.ok(renderer.includes('.getCropperSelection?.()'));
   assert.ok(renderer.includes('await selection.$toCanvas({ width, height })'));
@@ -135,8 +137,12 @@ function testScreenshotCropperContract() {
   assert.ok(renderer.includes('/api/image-resources/override?resource_id='));
   assert.ok(renderer.includes('confirmImageResourceAction'));
   assert.ok(preload.includes("ipcRenderer.invoke('restore-gui-focus')"));
+  assert.ok(preload.includes("ipcRenderer.invoke('open-screenshot-directory')"));
   assert.ok(preload.includes("ipcRenderer.invoke('open-image-resource-directory'"));
   assert.ok(main.includes("ipcMain.handle('restore-gui-focus'"));
+  assert.ok(main.includes("ipcMain.handle('open-screenshot-directory'"));
+  assert.ok(main.includes("path.join(app.getPath('userData'), 'screenshots')"));
+  assert.ok(main.includes('shell.openPath(target)'));
   assert.ok(main.includes("ipcMain.handle('open-image-resource-directory'"));
 }
 

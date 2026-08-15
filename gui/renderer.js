@@ -1065,6 +1065,15 @@ async function openImageResourceDirectory(resourceId) {
   }
 }
 
+async function openScreenshotDirectory() {
+  try {
+    const result = await window.desktopBridge?.openScreenshotDirectory?.();
+    if (!result?.opened) showToast('无法打开截图库目录。', 'error');
+  } catch (error) {
+    showToast(`打开截图库目录失败：${error.message}`, 'error');
+  }
+}
+
 function screenshotContentUrl(screenshotId) {
   const token = UI_TOKEN ? `?token=${encodeURIComponent(UI_TOKEN)}` : '';
   return `${API_BASE}/api/screenshots/${encodeURIComponent(screenshotId)}/content${token}`;
@@ -1484,6 +1493,7 @@ function bindEvents() {
     if (file && resourceId) replaceImageResource(resourceId, file).catch((error) => showToast(error.message, 'error'));
   });
   document.getElementById('captureScreenshotButton').addEventListener('click', () => captureScreenshot());
+  document.getElementById('openScreenshotDirectoryButton').addEventListener('click', openScreenshotDirectory);
   document.getElementById('refreshScreenshotsButton').addEventListener('click', () => loadScreenshots().catch((error) => showToast(error.message, 'error')));
   document.getElementById('screenshotLibrary').addEventListener('click', (event) => {
     const preview = event.target.closest('[data-image-preview-screenshot]');

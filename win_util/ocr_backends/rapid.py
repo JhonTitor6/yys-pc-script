@@ -68,4 +68,15 @@ class RapidOcrBackend:
         """
         # RapidOCR(image) 返回 (result, elapsed)；result 是 [[box,text,conf],...]
         result, _elapsed = self._engine(image, **kwargs)
+        if kwargs.get("use_det") is False:
+            # RapidOCR 关闭检测时返回 [text, conf]，补空 box 维持统一 backend 契约。
+            normalized_results: list[OcrResult] = []
+            for item in result or []:
+                if len(item) == 2:
+                    text, confidence = item
+                    normalized_results.append(([], text, confidence))
+                else:
+                    box, text, confidence = item
+                    normalized_results.append((box, text, confidence))
+            return normalized_results
         return result or []

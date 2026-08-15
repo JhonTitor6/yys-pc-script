@@ -511,7 +511,10 @@ class Main(YYSBaseScript):
         ocr_result = self.ocr.find_all_texts(
             self.image_finder.crop_screenshot_cache(3, 99, 283, 143),
             similarity_threshold=0.2,
-            allowlist='0123456789'
+            allowlist='0123456789',
+            use_det=False,
+            use_cls=False,
+            use_rec=True,
         )
         if ocr_result is None or len(ocr_result) != 1:
             return 0

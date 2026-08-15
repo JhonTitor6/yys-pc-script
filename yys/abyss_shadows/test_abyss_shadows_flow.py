@@ -665,6 +665,26 @@ class TestAbyssShadowsFlow(unittest.TestCase):
                 script.win_controller.key_down.assert_any_call("esc")
                 script.win_controller.key_down.assert_any_call("enter")
 
+    def test_damage_ocr_uses_recognition_only_and_safe_fallback(self):
+        """产品契约：固定伤害区域禁用检测/分类，无法唯一识别时返回 0。"""
+        image = np.zeros((44, 280, 3), dtype=np.uint8)
+        self.script.image_finder.crop_screenshot_cache.return_value = image
+        self.script.ocr.find_all_texts.return_value = ["33871291"]
+
+        self.assertEqual(self.script._get_current_damage(), 33871291)
+        self.script.ocr.find_all_texts.assert_called_once_with(
+            image,
+            similarity_threshold=0.2,
+            allowlist="0123456789",
+            use_det=False,
+            use_cls=False,
+            use_rec=True,
+        )
+
+        self.script.ocr.find_all_texts.reset_mock()
+        self.script.ocr.find_all_texts.return_value = ["3", "3"]
+        self.assertEqual(self.script._get_current_damage(), 0)
+
     def test_boss_damage_threshold_rejects_out_of_range_config(self):
         """验证首领伤害阈值复用公共配置范围校验。"""
         with self.assertRaises(ValueError):

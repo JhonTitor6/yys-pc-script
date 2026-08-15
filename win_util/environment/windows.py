@@ -46,9 +46,15 @@ class WindowsEnvironment(GameEnvironment):
 
     def activate_window(self) -> None:
         """恢复并激活目标游戏窗口，供交互式录制使用。"""
-        if win32gui.IsIconic(self._hwnd):
-            win32gui.ShowWindow(self._hwnd, win32con.SW_RESTORE)
-        win32gui.SetForegroundWindow(self._hwnd)
+        try:
+            if win32gui.IsIconic(self._hwnd):
+                win32gui.ShowWindow(self._hwnd, win32con.SW_RESTORE)
+            win32gui.SetForegroundWindow(self._hwnd)
+        except Exception as exc:
+            title = win32gui.GetWindowText(self._hwnd)
+            raise RuntimeError(
+                f"激活游戏窗口失败: hwnd={self._hwnd}, title={title!r}, cause={exc!r}"
+            ) from exc
 
     def _capture_foreground_client(self) -> Image.Image:
         """从桌面截取当前处于前台的游戏客户区。"""

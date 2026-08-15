@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import logging
 import threading
 import time
 import traceback
@@ -20,6 +21,8 @@ from ui_backend.screenshots import ScreenshotError, ScreenshotService
 from ui_backend.storage.repositories import Storage
 from win_util.environment.windows import WindowsEnvironment
 from yys.common.entry_runtime import EntryOutcome, EntryPreparationError
+
+logger = logging.getLogger(__name__)
 
 
 class _RunStageReporter:
@@ -929,6 +932,7 @@ class RunManager:
     def capture_manual_screenshot(self) -> dict[str, Any]:
         """手动捕获：活动运行复制缓存，空闲时才激活并截取游戏客户区。"""
         restore_required = False
+        run_id: int | None = None
         try:
             with self._lock:
                 run_id = self._active_run_id
@@ -959,12 +963,23 @@ class RunManager:
             self.record_saved_screenshot(saved, "手动保存当前运行画面")
             return {**saved, "restore_required": restore_required}
         except ScreenshotError as exc:
+            logger.exception(
+                "手动截图失败: run_id=%s, restore_required=%s, status_code=%s",
+                run_id,
+                restore_required,
+                exc.status_code,
+            )
             raise ScreenshotError(
                 exc.detail,
                 exc.status_code,
                 restore_required=restore_required,
             ) from exc
         except Exception as exc:
+            logger.exception(
+                "手动截图发生未处理异常: run_id=%s, restore_required=%s",
+                run_id,
+                restore_required,
+            )
             raise ScreenshotError(
                 str(exc),
                 409,

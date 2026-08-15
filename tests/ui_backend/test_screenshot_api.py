@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -174,6 +175,32 @@ def test_idle_manual_capture_failure_still_requires_gui_restore(
         "message": "激活失败",
         "restore_required": True,
     }
+
+
+def test_idle_manual_capture_logs_unexpected_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """手动截图异常必须保留后端日志和完整 traceback。"""
+
+    class FailingWindowsEnvironment:
+        def __init__(self, *, hwnd: int | None, window_title: str, capture_mode: str) -> None:
+            assert hwnd is None
+            assert window_title == "阴阳师"
+            assert capture_mode == "foreground"
+
+        def activate_window(self) -> None:
+            raise RuntimeError("激活失败")
+
+    monkeypatch.setattr(manager_module, "WindowsEnvironment", FailingWindowsEnvironment)
+    with caplog.at_level(logging.ERROR, logger="ui_backend.runs.manager"):
+        response = _client(tmp_path).post("/api/screenshots/capture")
+
+    assert response.status_code == 409
+    assert "手动截图发生未处理异常" in caplog.text
+    assert "Traceback (most recent call last)" in caplog.text
+    assert "激活失败" in caplog.text
 
 
 def test_idle_manual_capture_fails_when_game_window_handle_is_missing(

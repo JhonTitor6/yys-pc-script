@@ -133,6 +133,33 @@ def test_windows_environment_activate_restores_and_focuses_window(
     ]
 
 
+def test_windows_environment_wraps_activation_error_with_window_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """窗口激活失败时错误必须包含目标句柄和标题。"""
+    monkeypatch.setattr(windows_module.win32gui, "IsIconic", lambda _hwnd: False)
+
+    def fail_set_foreground(_hwnd: int) -> None:
+        raise RuntimeError("系统拒绝激活")
+
+    monkeypatch.setattr(
+        windows_module.win32gui,
+        "SetForegroundWindow",
+        fail_set_foreground,
+    )
+    monkeypatch.setattr(
+        windows_module.win32gui,
+        "GetWindowText",
+        lambda _hwnd: "阴阳师-网易游戏",
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="激活游戏窗口失败: hwnd=123, title='阴阳师-网易游戏'",
+    ):
+        WindowsEnvironment(hwnd=123, capture_mode="foreground").activate_window()
+
+
 def test_windows_environment_rejects_unknown_capture_mode() -> None:
     """未知截图模式应在创建环境时立即失败。"""
     with pytest.raises(ValueError, match="不支持的截图模式"):

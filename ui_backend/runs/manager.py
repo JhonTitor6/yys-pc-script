@@ -4,7 +4,6 @@ import inspect
 import json
 import logging
 import threading
-import time
 import traceback
 from typing import Any
 
@@ -930,7 +929,7 @@ class RunManager:
         return cache.copy()
 
     def capture_manual_screenshot(self) -> dict[str, Any]:
-        """手动捕获：活动运行复制缓存，空闲时才激活并截取游戏客户区。"""
+        """手动捕获：活动运行复制缓存，空闲时后台截取游戏客户区。"""
         restore_required = False
         run_id: int | None = None
         try:
@@ -943,15 +942,12 @@ class RunManager:
                     WindowsEnvironment(hwnd=None, window_title="阴阳师")
                     frame = self._copy_script_screenshot(script)
                 else:
-                    # 捕获完成前占住活动槽，避免新 run 在前台截图期间启动。
-                    restore_required = True
+                    # PrintWindow 不抢前台，避免空闲截图受 Windows 前台锁影响。
                     environment = WindowsEnvironment(
                         hwnd=None,
                         window_title="阴阳师",
-                        capture_mode="foreground",
+                        capture_mode="print_window",
                     )
-                    environment.activate_window()
-                    time.sleep(0.5)
                     frame = environment.capture_screen()
             saved = self.screenshot_service.save_full(
                 frame,

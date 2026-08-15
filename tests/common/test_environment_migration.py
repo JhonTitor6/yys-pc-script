@@ -124,6 +124,13 @@ def test_windows_environment_activate_restores_and_focuses_window(
         "SetForegroundWindow",
         lambda *args: calls.append(("focus", *args)),
     )
+    monkeypatch.setattr(windows_module.win32gui, "GetForegroundWindow", lambda: 456)
+    monkeypatch.setattr(windows_module.win32api, "GetCurrentThreadId", lambda: 10)
+    monkeypatch.setattr(
+        windows_module.win32process,
+        "GetWindowThreadProcessId",
+        lambda _hwnd: (10, 20),
+    )
 
     WindowsEnvironment(hwnd=123, capture_mode="foreground").activate_window()
 
@@ -133,11 +140,53 @@ def test_windows_environment_activate_restores_and_focuses_window(
     ]
 
 
+def test_windows_environment_attaches_foreground_thread_for_activation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """后端线程无前台权限时应临时附加当前前台线程再激活游戏。"""
+    calls: list[tuple[object, ...]] = []
+    allow_calls: list[int] = []
+    monkeypatch.setattr(windows_module.win32gui, "IsIconic", lambda _hwnd: False)
+    monkeypatch.setattr(windows_module.win32gui, "GetForegroundWindow", lambda: 456)
+    monkeypatch.setattr(windows_module.win32api, "GetCurrentThreadId", lambda: 10)
+    monkeypatch.setattr(
+        windows_module.windll.user32,
+        "AllowSetForegroundWindow",
+        lambda pid: allow_calls.append(pid) or 1,
+    )
+    monkeypatch.setattr(
+        windows_module.win32process,
+        "GetWindowThreadProcessId",
+        lambda _hwnd: (20, 30),
+    )
+    monkeypatch.setattr(
+        windows_module.win32process,
+        "AttachThreadInput",
+        lambda *args: calls.append(("attach", *args)),
+    )
+    monkeypatch.setattr(
+        windows_module.win32gui,
+        "SetForegroundWindow",
+        lambda hwnd: calls.append(("focus", hwnd)),
+    )
+
+    WindowsEnvironment(hwnd=123, capture_mode="foreground").activate_window()
+
+    assert calls == [
+        ("attach", 10, 20, True),
+        ("focus", 123),
+        ("attach", 10, 20, False),
+    ]
+    assert allow_calls == [windows_module.os.getpid()]
+
+
 def test_windows_environment_wraps_activation_error_with_window_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """窗口激活失败时错误必须包含目标句柄和标题。"""
     monkeypatch.setattr(windows_module.win32gui, "IsIconic", lambda _hwnd: False)
+    monkeypatch.setattr(windows_module.win32gui, "GetForegroundWindow", lambda: 0)
+    monkeypatch.setattr(windows_module.win32api, "GetCurrentThreadId", lambda: 10)
 
     def fail_set_foreground(_hwnd: int) -> None:
         raise RuntimeError("系统拒绝激活")

@@ -150,6 +150,18 @@ After implementation:
 
 ---
 
+## Windows 前台激活边界
+
+被动截图与交互录制不是同一个契约：前者应优先使用 `PrintWindow`，不抢前台；后者需要发送输入时，才需要切换前台。即使已经拿到正确的游戏窗口句柄，后台 Python 线程调用 `SetForegroundWindow` 仍可能被 Windows 前台锁拒绝。
+
+实现或修改此链路时：
+
+- 先为当前进程调用 `AllowSetForegroundWindow`；
+- 临时将当前线程附加到当前前台窗口线程，再调用 `SetForegroundWindow`；
+- 无论激活成功或失败，都必须在 `finally` 中解除线程附加；
+- 被动截图路径不得为了截图调用 `activate_window()`；
+- Mock 只能验证调用顺序，不能证明 Windows 前台权限有效；修改 Win32 激活逻辑后必须对代表性真实窗口做一次激活和截图冒烟验证，并校验截图内容尺寸。
+
 ## Cross-Platform Template Consistency
 
 In Trellis, command templates (e.g., `record-session.md`) exist in **multiple platforms** with identical or near-identical content. This is a cross-layer boundary.

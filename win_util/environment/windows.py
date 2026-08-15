@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import os
 from ctypes import windll
 from typing import Literal, Optional, Tuple
 
 import win32api
 import win32con
 import win32gui
+import win32process
 import win32ui
 from PIL import Image, ImageGrab
 
@@ -49,7 +51,33 @@ class WindowsEnvironment(GameEnvironment):
         try:
             if win32gui.IsIconic(self._hwnd):
                 win32gui.ShowWindow(self._hwnd, win32con.SW_RESTORE)
-            win32gui.SetForegroundWindow(self._hwnd)
+            foreground_hwnd = win32gui.GetForegroundWindow()
+            current_thread_id = win32api.GetCurrentThreadId()
+            foreground_thread_id = (
+                win32process.GetWindowThreadProcessId(foreground_hwnd)[0]
+                if foreground_hwnd
+                else 0
+            )
+            windll.user32.AllowSetForegroundWindow(os.getpid())
+            attached = (
+                foreground_thread_id != 0
+                and foreground_thread_id != current_thread_id
+            )
+            if attached:
+                win32process.AttachThreadInput(
+                    current_thread_id,
+                    foreground_thread_id,
+                    True,
+                )
+            try:
+                win32gui.SetForegroundWindow(self._hwnd)
+            finally:
+                if attached:
+                    win32process.AttachThreadInput(
+                        current_thread_id,
+                        foreground_thread_id,
+                        False,
+                    )
         except Exception as exc:
             title = win32gui.GetWindowText(self._hwnd)
             raise RuntimeError(

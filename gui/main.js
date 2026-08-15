@@ -1,5 +1,5 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, shell } = require('electron');
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -103,6 +103,18 @@ function resolveBackendEnvironment() {
     YYS_USER_DATA_DIR: app.getPath('userData'),
     PYTHONIOENCODING: 'utf-8'
   };
+}
+
+function configureWindowsConsoleEncoding() {
+  if (process.platform !== 'win32') return;
+  try {
+    execFileSync('chcp.com', ['65001'], {
+      stdio: ['inherit', 'ignore', 'ignore'],
+      windowsHide: true
+    });
+  } catch {
+    // GUI 无控制台时忽略，HTTP 和 GUI 内部仍使用 UTF-8。
+  }
 }
 
 function resolveImageOverridePath(resourceId) {
@@ -428,6 +440,17 @@ if (typeof ipcMain.handle === 'function') {
     return true;
   });
 
+  ipcMain.handle('open-screenshot-directory', async () => {
+    const target = path.join(app.getPath('userData'), 'screenshots');
+    try {
+      fs.mkdirSync(target, { recursive: true });
+      const error = await shell.openPath(target);
+      return error ? { opened: false, reason: error } : { opened: true };
+    } catch (error) {
+      return { opened: false, reason: error.message };
+    }
+  });
+
   ipcMain.handle('open-image-resource-directory', (_event, resourceId) => {
     const target = resolveImageOverridePath(resourceId);
     if (!target) return { opened: false, reason: 'invalid-resource' };
@@ -442,6 +465,7 @@ if (typeof ipcMain.handle === 'function') {
 }
 
 app.whenReady().then(async () => {
+  configureWindowsConsoleEncoding();
   try {
     console.log('Starting Python backend...');
     await startPythonBackend();

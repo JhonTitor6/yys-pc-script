@@ -125,7 +125,7 @@ def test_library_rejects_tampered_metadata_content_and_id(tmp_path: Path) -> Non
         service.get("../outside")
 
 
-def test_idle_manual_capture_activates_game_then_uses_foreground_client(
+def test_idle_manual_capture_uses_background_window_capture(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -135,45 +135,41 @@ def test_idle_manual_capture_activates_game_then_uses_foreground_client(
         def __init__(self, *, hwnd: int | None, window_title: str, capture_mode: str) -> None:
             assert hwnd is None
             assert window_title == "阴阳师"
-            assert capture_mode == "foreground"
+            assert capture_mode == "print_window"
             calls.append("construct")
-
-        def activate_window(self) -> None:
-            calls.append("activate")
 
         def capture_screen(self) -> Image.Image:
             calls.append("capture")
             return Image.fromarray(_frame()[:, :, ::-1], "RGB")
 
     monkeypatch.setattr(manager_module, "WindowsEnvironment", FakeWindowsEnvironment)
-    monkeypatch.setattr(manager_module.time, "sleep", lambda seconds: calls.append(f"sleep:{seconds}"))
     response = _client(tmp_path).post("/api/screenshots/capture")
     assert response.status_code == 200
-    assert calls == ["construct", "activate", "sleep:0.5", "capture"]
-    assert response.json()["restore_required"] is True
+    assert calls == ["construct", "capture"]
+    assert response.json()["restore_required"] is False
 
 
-def test_idle_manual_capture_failure_still_requires_gui_restore(
+def test_idle_manual_capture_failure_does_not_require_gui_restore(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """产品契约：空闲前台捕获失败也必须由 GUI finally 回焦。"""
+    """产品契约：空闲后台捕获失败不得要求 GUI 回焦。"""
 
     class FailingWindowsEnvironment:
         def __init__(self, *, hwnd: int | None, window_title: str, capture_mode: str) -> None:
             assert hwnd is None
             assert window_title == "阴阳师"
-            assert capture_mode == "foreground"
+            assert capture_mode == "print_window"
 
-        def activate_window(self) -> None:
-            raise RuntimeError("激活失败")
+        def capture_screen(self) -> Image.Image:
+            raise RuntimeError("后台截图失败")
 
     monkeypatch.setattr(manager_module, "WindowsEnvironment", FailingWindowsEnvironment)
     response = _client(tmp_path).post("/api/screenshots/capture")
     assert response.status_code == 409
     assert response.json()["detail"] == {
-        "message": "激活失败",
-        "restore_required": True,
+        "message": "后台截图失败",
+        "restore_required": False,
     }
 
 
@@ -188,10 +184,10 @@ def test_idle_manual_capture_logs_unexpected_exception(
         def __init__(self, *, hwnd: int | None, window_title: str, capture_mode: str) -> None:
             assert hwnd is None
             assert window_title == "阴阳师"
-            assert capture_mode == "foreground"
+            assert capture_mode == "print_window"
 
-        def activate_window(self) -> None:
-            raise RuntimeError("激活失败")
+        def capture_screen(self) -> Image.Image:
+            raise RuntimeError("后台截图失败")
 
     monkeypatch.setattr(manager_module, "WindowsEnvironment", FailingWindowsEnvironment)
     with caplog.at_level(logging.ERROR, logger="ui_backend.runs.manager"):
@@ -200,7 +196,7 @@ def test_idle_manual_capture_logs_unexpected_exception(
     assert response.status_code == 409
     assert "手动截图发生未处理异常" in caplog.text
     assert "Traceback (most recent call last)" in caplog.text
-    assert "激活失败" in caplog.text
+    assert "后台截图失败" in caplog.text
 
 
 def test_idle_manual_capture_fails_when_game_window_handle_is_missing(
@@ -213,7 +209,7 @@ def test_idle_manual_capture_fails_when_game_window_handle_is_missing(
         def __init__(self, *, hwnd: int | None, window_title: str, capture_mode: str) -> None:
             assert hwnd is None
             assert window_title == "阴阳师"
-            assert capture_mode == "foreground"
+            assert capture_mode == "print_window"
             raise RuntimeError("未找到标题包含 '阴阳师' 的游戏窗口")
 
     monkeypatch.setattr(manager_module, "WindowsEnvironment", MissingWindowsEnvironment)
@@ -222,7 +218,7 @@ def test_idle_manual_capture_fails_when_game_window_handle_is_missing(
     assert response.status_code == 409
     assert response.json()["detail"] == {
         "message": "未找到标题包含 '阴阳师' 的游戏窗口",
-        "restore_required": True,
+        "restore_required": False,
     }
 
 

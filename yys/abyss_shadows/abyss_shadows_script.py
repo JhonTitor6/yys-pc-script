@@ -232,6 +232,8 @@ class Main(YYSBaseScript):
         self._cur_enemy: Optional[Enemy] = None  # 当前战斗的敌人
         self._last_damage_check_time = 0.0  # 上次伤害检查时间
         self._damage_check_interval = 0.5  # 伤害检查间隔（秒）
+        self._last_damage_value: Optional[int] = None  # 上一次确认的伤害值
+        self._damage_history_enemy: Optional[Enemy] = None  # 伤害值所属战斗
 
         # 场景索引（4个暗域轮换）
         self.cur_scene_index = 0
@@ -526,8 +528,13 @@ class Main(YYSBaseScript):
 
     def _get_current_damage(self) -> int:
         """OCR 获取当前伤害"""
+        if self._damage_history_enemy is not self._cur_enemy:
+            self._last_damage_value = None
+            self._damage_history_enemy = self._cur_enemy
+
+        damage_image = self.image_finder.crop_screenshot_cache(3, 99, 283, 143)
         ocr_result = self.ocr.find_all_texts(
-            self.image_finder.crop_screenshot_cache(3, 99, 283, 143),
+            damage_image,
             similarity_threshold=0.2,
             allowlist='0123456789',
             use_det=False,
@@ -536,10 +543,41 @@ class Main(YYSBaseScript):
         )
         if ocr_result is None or len(ocr_result) != 1:
             return 0
+        raw_text = str(ocr_result[0])
+        if not raw_text.isdigit():
+            return 0
+
+        damage_text = raw_text
+        if raw_text.startswith("1"):
+            verified_result = self.ocr.find_all_texts(
+                damage_image,
+                similarity_threshold=0.95,
+                allowlist='0123456789',
+                use_det=False,
+                use_cls=False,
+                use_rec=True,
+            )
+            verified_text = (
+                str(verified_result[0])
+                if verified_result is not None and len(verified_result) == 1
+                else None
+            )
+            if verified_text != raw_text:
+                previous_text = (
+                    str(self._last_damage_value)
+                    if self._last_damage_value is not None
+                    else ""
+                )
+                if previous_text and raw_text[1:] == previous_text:
+                    damage_text = previous_text
+                else:
+                    return 0
         try:
-            return int(ocr_result[0])
+            current_damage = int(damage_text)
         except (ValueError, TypeError):
             return 0
+        self._last_damage_value = current_damage
+        return current_damage
 
     def _exit_battle(self):
         """退出战斗（Esc + Enter）"""

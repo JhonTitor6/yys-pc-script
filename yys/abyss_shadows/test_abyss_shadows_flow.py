@@ -747,6 +747,44 @@ class TestAbyssShadowsFlow(unittest.TestCase):
         self.script.ocr.find_all_texts.return_value = ["3", "3"]
         self.assertEqual(self.script._get_current_damage(), 0)
 
+    def test_damage_ocr_reuses_previous_value_for_low_confidence_leading_one(self):
+        """产品契约：低置信度前导 1 与上一确认值一致时沿用上一值。"""
+        image = np.zeros((44, 280, 3), dtype=np.uint8)
+        self.script.image_finder.crop_screenshot_cache.return_value = image
+        low_threshold_calls = 0
+
+        def find_all_texts(_image, similarity_threshold, **_kwargs):
+            nonlocal low_threshold_calls
+            if similarity_threshold == 0.2:
+                low_threshold_calls += 1
+                return ["39261"] if low_threshold_calls == 1 else ["139261"]
+            return []
+
+        self.script.ocr.find_all_texts = MagicMock(side_effect=find_all_texts)
+
+        self.assertEqual(self.script._get_current_damage(), 39261)
+        self.assertEqual(self.script._get_current_damage(), 39261)
+
+    def test_damage_ocr_keeps_high_confidence_leading_one_and_rejects_first_low_confidence(self):
+        """产品契约：合法高置信度前导 1 保留，无法确认的首个读数安全返回 0。"""
+        image = np.zeros((44, 280, 3), dtype=np.uint8)
+        self.script.image_finder.crop_screenshot_cache.return_value = image
+
+        self.script.ocr.find_all_texts = MagicMock(
+            side_effect=lambda _image, similarity_threshold, **_kwargs: (
+                ["10136043"] if similarity_threshold == 0.2 else ["10136043"]
+            )
+        )
+        self.assertEqual(self.script._get_current_damage(), 10136043)
+
+        self.script.ocr.find_all_texts = MagicMock(
+            side_effect=lambda _image, similarity_threshold, **_kwargs: (
+                ["139261"] if similarity_threshold == 0.2 else []
+            )
+        )
+        self.script._last_damage_value = None
+        self.assertEqual(self.script._get_current_damage(), 0)
+
     def test_boss_damage_threshold_rejects_out_of_range_config(self):
         """验证首领伤害阈值复用公共配置范围校验。"""
         with self.assertRaises(ValueError):

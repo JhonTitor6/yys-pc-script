@@ -3,7 +3,7 @@
   "name": "abyss-defeated-recognition",
   "title": "修复狭间暗域已击破识别",
   "description": "基于真实战报画面可靠识别已击破目标，跳过不可挑战敌人并补齐回放测试。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

@@ -5,12 +5,29 @@ from enum import Enum
 from numbers import Real
 from typing import Annotated, Any, Optional, TYPE_CHECKING, TypedDict, get_type_hints
 
+import cv2
+import numpy as np
+
 from win_util.image import ImageMatchConfig, to_project_path
 from yys.common.event_script_base import YYSBaseScript, _extract_config_meta, random_sleep
 from yys.common.script_meta import ConfigMeta, ScriptMeta
 
 if TYPE_CHECKING:
     from tests.common.environment.base import GameEnvironment
+
+
+_DEFEATED_RED_RANGES: tuple[
+    tuple[tuple[int, int, int], tuple[int, int, int]], ...
+] = (
+    ((0, 100, 80), (10, 255, 255)),
+    ((170, 100, 80), (179, 255, 255)),
+)
+_DEFEATED_MIN_WIDTH_RATIO: float = 0.4
+_DEFEATED_MIN_HEIGHT_RATIO: float = 0.25
+_DEFEATED_MIN_AREA_RATIO: float = 0.04
+_DEFEATED_MIN_FILL_RATIO: float = 0.3
+_DEFEATED_CENTER_Y_MIN: float = 0.3
+_DEFEATED_CENTER_Y_MAX: float = 0.7
 
 
 class AbyssShadowsConfig(TypedDict, total=False):
@@ -361,7 +378,7 @@ class Main(YYSBaseScript):
 
     def _handle_no_enemy_available(self):
         """处理没有可挑战敌人的情况"""
-        if self.cur_scene_index >= len(self.scene_name_list):
+        if self.cur_scene_index >= len(self.scene_name_list) - 1:
             self.logger.warning("所有狭间暗域都已挑战完毕")
             self.stop()
             return
@@ -455,8 +472,9 @@ class Main(YYSBaseScript):
             for enemy in self.enemies[enemy_type]:
                 if enemy.has_challenged:
                     continue
-                # TODO: OCR 识别"已击破"状态，暂留后续优化
-                # 目前简化判断，只检查 has_challenged 标志
+                if self._is_enemy_defeated(enemy.label_and_pic_position):
+                    enemy.has_challenged = True
+                    continue
                 return enemy
         return None
 
@@ -537,21 +555,56 @@ class Main(YYSBaseScript):
         self.bg_left_click(point)
         self._cur_enemy = None
 
-    # ==================== OCR 相关（暂留优化） ====================
+    # ==================== 已击破识别 ====================
 
     def _is_enemy_defeated(self, position: tuple[int, int, int, int]) -> bool:
-        """
-        OCR 判断敌人是否已击破
-        TODO: 暂留后续优化
-        """
-        ocr_results = self.ocr.find_all_texts(
-            self.image_finder.crop_screenshot_cache(*position),
-            similarity_threshold=0.2
-        )
-        if ocr_results is not None:
-            for ocr_text in ocr_results:
-                if "已击破" in ocr_text:
-                    return True
+        """检测敌人头像中央的红色“已击破”印章。"""
+        image_finder = getattr(self, "image_finder", None)
+        if image_finder is None or getattr(image_finder, "screenshot_cache", None) is None:
+            return False
+
+        try:
+            cropped = image_finder.crop_screenshot_cache(*position)
+        except (AttributeError, TypeError, ValueError):
+            return False
+        if cropped is None:
+            return False
+
+        image = np.asarray(cropped)
+        if image.size == 0 or image.ndim != 3 or image.shape[2] != 3:
+            return False
+
+        crop_height, crop_width = image.shape[:2]
+        if crop_height == 0 or crop_width == 0 or image.dtype != np.uint8:
+            return False
+
+        try:
+            hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        except cv2.error:
+            return False
+
+        red_mask = np.zeros((crop_height, crop_width), dtype=np.uint8)
+        for lower, upper in _DEFEATED_RED_RANGES:
+            red_mask |= cv2.inRange(hsv, lower, upper)
+
+        _, _, components, _ = cv2.connectedComponentsWithStats(red_mask, 8)
+        crop_area = crop_width * crop_height
+        for _, y, width, height, area in components[1:]:
+            if width <= 0 or height <= 0:
+                continue
+            component_width_ratio = width / crop_width
+            component_height_ratio = height / crop_height
+            component_area_ratio = area / crop_area
+            component_fill_ratio = area / (width * height)
+            component_center_y = (y + height / 2) / crop_height
+            if (
+                component_width_ratio >= _DEFEATED_MIN_WIDTH_RATIO
+                and component_height_ratio >= _DEFEATED_MIN_HEIGHT_RATIO
+                and component_area_ratio >= _DEFEATED_MIN_AREA_RATIO
+                and component_fill_ratio >= _DEFEATED_MIN_FILL_RATIO
+                and _DEFEATED_CENTER_Y_MIN <= component_center_y <= _DEFEATED_CENTER_Y_MAX
+            ):
+                return True
         return False
 
     def _is_current_tab(self) -> bool:

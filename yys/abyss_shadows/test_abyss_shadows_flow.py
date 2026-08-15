@@ -18,6 +18,10 @@ import unittest
 from typing import Any, Optional
 from unittest.mock import Mock, patch, MagicMock, PropertyMock
 from pathlib import Path
+from types import SimpleNamespace
+
+import cv2
+import numpy as np
 
 # 项目根目录
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -489,6 +493,30 @@ class TestAbyssShadowsFlow(unittest.TestCase):
         # 验证场景索引已更新
         self.assertEqual(self.script.cur_scene_index, 2)
 
+    def test_scene_flow_last_area_stops_without_index_error(self):
+        """产品契约：最后一个暗域完成后停止，不能访问越界索引。"""
+        self.script.cur_scene_index = len(self.script.scene_name_list) - 1
+        self.script.challenge_counts = {
+            enemy_type: self.script.max_challenge_counts[enemy_type]
+            for enemy_type in EnemyType
+        }
+        for enemy_type in EnemyType:
+            for enemy in self.script.enemies[enemy_type]:
+                enemy.has_challenged = True
+
+        self.script.stop = MagicMock()
+        self.script.change_area = MagicMock()
+
+        result = self.script._on_abyss_shadows_enemy_selection((0, 0))
+
+        self.assertFalse(result)
+        self.script.stop.assert_called_once_with()
+        self.script.change_area.assert_not_called()
+        self.assertEqual(
+            self.script.cur_scene_index,
+            len(self.script.scene_name_list) - 1,
+        )
+
     # ==================== 战报界面测试 ====================
 
     def test_battle_report_button_click(self):
@@ -514,31 +542,65 @@ class TestAbyssShadowsFlow(unittest.TestCase):
         # 验证状态变为 BATTLE_REPORT
         self.assertEqual(self.script._state, AbyssShadowsState.BATTLE_REPORT)
 
-    # ==================== 敌人OCR识别测试 ====================
+    # ==================== 敌人已击破识别测试 ====================
 
-    def test_enemy_defeated_not_implemented(self):
-        """验证 OCR 识别"已击破"状态暂未实现（TODO）
+    def test_enemy_defeated_is_skipped_from_real_report(self):
+        """产品契约：真实战报中的已击破目标必须被识别并跳过。"""
+        def load_report_image(filename: str) -> np.ndarray:
+            image_path = PROJECT_ROOT / "yys/abyss_shadows/images/example" / filename
+            image = cv2.imdecode(
+                np.fromfile(str(image_path), dtype=np.uint8),
+                cv2.IMREAD_COLOR,
+            )
+            if image is None:
+                raise AssertionError(f"无法读取测试图片: {image_path}")
+            return image
 
-        当前 get_next_enemy() 直接返回第一个未挑战的敌人，不检查 OCR 结果
-        """
-        # 重置所有敌人状态
+        def use_image(image: np.ndarray) -> None:
+            def crop_image(
+                x0: int,
+                y0: int,
+                x1: int,
+                y1: int,
+            ) -> np.ndarray:
+                return image[y0:y1, x0:x1]
+
+            self.script.image_finder = SimpleNamespace(
+                screenshot_cache=image,
+                crop_screenshot_cache=crop_image,
+            )
+
+        enemies = [
+            enemy
+            for enemy_type in EnemyType
+            for enemy in self.script.enemies[enemy_type]
+        ]
+        current_image = load_report_image("战报界面_当前.png")
+        defeated_image = load_report_image("战报界面_已击破.png")
+
+        # 当前战报没有印章，六个目标都不能被误判。
+        use_image(current_image)
+        self.assertEqual(
+            [self.script._is_enemy_defeated(enemy.label_and_pic_position) for enemy in enemies],
+            [False] * 6,
+        )
+
+        # 旧真实战报中首领未击破，其余五个目标有印章。
+        use_image(defeated_image)
+        self.assertEqual(
+            [self.script._is_enemy_defeated(enemy.label_and_pic_position) for enemy in enemies],
+            [False, True, True, True, True, True],
+        )
+
+        # 首领已在内存中处理后，扫描会标记并跳过五个已击破目标。
         for enemy_type in EnemyType:
             for enemy in self.script.enemies[enemy_type]:
                 enemy.has_challenged = False
+        self.script.challenge_counts = {enemy_type: 0 for enemy_type in EnemyType}
+        self.script.enemies[EnemyType.BOSS][0].has_challenged = True
 
-        # 模拟 OCR 识别到"已击破"（但这个结果不会被使用）
-        self.script.ocr.find_all_texts = MagicMock(return_value=["已击破"])
-
-        # 模拟 find_image_with_timeout 返回位置
-        self.script.win_controller.find_image_with_timeout = MagicMock(return_value=(600, 150))
-
-        # 获取第一个可挑战的敌人 - 应该直接返回首领，不检查 OCR
-        enemy = self.script.get_next_enemy()
-
-        # 由于 OCR 识别"已击破"功能暂未实现（TODO），
-        # get_next_enemy() 直接返回第一个未挑战的敌人（首领）
-        self.assertIsNotNone(enemy)
-        self.assertEqual(enemy.enemy_type, EnemyType.BOSS)
+        self.assertIsNone(self.script.get_next_enemy())
+        self.assertTrue(all(enemy.has_challenged for enemy in enemies))
 
     # ==================== 阈值常量验证 ====================
 

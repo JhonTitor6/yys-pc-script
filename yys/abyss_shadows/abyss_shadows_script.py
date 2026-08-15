@@ -142,7 +142,10 @@ class Main(YYSBaseScript):
     _ENTRY_IMAGE_SIMILARITY: float = 0.8
     _ENTRY_IMAGE_TIMEOUT: float = 10.0
     _ENTRY_HOME_CLICK_OFFSET: tuple[int, int] = (0, 0)
-    _ENTRY_ABYSS_CLICK_OFFSET: tuple[int, int] = (114, 18)
+    # 卡片模板命中点加偏移后落在“参加”按钮，而不是卡片主体。
+    _ENTRY_ABYSS_JOIN_OFFSET: tuple[int, int] = (114, 18)
+    # 最新 1136x640 证据中，点击“参加”后弹窗“前往”按钮中心。
+    _ENTRY_ABYSS_FORWARD_POINT: tuple[float, float] = (566 / 1136, 459 / 640)
 
     # 录制事件中的客户区坐标归一化结果：
     # 1. Home 横向拖拽，露出左侧入口图标；
@@ -702,10 +705,27 @@ class Main(YYSBaseScript):
         if not self._entry_find_and_click(
             self._ENTRY_DAILY_TO_ABYSS_IMAGE,
             timeout=self._ENTRY_IMAGE_TIMEOUT,
-            click_offset=self._ENTRY_ABYSS_CLICK_OFFSET,
+            click_offset=self._ENTRY_ABYSS_JOIN_OFFSET,
         ):
             self.logger.warning("未找到狭间暗域卡片")
             return False
+
+        # “参加”可能直接进入选择页，也可能先弹出详情框；后者继续点击“前往”。
+        if not self._is_abyss_selection_visible():
+            random_sleep(0.5, 1.0)
+            if not self._is_abyss_selection_visible():
+                width, height = self._entry_client_size()
+                forward_point = (
+                    round(width * self._ENTRY_ABYSS_FORWARD_POINT[0]),
+                    round(height * self._ENTRY_ABYSS_FORWARD_POINT[1]),
+                )
+                if not self.mouse.bg_left_click(
+                    forward_point,
+                    x_range=5,
+                    y_range=5,
+                ):
+                    self.logger.warning("点击狭间暗域“前往”按钮失败")
+                    return False
 
         if not self._entry_wait_for_image(
             self._ENTRY_ABYSS_SELECTION_IMAGE,

@@ -15,6 +15,7 @@
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -79,6 +80,35 @@ class TestAbyssShadowsSceneReplay(unittest.TestCase):
         assert env.action_log.records[2].extra == {"x2": 682, "y2": 228}
         assert 220 <= env.action_log.records[1].x <= 275
         assert 850 <= env.action_log.records[3].x <= 900
+
+    def test_home_entry_clicks_forward_after_join_prompt(self) -> None:
+        """产品契约：点击“参加”弹出详情框后，必须点击“前往”才能进入选择页。"""
+        script = Main.__new__(Main)
+        script._env = None
+        script.image_finder = SimpleNamespace(
+            screenshot_cache=SimpleNamespace(shape=(640, 1136, 3)),
+        )
+        script.mouse = MagicMock()
+        script.win_controller = MagicMock()
+        script.logger = MagicMock()
+        script._is_abyss_selection_visible = MagicMock(
+            side_effect=[False, False, False],
+        )
+        script._entry_swipe = MagicMock(return_value=True)
+        script._entry_find_and_click = MagicMock(return_value=True)
+        script._entry_wait_for_image = MagicMock(side_effect=[True, True])
+
+        with patch("yys.abyss_shadows.abyss_shadows_script.random_sleep"):
+            assert script.goto_abyss_shadows() is True
+
+        assert script._entry_find_and_click.call_args_list[-1].kwargs["click_offset"] == (
+            script._ENTRY_ABYSS_JOIN_OFFSET
+        )
+        script.mouse.bg_left_click.assert_called_once_with(
+            (566, 459),
+            x_range=5,
+            y_range=5,
+        )
 
     def _create_replay_environment(self, verbose: bool = True):
         """创建场景回放环境

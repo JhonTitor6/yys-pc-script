@@ -184,14 +184,24 @@ class WindowsEnvironment(GameEnvironment):
 
     def find_window(self, title_part: str) -> Optional[int]:
         """查找标题包含指定文本的顶层窗口。"""
-        matches: list[int] = []
+        matches: list[tuple[int, int]] = []
 
         def collect(hwnd: int, _: object) -> bool:
             title = win32gui.GetWindowText(hwnd)
             # 工作台标题也包含“阴阳师”，不能被当成游戏窗口激活和截图。
-            if title_part in title and title != "阴阳师脚本工作台":
-                matches.append(hwnd)
+            if title == "阴阳师脚本工作台" or title_part not in title:
+                return True
+            # 已知游戏标题优先于所有模糊匹配，避免浏览器页面标题抢先命中。
+            if title == "阴阳师-网易游戏":
+                priority = 0
+            elif title == title_part:
+                priority = 1
+            elif title.startswith(title_part):
+                priority = 2
+            else:
+                priority = 3
+            matches.append((priority, hwnd))
             return True
 
         win32gui.EnumWindows(collect, None)
-        return matches[0] if matches else None
+        return min(matches, key=lambda item: item[0])[1] if matches else None

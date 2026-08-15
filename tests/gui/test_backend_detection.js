@@ -110,6 +110,7 @@ function testBackendReceivesPersistentUserDataRoot() {
     'C:\\Users\\tester\\AppData\\Roaming\\yys-script-manager'
   );
   assert.ok(env.YYS_UI_TOKEN);
+  assert.strictEqual(env.PYTHONIOENCODING, 'utf-8');
 }
 
 function testImageOverridePathValidation() {

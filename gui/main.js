@@ -100,7 +100,8 @@ function resolveBackendEnvironment() {
   return {
     ...process.env,
     YYS_UI_TOKEN: UI_TOKEN,
-    YYS_USER_DATA_DIR: app.getPath('userData')
+    YYS_USER_DATA_DIR: app.getPath('userData'),
+    PYTHONIOENCODING: 'utf-8'
   };
 }
 
@@ -252,6 +253,8 @@ async function startPythonBackend() {
       env: resolveBackendEnvironment(),
       stdio: ['pipe', 'pipe', 'pipe']
     });
+    pythonProcess.stdout.setEncoding('utf8');
+    pythonProcess.stderr.setEncoding('utf8');
 
     const failStartup = (err) => {
       if (settled) return;

@@ -169,10 +169,11 @@ def test_windows_environment_rejects_unknown_capture_mode() -> None:
 def test_windows_environment_ignores_workbench_when_finding_game_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """游戏窗口和工作台同时匹配时必须选择游戏窗口。"""
+    """模糊匹配到浏览器时仍必须优先选择真实游戏窗口。"""
     titles = {
-        101: "阴阳师脚本工作台",
+        101: "阴阳师 - Google Chrome",
         202: "阴阳师-网易游戏",
+        303: "阴阳师脚本工作台",
     }
 
     def enum_windows(callback: Callable[[int, object], bool], extra: object) -> None:

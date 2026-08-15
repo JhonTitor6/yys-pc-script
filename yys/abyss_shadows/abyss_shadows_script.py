@@ -44,6 +44,16 @@ class AbyssShadowsConfig(TypedDict, total=False):
         help="每个暗域副将挑战次数（0-99）",
         hot_reloadable=True,
     )]
+    commander_damage_limit: Annotated[int, ConfigMeta(
+        default=1,
+        min_value=0,
+        max_value=999999999,
+        field_type="number",
+        label="副将伤害限制",
+        group="基础",
+        help="副将战斗伤害超过该值时退出（0-999999999）",
+        hot_reloadable=False,
+    )]
     elite_count: Annotated[int, ConfigMeta(
         default=6,
         min_value=0,
@@ -53,6 +63,16 @@ class AbyssShadowsConfig(TypedDict, total=False):
         group="基础",
         help="每个暗域精英挑战次数（0-99）",
         hot_reloadable=True,
+    )]
+    elite_damage_limit: Annotated[int, ConfigMeta(
+        default=6000000,
+        min_value=0,
+        max_value=999999999,
+        field_type="number",
+        label="精英伤害限制",
+        group="基础",
+        help="精英战斗伤害超过该值时退出（0-999999999）",
+        hot_reloadable=False,
     )]
 
 
@@ -105,7 +125,9 @@ class Main(YYSBaseScript):
             "boss_count": 2,
             "boss_damage_limit": 1,
             "commander_count": 4,
+            "commander_damage_limit": 1,
             "elite_count": 6,
+            "elite_damage_limit": 6000000,
         },
     )
     # 入口包含 Home 界面拖拽，不能直接交给只支持按钮 BFS 的 entry_scene。
@@ -196,11 +218,6 @@ class Main(YYSBaseScript):
         self.scene_name_list = ["abyss_dragon", "abyss_fox", "abyss_leopard", "abyss_peacock"]
         self._current_area: Optional[str] = None  # 当前暗域区域
 
-        # 伤害阈值
-        commander_damage_limit = 1
-        # elite_damage_limit = 5000000
-        elite_damage_limit = 6000000
-
         # 敌人配置（固定位置）
         self.enemies = {
             EnemyType.BOSS: [
@@ -215,14 +232,14 @@ class Main(YYSBaseScript):
             EnemyType.COMMANDER: [
                 Enemy(
                     enemy_type=EnemyType.COMMANDER,
-                    target_damage=commander_damage_limit,
+                    target_damage=self.commander_damage_limit,
                     image_path="yys/abyss_shadows/images/commander_label.bmp",
                     label_position=(424, 250, 558, 335),
                     has_challenged=False
                 ),
                 Enemy(
                     enemy_type=EnemyType.COMMANDER,
-                    target_damage=commander_damage_limit,
+                    target_damage=self.commander_damage_limit,
                     image_path="yys/abyss_shadows/images/commander_label.bmp",
                     label_position=(700, 250, 833, 335),
                     has_challenged=False
@@ -231,20 +248,20 @@ class Main(YYSBaseScript):
             EnemyType.ELITE: [
                 Enemy(
                     enemy_type=EnemyType.ELITE,
-                    target_damage=elite_damage_limit,
+                    target_damage=self.elite_damage_limit,
                     image_path="yys/abyss_shadows/images/elite_label.bmp",
                     label_position=(342, 360, 480, 435),
                     has_challenged=False
                 ),
                 Enemy(
                     enemy_type=EnemyType.ELITE,
-                    target_damage=elite_damage_limit,
+                    target_damage=self.elite_damage_limit,
                     image_path="yys/abyss_shadows/images/elite_label.bmp",
                     label_position=(554, 360, 691, 435)
                 ),
                 Enemy(
                     enemy_type=EnemyType.ELITE,
-                    target_damage=elite_damage_limit,
+                    target_damage=self.elite_damage_limit,
                     image_path="yys/abyss_shadows/images/elite_label.bmp",
                     label_position=(766, 360, 905, 435)
                 )

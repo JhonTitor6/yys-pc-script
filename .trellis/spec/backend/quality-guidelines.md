@@ -634,5 +634,5 @@ mandatory for implementation:
   event schema, UI derivation, and contract tests to be updated together. A UI-only action
   or field is incomplete.
 - Contract tests must cover the exact action matrix, schema-driven payload keys, the
-  `boss_damage_limit` range and payload, the `applied: false` behavior, and configuration
-  locking until the run reaches a terminal state.
+  three Abyss damage limits' ranges, payload keys, and per-enemy isolation, the
+  `applied: false` behavior, and configuration locking until the run reaches a terminal state.

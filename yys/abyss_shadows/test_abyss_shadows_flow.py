@@ -580,6 +580,91 @@ class TestAbyssShadowsFlow(unittest.TestCase):
         for enemy in boss_enemies:
             self.assertEqual(enemy.target_damage, 123456789)
 
+    def test_damage_thresholds_use_separate_config_values(self):
+        """产品契约：三类敌人只使用各自的伤害阈值，次数与顺序不变。"""
+        script = self._create_mock_script_instance(
+            config={
+                "boss_damage_limit": 11,
+                "commander_damage_limit": 22,
+                "elite_damage_limit": 33,
+            },
+        )
+
+        expected = {
+            EnemyType.BOSS: 11,
+            EnemyType.COMMANDER: 22,
+            EnemyType.ELITE: 33,
+        }
+        self.assertEqual(list(script.enemies), list(EnemyType))
+        for enemy_type, target_damage in expected.items():
+            with self.subTest(enemy_type=enemy_type):
+                self.assertTrue(script.enemies[enemy_type])
+                self.assertTrue(all(
+                    enemy.target_damage == target_damage
+                    for enemy in script.enemies[enemy_type]
+                ))
+        self.assertEqual(script.max_challenge_counts, {
+            EnemyType.BOSS: 2,
+            EnemyType.COMMANDER: 4,
+            EnemyType.ELITE: 6,
+        })
+
+    def test_new_damage_thresholds_fall_back_to_original_defaults(self):
+        """产品契约：旧配置缺少新字段时保留原副将和精英阈值。"""
+        script = self._create_mock_script_instance(
+            config={"boss_damage_limit": 99},
+        )
+
+        self.assertEqual(script.commander_damage_limit, 1)
+        self.assertEqual(script.elite_damage_limit, 6000000)
+        self.assertTrue(all(
+            enemy.target_damage == 1
+            for enemy in script.enemies[EnemyType.COMMANDER]
+        ))
+        self.assertTrue(all(
+            enemy.target_damage == 6000000
+            for enemy in script.enemies[EnemyType.ELITE]
+        ))
+
+    def test_new_damage_thresholds_reject_out_of_range_config(self):
+        """产品契约：两个新阈值复用公共配置范围校验。"""
+        for field_name in ("commander_damage_limit", "elite_damage_limit"):
+            for value in (-1, 1000000000):
+                with self.subTest(field_name=field_name, value=value), self.assertRaises(ValueError):
+                    self._create_mock_script_instance(config={field_name: value})
+
+    def test_damage_threshold_comparison_remains_strictly_greater(self):
+        """产品契约：三类伤害等于阈值不退出，超过阈值才退出。"""
+        script = self._create_mock_script_instance(
+            config={
+                "boss_damage_limit": 101,
+                "commander_damage_limit": 202,
+                "elite_damage_limit": 303,
+            },
+        )
+
+        for enemy_type in EnemyType:
+            enemy = script.enemies[enemy_type][0]
+            with self.subTest(enemy_type=enemy_type, current_damage=enemy.target_damage):
+                script._cur_enemy = enemy
+                script._last_damage_check_time = 0.0
+                script.ocr.find_all_texts.return_value = [str(enemy.target_damage)]
+                script.win_controller.key_down.reset_mock()
+
+                self.assertFalse(script._on_battling((0, 0)))
+                script.win_controller.key_down.assert_not_called()
+
+            with self.subTest(enemy_type=enemy_type, current_damage=enemy.target_damage + 1):
+                script._cur_enemy = enemy
+                script._last_damage_check_time = 0.0
+                script.ocr.find_all_texts.return_value = [str(enemy.target_damage + 1)]
+                script.win_controller.key_down.reset_mock()
+
+                with patch("yys.abyss_shadows.abyss_shadows_script.random_sleep"):
+                    self.assertTrue(script._on_battling((0, 0)))
+                script.win_controller.key_down.assert_any_call("esc")
+                script.win_controller.key_down.assert_any_call("enter")
+
     def test_boss_damage_threshold_rejects_out_of_range_config(self):
         """验证首领伤害阈值复用公共配置范围校验。"""
         with self.assertRaises(ValueError):

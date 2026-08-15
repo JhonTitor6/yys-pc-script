@@ -150,8 +150,8 @@ def test_api_lists_scripts_and_starts_run(tmp_path: Path) -> None:
     assert fake_run_manager.request.config == {"max_battle_count": 3}
 
 
-def test_api_lists_abyss_boss_damage_limit(tmp_path: Path) -> None:
-    """脚本列表接口应返回狭间暗域首领伤害限制配置。"""
+def test_api_lists_and_saves_abyss_damage_limits(tmp_path: Path) -> None:
+    """产品契约：API 使用原始键暴露并保存三类独立伤害阈值。"""
     app = create_app(db_path=tmp_path / "ui.db")
     client = TestClient(app)
 
@@ -167,12 +167,40 @@ def test_api_lists_abyss_boss_damage_limit(tmp_path: Path) -> None:
         field["key"]: field
         for field in abyss_shadows["config_schema"]
     }
-    boss_damage_limit = fields["boss_damage_limit"]
-    assert boss_damage_limit["label"] == "首领伤害限制"
-    assert boss_damage_limit["field_type"] == "number"
-    assert boss_damage_limit["min_value"] == 0
-    assert boss_damage_limit["max_value"] == 999999999
-    assert abyss_shadows["default_config"]["boss_damage_limit"] == 1
+    expected = {
+        "boss_damage_limit": ("首领伤害限制", 1),
+        "commander_damage_limit": ("副将伤害限制", 1),
+        "elite_damage_limit": ("精英伤害限制", 6000000),
+    }
+    for key, (label, default) in expected.items():
+        field = fields[key]
+        assert field["label"] == label
+        assert field["field_type"] == "number"
+        assert field["min_value"] == 0
+        assert field["max_value"] == 999999999
+        assert field["hot_reloadable"] is False
+        assert abyss_shadows["default_config"][key] == default
+
+    saved_values = {
+        "commander_damage_limit": 222,
+        "elite_damage_limit": 333,
+    }
+    save_response = client.patch(
+        "/api/scripts/abyss_shadows/config",
+        json=saved_values,
+    )
+    assert save_response.status_code == 200
+    assert save_response.json()["applied"] is False
+
+    reopened = next(
+        item
+        for item in client.get("/api/scripts").json()
+        if item["script_id"] == "abyss_shadows"
+    )
+    assert {
+        key: reopened["default_config"][key]
+        for key in saved_values
+    } == saved_values
 
 
 def test_api_token_protects_http_routes_when_enabled(tmp_path: Path) -> None:

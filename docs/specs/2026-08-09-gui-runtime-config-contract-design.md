@@ -160,13 +160,14 @@ manual_takeover   -> POST /api/runs/{run_id}/manual-takeover
 | `soul_raid` | `max_battle_count`、`accept_wq_type`、`loop_interval` | `103`（1-999）；`accept_wq_type` 为 0/1/2；`loop_interval` 为 300（50-5000） |
 | `realm_raid` | `max_battle_count`、`quit_3_times_config` | `30`（1-99）；布尔值默认 `true` |
 | `exploration_28` | `max_battle_count` | `244`（1-9999） |
-| `abyss_shadows` | `boss_count`、`boss_damage_limit`、`commander_count`、`elite_count` | 依次为 2（0-99）、1（0-999999999）、4（0-99）、6（0-99） |
+| `abyss_shadows` | `boss_count`、`boss_damage_limit`、`commander_count`、`commander_damage_limit`、`elite_count`、`elite_damage_limit` | 依次为 2（0-99）、1（0-999999999）、4（0-99）、1（0-999999999）、6（0-99）、6000000（0-999999999） |
 | 其他当前注册脚本 | 以各自 `config_schema` 为准；目前通用次数字段使用 `max_battle_count` | 禁止由 GUI 猜测范围或补造字段 |
 
-`abyss_shadows.boss_damage_limit` 的字段语义冻结为：
+`abyss_shadows` 三个伤害阈值字段的语义冻结为：
 
-- 请求键：`boss_damage_limit`。
+- 请求键：`boss_damage_limit`、`commander_damage_limit`、`elite_damage_limit`。
 - 数值范围：`0` 至 `999999999`。
+- 默认值依次为 `1`、`1`、`6000000`，且只影响对应敌人类型。
 - 原型展示文案可以使用“达到阈值后停止当前目标”。
 - 该文案只解释现有后端行为，不新增 `damage_mode` 或其他停止策略字段。
 
@@ -214,9 +215,9 @@ manual_takeover   -> POST /api/runs/{run_id}/manual-takeover
 
 ### 5.2 Good Case：狭间暗域伤害阈值
 
-1. 选择 `abyss_shadows` 后显示 `boss_count`、`boss_damage_limit`、`commander_count`、`elite_count`。
-2. `boss_damage_limit` 以数值输入呈现，范围为 `0-999999999`。
-3. 说明使用“达到阈值后停止当前目标”，但 payload 只发送 `boss_damage_limit`。
+1. 选择 `abyss_shadows` 后显示 `boss_count`、`boss_damage_limit`、`commander_count`、`commander_damage_limit`、`elite_count`、`elite_damage_limit`。
+2. 三个伤害阈值以数值输入呈现，范围均为 `0-999999999`。
+3. 说明使用“达到阈值后停止当前目标”，payload 只发送对应的原始 snake_case 键。
 4. 不出现 `damage_mode`、`target_area` 或 `leader_mode` 的生产配置控件。
 
 ### 5.3 Base Case：无当前运行
@@ -242,7 +243,7 @@ manual_takeover   -> POST /api/runs/{run_id}/manual-takeover
 2. 使用同一个规范化快照断言：顶部停止按钮、运行页动作按钮和配置只读状态一致。
 3. `GET /api/scripts` 的 `config_schema` 键名、类型、默认值、范围和选项能直接驱动表单。
 4. `soul_raid`、`realm_raid`、`exploration_28`、`abyss_shadows` 启动请求断言使用真实 snake_case 键，不出现原型别名。
-5. `boss_damage_limit` 的默认值、边界和启动 payload 断言覆盖 `0`、最大值和越界值。
+5. 三个伤害阈值的默认值、边界、独立性和启动 payload 断言覆盖 `0`、最大值和越界值。
 6. `PATCH /api/scripts/{script_id}/config` 断言 `applied` 为 `false`，且当前运行的 `config` 不改变。
 7. 运行从 `queued` 到终态前配置控件保持只读，终态后才恢复可编辑。
 8. 动作请求失败后，GUI 不伪造成功状态，并重新读取规范化快照。

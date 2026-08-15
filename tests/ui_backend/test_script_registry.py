@@ -88,14 +88,28 @@ def test_default_registry_does_not_import_script_modules(
         item for item in scripts if item.script_id == "abyss_shadows"
     )
     abyss_keys = {field.key for field in abyss_shadows.config_schema}
-    assert "boss_damage_limit" in abyss_keys
-    boss_damage_limit = next(
-        field
+    assert {
+        "boss_damage_limit",
+        "commander_damage_limit",
+        "elite_damage_limit",
+    } <= abyss_keys
+    damage_limits = {
+        field.key: field
         for field in abyss_shadows.config_schema
-        if field.key == "boss_damage_limit"
-    )
-    assert boss_damage_limit.default == 1
-    assert boss_damage_limit.max_value == 999999999
+        if field.key.endswith("_damage_limit")
+    }
+    expected = {
+        "boss_damage_limit": ("首领伤害限制", 1),
+        "commander_damage_limit": ("副将伤害限制", 1),
+        "elite_damage_limit": ("精英伤害限制", 6000000),
+    }
+    for key, (label, default) in expected.items():
+        field = damage_limits[key]
+        assert field.label == label
+        assert field.default == default
+        assert field.min_value == 0
+        assert field.max_value == 999999999
+        assert field.hot_reloadable is False
 
 
 def test_class_schema_overrides_registry_schema() -> None:
@@ -222,20 +236,24 @@ def test_default_registry_soul_raid_uses_script_meta_reflection() -> None:
     }
 
 
-def test_abyss_shadows_exposes_boss_damage_limit() -> None:
-    """狭间暗域通过 SCRIPT_META 暴露首领伤害限制配置。"""
+def test_abyss_shadows_exposes_separate_damage_limits() -> None:
+    """产品契约：狭间暗域通过 SCRIPT_META 暴露三类独立伤害阈值。"""
     abyss_shadows = ScriptRegistry().get("abyss_shadows")
-    boss_damage_limit = next(
-        field
-        for field in abyss_shadows.config_schema
-        if field.key == "boss_damage_limit"
-    )
+    fields = {field.key: field for field in abyss_shadows.config_schema}
 
-    assert abyss_shadows.default_config["boss_damage_limit"] == 1
-    assert boss_damage_limit.label == "首领伤害限制"
-    assert boss_damage_limit.field_type == "number"
-    assert boss_damage_limit.min_value == 0
-    assert boss_damage_limit.max_value == 999999999
+    expected = {
+        "boss_damage_limit": ("首领伤害限制", 1),
+        "commander_damage_limit": ("副将伤害限制", 1),
+        "elite_damage_limit": ("精英伤害限制", 6000000),
+    }
+    for key, (label, default) in expected.items():
+        field = fields[key]
+        assert abyss_shadows.default_config[key] == default
+        assert field.label == label
+        assert field.field_type == "number"
+        assert field.min_value == 0
+        assert field.max_value == 999999999
+        assert field.hot_reloadable is False
 
 
 def test_default_registry_migrated_scripts_use_script_meta_reflection() -> None:
@@ -266,20 +284,24 @@ def test_default_registry_migrated_scripts_use_script_meta_reflection() -> None:
     assert keys == {"max_battle_count"}
     assert yuling.default_config["max_battle_count"] == 150
 
-    # abyss_shadows（次数配置 + 首领伤害限制）
+    # abyss_shadows（次数配置 + 三类独立伤害限制）
     abyss_shadows = registry.get("abyss_shadows")
     keys = {field.key for field in abyss_shadows.config_schema}
     assert keys == {
         "boss_count",
         "boss_damage_limit",
         "commander_count",
+        "commander_damage_limit",
         "elite_count",
+        "elite_damage_limit",
     }
     assert abyss_shadows.default_config == {
         "boss_count": 2,
         "boss_damage_limit": 1,
         "commander_count": 4,
+        "commander_damage_limit": 1,
         "elite_count": 6,
+        "elite_damage_limit": 6000000,
     }
 
     boss_damage_limit = next(

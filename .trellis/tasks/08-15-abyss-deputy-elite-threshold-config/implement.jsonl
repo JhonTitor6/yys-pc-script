@@ -1,0 +1,4 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "GUI运行配置与游戏自动化安全契约"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "配置模式、API、脚本构造与运行语义边界"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用现有schema驱动配置链路"}

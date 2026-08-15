@@ -1040,6 +1040,31 @@ const SCREENSHOT_TRIGGER_LABELS = {
   stop_timeout: '停止超时'
 };
 
+function openImagePreview({ src, title, alt, caption }) {
+  const dialog = document.getElementById('imagePreviewDialog');
+  const image = document.getElementById('imagePreviewImage');
+  document.getElementById('imagePreviewTitle').textContent = title || '图片预览';
+  document.getElementById('imagePreviewCaption').textContent = caption || '';
+  image.alt = alt || title || '图片预览';
+  image.src = src;
+  dialog.showModal();
+  document.getElementById('closeImagePreviewButton').focus();
+}
+
+function closeImagePreview() {
+  const dialog = document.getElementById('imagePreviewDialog');
+  if (dialog?.open) dialog.close();
+}
+
+async function openImageResourceDirectory(resourceId) {
+  try {
+    const result = await window.desktopBridge?.openImageResourceDirectory?.(resourceId);
+    if (!result?.opened) showToast('本地覆盖文件不存在，无法打开目录。', 'error');
+  } catch (error) {
+    showToast(`打开目录失败：${error.message}`, 'error');
+  }
+}
+
 function screenshotContentUrl(screenshotId) {
   const token = UI_TOKEN ? `?token=${encodeURIComponent(UI_TOKEN)}` : '';
   return `${API_BASE}/api/screenshots/${encodeURIComponent(screenshotId)}/content${token}`;
@@ -1064,7 +1089,7 @@ function renderScreenshotLibrary() {
   }
   container.innerHTML = state.screenshots.map((item) => `
     <article class="screenshot-card">
-      ${item.available ? `<img src="${escapeHtml(screenshotContentUrl(item.id))}" alt="${escapeHtml(SCREENSHOT_TRIGGER_LABELS[item.trigger] || item.trigger)}截图预览" loading="lazy">` : '<div class="empty-text">文件已删除</div>'}
+      ${item.available ? `<button class="image-preview-trigger screenshot-preview-trigger" type="button" data-image-preview-screenshot="${escapeHtml(item.id)}" aria-label="预览${escapeHtml(SCREENSHOT_TRIGGER_LABELS[item.trigger] || item.trigger)}截图"><img src="${escapeHtml(screenshotContentUrl(item.id))}" alt="${escapeHtml(SCREENSHOT_TRIGGER_LABELS[item.trigger] || item.trigger)}截图预览" loading="lazy"></button>` : '<div class="empty-text">文件已删除</div>'}
       <div class="screenshot-card-copy"><strong>${escapeHtml(item.kind === 'crop' ? '裁剪图' : '完整帧')}</strong><span>${escapeHtml(SCREENSHOT_TRIGGER_LABELS[item.trigger] || item.trigger)}</span><small>${escapeHtml(item.width)} × ${escapeHtml(item.height)}${item.run_id ? ` · 运行 #${escapeHtml(item.run_id)}` : ''}</small><small>${escapeHtml(formatDateTime(item.created_at))}</small></div>
       <button class="link-button danger-link" type="button" data-delete-screenshot="${escapeHtml(item.id)}">删除此截图</button>
     </article>`).join('');
@@ -1238,9 +1263,9 @@ function renderImageResources() {
       <header><h4>${escapeHtml(group === 'common' || group === 'images' ? '公共目录' : '脚本目录')}</h4><span>yys/${escapeHtml(group)} · ${items.length} 项</span></header>
       <div class="image-resource-grid">${items.map((item) => `
         <article class="image-resource-card" data-image-resource="${escapeHtml(item.resource_id)}">
-          <img src="${escapeHtml(imageResourceContentUrl(item.resource_id, item.preview_version))}" alt="${escapeHtml(item.filename)} 当前生效预览" loading="lazy">
-          <div class="image-resource-copy"><div><strong>${escapeHtml(item.filename)}</strong><span class="resource-state ${item.overridden ? 'overridden' : ''}">${item.overridden ? '已覆盖' : '内置'}</span></div><code>${escapeHtml(item.resource_id)}</code><small>${escapeHtml(item.width)} × ${escapeHtml(item.height)} · ${escapeHtml(item.format)}</small></div>
-          <div class="image-resource-actions"><button class="button quiet" type="button" data-image-replace="${escapeHtml(item.resource_id)}">选择文件替换</button><button class="button quiet" type="button" data-image-screenshot="${escapeHtml(item.resource_id)}">截图并替换</button>${item.overridden ? `<button class="link-button danger-link" type="button" data-image-restore="${escapeHtml(item.resource_id)}">恢复默认</button>` : ''}</div>
+          <button class="image-preview-trigger resource-preview-trigger" type="button" data-image-preview-resource="${escapeHtml(item.resource_id)}" aria-label="预览${escapeHtml(item.filename)}"><img src="${escapeHtml(imageResourceContentUrl(item.resource_id, item.preview_version))}" alt="${escapeHtml(item.filename)} 当前生效预览" loading="lazy"></button>
+          <div class="image-resource-copy"><div><span class="resource-text-tooltip" data-full-text="${escapeHtml(item.filename)}" title="${escapeHtml(item.filename)}"><strong>${escapeHtml(item.filename)}</strong></span><span class="resource-state ${item.overridden ? 'overridden' : ''}">${item.overridden ? '已覆盖' : '内置'}</span></div><span class="resource-text-tooltip" data-full-text="${escapeHtml(item.resource_id)}" title="${escapeHtml(item.resource_id)}"><code>${escapeHtml(item.resource_id)}</code></span><small>${escapeHtml(item.width)} × ${escapeHtml(item.height)} · ${escapeHtml(item.format)}</small></div>
+          <div class="image-resource-actions">${item.overridden ? `<button class="button quiet" type="button" data-image-open-directory="${escapeHtml(item.resource_id)}">打开目录</button>` : ''}<button class="button quiet" type="button" data-image-replace="${escapeHtml(item.resource_id)}">选择文件替换</button><button class="button quiet" type="button" data-image-screenshot="${escapeHtml(item.resource_id)}">截图并替换</button>${item.overridden ? `<button class="link-button danger-link" type="button" data-image-restore="${escapeHtml(item.resource_id)}">恢复默认</button>` : ''}</div>
         </article>`).join('')}</div>
     </section>`).join('');
 }
@@ -1427,6 +1452,19 @@ function bindEvents() {
   document.querySelectorAll('[data-theme-option]').forEach((button) => button.addEventListener('click', () => setTheme(button.dataset.themeOption)));
   document.getElementById('imageResourceSearch').addEventListener('input', (event) => { state.imageResourceQuery = event.target.value; renderImageResources(); });
   document.getElementById('imageResourceList').addEventListener('click', (event) => {
+    const preview = event.target.closest('[data-image-preview-resource]');
+    if (preview) {
+      const item = state.imageResources.find((resource) => resource.resource_id === preview.dataset.imagePreviewResource);
+      if (item) openImagePreview({
+        src: imageResourceContentUrl(item.resource_id, item.preview_version),
+        title: item.filename,
+        alt: `${item.filename} 当前生效图片预览`,
+        caption: item.resource_id
+      });
+      return;
+    }
+    const directory = event.target.closest('[data-image-open-directory]');
+    if (directory) { openImageResourceDirectory(directory.dataset.imageOpenDirectory); return; }
     const replace = event.target.closest('[data-image-replace]');
     if (replace) {
       state.pendingImageResourceId = replace.dataset.imageReplace;
@@ -1448,6 +1486,17 @@ function bindEvents() {
   document.getElementById('captureScreenshotButton').addEventListener('click', () => captureScreenshot());
   document.getElementById('refreshScreenshotsButton').addEventListener('click', () => loadScreenshots().catch((error) => showToast(error.message, 'error')));
   document.getElementById('screenshotLibrary').addEventListener('click', (event) => {
+    const preview = event.target.closest('[data-image-preview-screenshot]');
+    if (preview) {
+      const item = state.screenshots.find((screenshot) => screenshot.id === preview.dataset.imagePreviewScreenshot);
+      if (item?.available) openImagePreview({
+        src: screenshotContentUrl(item.id),
+        title: item.kind === 'crop' ? '裁剪图' : '完整帧',
+        alt: `${SCREENSHOT_TRIGGER_LABELS[item.trigger] || item.trigger}截图预览`,
+        caption: `${SCREENSHOT_TRIGGER_LABELS[item.trigger] || item.trigger} · ${item.width} × ${item.height}`
+      });
+      return;
+    }
     const remove = event.target.closest('[data-delete-screenshot]');
     if (remove) deleteScreenshot(remove.dataset.deleteScreenshot).catch((error) => showToast(error.message, 'error'));
   });
@@ -1459,6 +1508,10 @@ function bindEvents() {
     state.screenshotCropper?.destroy?.();
     state.screenshotCropper = null;
     state.screenshotCropSession = null;
+  });
+  document.getElementById('closeImagePreviewButton').addEventListener('click', closeImagePreview);
+  document.getElementById('imagePreviewDialog').addEventListener('close', () => {
+    document.getElementById('imagePreviewImage').removeAttribute('src');
   });
 
   document.addEventListener('keydown', (event) => {

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, shell } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -102,6 +102,23 @@ function resolveBackendEnvironment() {
     YYS_UI_TOKEN: UI_TOKEN,
     YYS_USER_DATA_DIR: app.getPath('userData')
   };
+}
+
+function resolveImageOverridePath(resourceId) {
+  if (typeof resourceId !== 'string' || resourceId.includes('\\') || resourceId.includes('\0')) return null;
+  const parts = resourceId.split('/');
+  if (
+    parts.length < 2
+    || parts[0] !== 'yys'
+    || parts.some((part) => !part || part === '.' || part === '..' || part.includes(':'))
+    || !/\.(bmp|png)$/i.test(parts[parts.length - 1])
+  ) return null;
+
+  const root = path.resolve(app.getPath('userData'), 'image-overrides');
+  const target = path.resolve(root, ...parts);
+  const relative = path.relative(root, target);
+  if (relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return null;
+  return target;
 }
 
 function isPortOpen({ port = PYTHON_PORT, host = PYTHON_HOST, timeout = 1000 } = {}) {
@@ -407,6 +424,18 @@ if (typeof ipcMain.handle === 'function') {
     win.focus();
     return true;
   });
+
+  ipcMain.handle('open-image-resource-directory', (_event, resourceId) => {
+    const target = resolveImageOverridePath(resourceId);
+    if (!target) return { opened: false, reason: 'invalid-resource' };
+    try {
+      if (!fs.statSync(target).isFile()) return { opened: false, reason: 'not-found' };
+      shell.showItemInFolder(target);
+      return { opened: true };
+    } catch (error) {
+      return { opened: false, reason: 'not-found' };
+    }
+  });
 }
 
 app.whenReady().then(async () => {
@@ -445,5 +474,6 @@ module.exports = {
   checkBackendHealth,
   detectBackendState,
   isPortOpen,
-  resolveBackendEnvironment
+  resolveBackendEnvironment,
+  resolveImageOverridePath
 };

@@ -28,10 +28,11 @@ function loadMainModule() {
             requestSingleInstanceLock: () => true
           },
           BrowserWindow: function BrowserWindow() {},
-          ipcMain: { on: () => {} },
+          ipcMain: { on: () => {}, handle: () => {} },
           Tray: function Tray() {},
           Menu: { buildFromTemplate: () => ({}) },
-          nativeImage: { createFromDataURL: () => ({}) }
+          nativeImage: { createFromDataURL: () => ({}) },
+          shell: { showItemInFolder: () => {} }
         };
       }
       if (name === 'child_process') {
@@ -111,8 +112,19 @@ function testBackendReceivesPersistentUserDataRoot() {
   assert.ok(env.YYS_UI_TOKEN);
 }
 
+function testImageOverridePathValidation() {
+  const main = loadMainModule();
+  assert.strictEqual(
+    main.resolveImageOverridePath('yys/common/example.bmp'),
+    path.join('C:\\Users\\tester\\AppData\\Roaming\\yys-script-manager', 'image-overrides', 'yys', 'common', 'example.bmp')
+  );
+  assert.strictEqual(main.resolveImageOverridePath('../secret.bmp'), null);
+  assert.strictEqual(main.resolveImageOverridePath('yys\\common\\example.bmp'), null);
+}
+
 async function main() {
   testBackendReceivesPersistentUserDataRoot();
+  testImageOverridePathValidation();
   await testDetectsProtectedBackend();
   await testProtectedBackendBlocksStartup();
   console.log('backend detection tests passed');

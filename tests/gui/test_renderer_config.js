@@ -64,7 +64,7 @@ function testExistingNumberAndBooleanConversionsRemainUnchanged() {
 }
 
 function testImageResourceSettingsContract() {
-  // 产品契约：图片管理留在设置页，搜索/预览/替换/恢复均只调用图片资源 API。
+  // 产品契约：图片管理留在设置页，目录打开通过 Electron IPC，其余操作使用图片资源 API。
   const renderer = fs.readFileSync(path.resolve(__dirname, '../../gui/renderer.js'), 'utf8');
   const html = fs.readFileSync(path.resolve(__dirname, '../../gui/index.html'), 'utf8');
   assert.ok(html.includes('id="imageResourceSearch"'));
@@ -77,10 +77,16 @@ function testImageResourceSettingsContract() {
   assert.ok(html.includes('<form method="dialog">'));
   assert.ok(html.includes('id="imageResourceConfirmPreview"'));
   assert.ok(html.includes('id="imageResourceConfirmPath"'));
+  assert.ok(html.includes('id="imagePreviewDialog"'));
+  assert.ok(html.includes('id="imagePreviewImage"'));
   assert.ok(html.includes('id="imageResourceConfirmCancel" class="button quiet" type="submit" value="cancel"'));
   assert.ok(renderer.includes("apiGet('/api/image-resources')"));
   assert.ok(renderer.includes('/api/image-resources/content?'));
   assert.ok(renderer.includes('/api/image-resources/override?resource_id='));
+  assert.ok(renderer.includes('data-image-preview-resource'));
+  assert.ok(renderer.includes('data-image-open-directory'));
+  assert.ok(renderer.includes('openImagePreview'));
+  assert.ok(renderer.includes('openImageResourceDirectory'));
   assert.ok(renderer.includes('item.filename.toLowerCase().includes(query)'));
   assert.ok(renderer.includes('item.resource_id.toLowerCase().includes(query)'));
   const start = renderer.indexOf('async function replaceImageResource');
@@ -113,6 +119,7 @@ function testScreenshotCropperContract() {
   assert.ok(!html.match(/https?:\/\/[^"']*cropper/i));
   assert.ok(renderer.includes("apiPost('/api/screenshots/capture')"));
   assert.ok(renderer.includes("apiGet('/api/screenshots')"));
+  assert.ok(renderer.includes('data-image-preview-screenshot'));
   assert.ok(renderer.includes('.getCropperSelection?.()'));
   assert.ok(renderer.includes('await selection.$toCanvas({ width, height })'));
   assert.ok(renderer.includes('selection.width <= 0 || selection.height <= 0'));
@@ -128,7 +135,9 @@ function testScreenshotCropperContract() {
   assert.ok(renderer.includes('/api/image-resources/override?resource_id='));
   assert.ok(renderer.includes('confirmImageResourceAction'));
   assert.ok(preload.includes("ipcRenderer.invoke('restore-gui-focus')"));
+  assert.ok(preload.includes("ipcRenderer.invoke('open-image-resource-directory'"));
   assert.ok(main.includes("ipcMain.handle('restore-gui-focus'"));
+  assert.ok(main.includes("ipcMain.handle('open-image-resource-directory'"));
 }
 
 testSelectValuesUseSchemaTypes();

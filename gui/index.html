@@ -153,6 +153,13 @@
   </div>
 
   <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+  <dialog id="imagePreviewDialog" class="image-preview-dialog" aria-labelledby="imagePreviewTitle" aria-describedby="imagePreviewCaption">
+    <div class="image-preview-shell">
+      <header><div><span class="eyebrow">图片预览</span><h2 id="imagePreviewTitle">图片预览</h2></div><button id="closeImagePreviewButton" class="icon-button" type="button" aria-label="关闭图片预览"><svg class="icon"><use href="#icon-close"></use></svg></button></header>
+      <img id="imagePreviewImage" class="image-preview-image" alt="">
+      <code id="imagePreviewCaption" class="image-preview-caption"></code>
+    </div>
+  </dialog>
   <dialog id="imageResourceConfirmDialog" class="image-resource-dialog" aria-labelledby="imageResourceConfirmTitle" aria-describedby="imageResourceConfirmMessage">
     <form method="dialog">
       <header><div><span class="eyebrow">图片资源确认</span><h2 id="imageResourceConfirmTitle">确认操作</h2></div></header>

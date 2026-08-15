@@ -317,3 +317,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 10: 修复狭间已击破识别并固化提交归档偏好
+
+**Date**: 2026-08-15
+**Task**: 修复狭间已击破识别并固化提交归档偏好
+**Branch**: `master`
+
+### Summary
+
+使用 HSV 连通区域识别狭间战报中的已击破印章，接入 get_next_enemy 跳过目标并修复末区域越界；完成真实图片回归测试，提交并归档任务，同时固化提交和归档前确认偏好。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b6403ef` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

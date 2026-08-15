@@ -281,3 +281,39 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: 提交 GUI 规划并归档阈值子任务
+
+**Date**: 2026-08-15
+**Task**: 提交 GUI 规划并归档阈值子任务
+**Branch**: `master`
+
+### Summary
+
+提交狭间阈值、GUI 图片资源与游戏截图、通用挑战结算及 08-08 GUI 规划；归档 08-15 阈值配置子任务。当前新增狭间入口改动与测试未纳入本次提交，待单独验证。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ad060d9` | (see git log) |
+| `f423275` | (see git log) |
+| `c1a591e` | (see git log) |
+| `2d9895d` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

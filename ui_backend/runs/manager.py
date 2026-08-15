@@ -3,8 +3,8 @@ from __future__ import annotations
 import inspect
 import json
 import threading
+import time
 import traceback
-from pathlib import Path
 from typing import Any
 
 from ui_backend.events.hub import EventHub
@@ -16,7 +16,9 @@ from ui_backend.models import (
     available_actions_for_status,
 )
 from ui_backend.scripts.registry import ScriptRegistry
+from ui_backend.screenshots import ScreenshotError, ScreenshotService
 from ui_backend.storage.repositories import Storage
+from win_util.environment.windows import WindowsEnvironment
 from yys.common.entry_runtime import EntryOutcome, EntryPreparationError
 
 
@@ -55,11 +57,13 @@ class RunManager:
         storage: Storage,
         registry: ScriptRegistry,
         event_hub: EventHub,
+        screenshot_service: ScreenshotService | None = None,
     ) -> None:
         """初始化运行管理器。"""
         self.storage = storage
         self.registry = registry
         self.event_hub = event_hub
+        self.screenshot_service = screenshot_service or ScreenshotService(None)
         self._lock = threading.Lock()
         self._active_run_id: int | None = None
         self._scripts: dict[int, Any] = {}
@@ -105,6 +109,7 @@ class RunManager:
                 # 老签名：实例化 + setter（保留 _apply_config 作 fallback）
                 script = script_class()
                 self._apply_config(script, merged_config)
+            self._install_unknown_scene_observer(run_id, request.script_id, script)
             thread = threading.Thread(
                 target=self._run_script,
                 args=(run_id, request.script_id, script),
@@ -137,6 +142,8 @@ class RunManager:
                 run_id,
                 script,
                 "脚本启动阶段无法捕获当前画面",
+                "script_error",
+                "start_failed",
             )
             self.storage.runs.update_status(
                 run_id,
@@ -227,6 +234,8 @@ class RunManager:
                 run_id,
                 script,
                 "停止超时，记录停止时的当前画面",
+                "stop_timeout",
+                "stop_timeout",
             )
             self.storage.runs.update_status(
                 run_id,
@@ -413,7 +422,7 @@ class RunManager:
                 self._run_with_entry_preparation(run_id, script_id, script)
                 return
             script.run()
-            state = self._record_state_snapshot(run_id, script_id, script)
+            self._record_state_snapshot(run_id, script_id, script)
             if self._mark_success_if_not_stopped(run_id):
                 if self.storage.runs.get(run_id).get("status") == RunStatus.SUCCESS.value:
                     self._append_log(run_id, "INFO", "脚本运行完成")
@@ -427,6 +436,8 @@ class RunManager:
                 run_id,
                 script,
                 "脚本异常时捕获当前画面",
+                "script_error",
+                "script_failed",
             )
             self._append_log(run_id, "ERROR", traceback_text)
             if self._mark_error_if_not_stopped(
@@ -472,7 +483,7 @@ class RunManager:
             self._append_log(run_id, "INFO", "入口准备完成，进入业务运行")
             self._publish_run_snapshot(run_id)
             script.run_business()
-            state = self._record_state_snapshot(run_id, script_id, script)
+            self._record_state_snapshot(run_id, script_id, script)
             if self._mark_success_if_not_stopped(run_id):
                 if self.storage.runs.get(run_id).get("status") == RunStatus.SUCCESS.value:
                     self._append_log(run_id, "INFO", "脚本运行完成")
@@ -508,6 +519,8 @@ class RunManager:
             run_id,
             script,
             f"入口准备失败: {error_code}",
+            "entry_error",
+            "entry_failed",
         )
         self._append_log(run_id, "ERROR", f"[{error_code}] {reason}")
         if self._mark_entry_error_if_not_stopped(run_id, reason, error_code, evidence):
@@ -858,30 +871,26 @@ class RunManager:
         run_id: int,
         script: Any | None,
         description: str,
+        trigger: str,
+        stage: str,
     ) -> dict[str, Any]:
         """尽力保存当前截图，并始终记录证据捕获结果。"""
-        evidence_dir = Path("config") / "run_evidence" / str(run_id)
-        evidence_dir.mkdir(parents=True, exist_ok=True)
-        target = evidence_dir / "failure.png"
         capture_error: str | None = None
         saved_path: str | None = None
+        screenshot_id: str | None = None
         try:
-            image = self._read_script_screenshot(script)
-            if image is None:
-                raise RuntimeError("脚本没有可用的截图缓存")
-            if hasattr(image, "save"):
-                image.save(str(target))
-            elif isinstance(image, (bytes, bytearray)):
-                target.write_bytes(bytes(image))
-            elif isinstance(image, (str, Path)) and Path(image).is_file():
-                target.write_bytes(Path(image).read_bytes())
-            else:
-                from PIL import Image
-
-                Image.fromarray(image).save(str(target))
-            if not target.is_file() or target.stat().st_size == 0:
-                raise RuntimeError("截图文件为空")
-            saved_path = str(target.resolve())
+            run = self.storage.runs.get(run_id) or {}
+            frame = self._copy_script_screenshot(script)
+            saved = self.screenshot_service.save_full(
+                frame,
+                trigger=trigger,
+                run_id=run_id,
+                script_id=str(run.get("script_id") or "") or None,
+                stage=stage,
+            )
+            screenshot_id = str(saved["id"])
+            saved_path = str(self.screenshot_service.content_path(screenshot_id).resolve())
+            self._publish({"type": "screenshot_saved", "screenshot": saved, "run_id": run_id})
         except Exception as exc:
             capture_error = str(exc)
 
@@ -897,27 +906,183 @@ class RunManager:
             "run_id": run_id,
             "kind": "screenshot",
             "path": saved_path,
+            "screenshot_id": screenshot_id,
             "description": description,
             "capture_error": capture_error,
         }
         self.storage.runs.set_latest_evidence(run_id, evidence)
         return evidence
 
-    def _read_script_screenshot(self, script: Any | None) -> Any | None:
-        """从脚本控制器或显式截图方法读取当前画面。"""
+    def _copy_script_screenshot(self, script: Any | None) -> Any:
+        """只复制脚本当前缓存，不刷新、不捕获也不回退前台。"""
         if script is None:
-            return None
-        getter = getattr(script, "capture_screenshot", None)
-        if callable(getter):
-            return getter()
-        controller = getattr(script, "win_controller", None)
-        if controller is None:
-            return None
-        updater = getattr(controller, "update_screenshot_cache", None)
-        if callable(updater):
-            updater()
-        finder = getattr(controller, "image_finder", None)
-        return getattr(finder, "screenshot_cache", None)
+            raise RuntimeError("脚本没有可用的截图缓存")
+        finder = getattr(script, "image_finder", None)
+        if finder is None:
+            controller = getattr(script, "win_controller", None)
+            finder = getattr(controller, "image_finder", None)
+        cache = getattr(finder, "screenshot_cache", None)
+        if cache is None or not callable(getattr(cache, "copy", None)):
+            raise RuntimeError("脚本没有可用的截图缓存")
+        return cache.copy()
+
+    def capture_manual_screenshot(self) -> dict[str, Any]:
+        """手动捕获：活动运行复制缓存，空闲时才激活并截取游戏客户区。"""
+        restore_required = False
+        try:
+            with self._lock:
+                run_id = self._active_run_id
+                script = self._scripts.get(run_id) if run_id is not None else None
+                run = self.storage.runs.get(run_id) if run_id is not None else None
+                if run_id is not None:
+                    # 点击时重新解析句柄；运行中仍只复制缓存，避免抢焦点和刷新画面。
+                    WindowsEnvironment(hwnd=None, window_title="阴阳师")
+                    frame = self._copy_script_screenshot(script)
+                else:
+                    # 捕获完成前占住活动槽，避免新 run 在前台截图期间启动。
+                    restore_required = True
+                    environment = WindowsEnvironment(
+                        hwnd=None,
+                        window_title="阴阳师",
+                        capture_mode="foreground",
+                    )
+                    environment.activate_window()
+                    time.sleep(0.5)
+                    frame = environment.capture_screen()
+            saved = self.screenshot_service.save_full(
+                frame,
+                trigger="manual",
+                run_id=run_id,
+                script_id=str(run.get("script_id") or "") if run else None,
+                stage=str(run.get("stage") or "") if run else None,
+            )
+            self.record_saved_screenshot(saved, "手动保存当前运行画面")
+            return {**saved, "restore_required": restore_required}
+        except ScreenshotError as exc:
+            raise ScreenshotError(
+                exc.detail,
+                exc.status_code,
+                restore_required=restore_required,
+            ) from exc
+        except Exception as exc:
+            raise ScreenshotError(
+                str(exc),
+                409,
+                restore_required=restore_required,
+            ) from exc
+
+    def record_saved_screenshot(
+        self,
+        screenshot: dict[str, Any],
+        description: str,
+    ) -> None:
+        """发布截图事件，并在关联运行存在时追加证据。"""
+        run_id = screenshot.get("run_id")
+        if isinstance(run_id, int):
+            self._append_screenshot_evidence(run_id, screenshot, description)
+            self._publish_run_snapshot(run_id)
+        self._publish({"type": "screenshot_saved", "screenshot": screenshot, "run_id": run_id})
+
+    def _install_unknown_scene_observer(
+        self,
+        run_id: int,
+        script_id: str,
+        script: Any,
+    ) -> None:
+        """为事件脚本安装三轮未知、每段一次的截图观察器。"""
+        setter = getattr(script, "set_recognition_observer", None)
+        if not callable(setter):
+            return
+        consecutive_unknown = 0
+        captured_for_episode = False
+
+        def observe(recognized: bool) -> None:
+            nonlocal consecutive_unknown, captured_for_episode
+            if recognized:
+                consecutive_unknown = 0
+                captured_for_episode = False
+                return
+            consecutive_unknown += 1
+            if consecutive_unknown != 3 or captured_for_episode:
+                return
+            captured_for_episode = True
+            try:
+                frame = self._copy_script_screenshot(script)
+            except Exception as exc:
+                threading.Thread(
+                    target=self._append_capture_error,
+                    args=(run_id, "连续三轮未识别场景", str(exc)),
+                    daemon=True,
+                ).start()
+                return
+            threading.Thread(
+                target=self._save_unknown_scene,
+                args=(run_id, script_id, frame),
+                daemon=True,
+            ).start()
+
+        setter(observe)
+
+    def _save_unknown_scene(
+        self,
+        run_id: int,
+        script_id: str,
+        frame: Any,
+    ) -> None:
+        try:
+            saved = self.screenshot_service.save_full(
+                frame,
+                trigger="unknown_scene",
+                run_id=run_id,
+                script_id=script_id,
+                stage="script_running",
+            )
+            self.record_saved_screenshot(saved, "连续三轮未识别到注册事件")
+        except Exception as exc:
+            self._append_capture_error(run_id, "连续三轮未识别场景", str(exc))
+
+    def _append_screenshot_evidence(
+        self,
+        run_id: int,
+        screenshot: dict[str, Any],
+        description: str,
+    ) -> dict[str, Any]:
+        path = str(self.screenshot_service.content_path(str(screenshot["id"])).resolve())
+        evidence_id = self.storage.evidence.append(
+            run_id,
+            kind="screenshot",
+            path=path,
+            description=description,
+        )
+        evidence = {
+            "id": evidence_id,
+            "run_id": run_id,
+            "kind": "screenshot",
+            "path": path,
+            "screenshot_id": screenshot["id"],
+            "description": description,
+            "capture_error": None,
+        }
+        self.storage.runs.set_latest_evidence(run_id, evidence)
+        return evidence
+
+    def _append_capture_error(self, run_id: int, description: str, error: str) -> None:
+        evidence_id = self.storage.evidence.append(
+            run_id,
+            kind="screenshot",
+            description=description,
+            capture_error=error,
+        )
+        evidence = {
+            "id": evidence_id,
+            "run_id": run_id,
+            "kind": "screenshot",
+            "path": None,
+            "description": description,
+            "capture_error": error,
+        }
+        self.storage.runs.set_latest_evidence(run_id, evidence)
+        self._publish_run_snapshot(run_id)
 
     def _publish_log(self, run_id: int, level: str, message: str) -> None:
         self._publish(

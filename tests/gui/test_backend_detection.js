@@ -18,6 +18,10 @@ function loadMainModule() {
       if (name === 'electron') {
         return {
           app: {
+            getPath: (name) => {
+              assert.strictEqual(name, 'userData');
+              return 'C:\\Users\\tester\\AppData\\Roaming\\yys-script-manager';
+            },
             whenReady: () => new Promise(() => {}),
             on: () => {},
             quit: () => {},
@@ -97,7 +101,18 @@ async function testProtectedBackendBlocksStartup() {
   }
 }
 
+function testBackendReceivesPersistentUserDataRoot() {
+  const main = loadMainModule();
+  const env = main.resolveBackendEnvironment();
+  assert.strictEqual(
+    env.YYS_USER_DATA_DIR,
+    'C:\\Users\\tester\\AppData\\Roaming\\yys-script-manager'
+  );
+  assert.ok(env.YYS_UI_TOKEN);
+}
+
 async function main() {
+  testBackendReceivesPersistentUserDataRoot();
   await testDetectsProtectedBackend();
   await testProtectedBackendBlocksStartup();
   console.log('backend detection tests passed');

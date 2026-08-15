@@ -131,6 +131,7 @@ class EventBaseScript(ABC):
         self._pause_threading_event.set()  # 初始状态为运行
         self._stop_threading_event = threading.Event()
         self._run_guard: Optional[RunGuard] = None
+        self._recognition_observer: Optional[Callable[[bool], None]] = None
 
         # 未知事件处理器（默认空实现，避免每次迭代都触发噪音日志）
         self._event_manager.register_event_handler(
@@ -230,6 +231,13 @@ class EventBaseScript(ABC):
         """设置真实运行保险丝；传入 None 可恢复普通运行。"""
         self._run_guard = guard
 
+    def set_recognition_observer(
+        self,
+        observer: Optional[Callable[[bool], None]],
+    ) -> None:
+        """设置每轮注册事件识别结果观察器；观察器不得控制脚本运行。"""
+        self._recognition_observer = observer
+
     def run(self) -> None:
         """主循环：执行初始化后持续运行直到被 stop"""
         self.on_run()
@@ -249,6 +257,11 @@ class EventBaseScript(ABC):
 
             # 触发图像匹配事件
             triggered_event = self._trigger_event_from_screenshot_cache()
+            if self._recognition_observer is not None:
+                try:
+                    self._recognition_observer(triggered_event is not None)
+                except Exception:
+                    logger.exception("识别结果观察器执行失败")
             if self._run_guard is not None:
                 self._run_guard.note_iteration(triggered_event is not None)
                 if self._run_guard.is_stopped:

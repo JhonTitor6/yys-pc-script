@@ -57,7 +57,12 @@ RUNTIME_BINARIES.extend(
 )
 
 
-def collect_module_data(module_name: str, include_globs: list[str], exclude_globs: list[str] | None = None):
+def collect_module_data(
+    module_name: str,
+    include_globs: list[str],
+    exclude_globs: list[str] | None = None,
+    destination_root: str = "",
+) -> list[tuple[str, str]]:
     """
     收集 <module_name> 目录下匹配 include_globs 的所有文件，
     排除匹配 exclude_globs 的路径。
@@ -73,10 +78,16 @@ def collect_module_data(module_name: str, include_globs: list[str], exclude_glob
             if not f.is_file():
                 continue
             rel = f.relative_to(module_dir)
-            rel_str = rel.as_posix()
             if any(rel.match(eg) for eg in exclude_globs):
                 continue
-            out.append((str(f), str(rel.parent.as_posix())))
+            destination = rel.parent.as_posix()
+            if destination_root:
+                destination = (
+                    destination_root
+                    if destination == "."
+                    else f"{destination_root}/{destination}"
+                )
+            out.append((str(f), destination))
     return out
 
 # ---------------------------------------------------------------------------
@@ -214,6 +225,7 @@ DATAS += collect_module_data(
     "yys",
     include_globs=["*.bmp", "*.png", "*.json", "*.txt"],
     exclude_globs=["test/**", "images/debug/**", "logs/**", "__pycache__/**"],
+    destination_root="yys",
 )
 
 # win_util/ 下的 egg-info / README（可选，但保持完整）

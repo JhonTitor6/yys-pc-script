@@ -94,6 +94,14 @@ const state = {
   workflowDraft: null,
   workflowDirty: false,
   workflowExpandedIndex: 0,
+  imageResources: [],
+  imageResourcesLoaded: false,
+  imageResourceQuery: '',
+  pendingImageResourceId: null,
+  screenshots: [],
+  screenshotsLoaded: false,
+  screenshotCropper: null,
+  screenshotCropSession: null,
   history: {
     scriptId: '',
     status: '',
@@ -123,6 +131,9 @@ async function requestJson(path, options = {}) {
     const text = await response.text();
     const error = new Error(`请求失败：${path}（${response.status}）${text}`);
     error.status = response.status;
+    try {
+      error.restoreRequired = JSON.parse(text)?.detail?.restore_required === true;
+    } catch { error.restoreRequired = false; }
     throw error;
   }
   return response.json();
@@ -158,6 +169,22 @@ async function apiPut(path, body = {}) {
 
 async function apiDelete(path) {
   return requestJson(path, { method: 'DELETE' });
+}
+
+async function apiPutBinary(path, body) {
+  return requestJson(path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body
+  });
+}
+
+async function apiPostBinary(path, body) {
+  return requestJson(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'image/png' },
+    body
+  });
 }
 
 function eventsWebSocketUrl() {
@@ -508,10 +535,12 @@ function renderEvidenceList(run) {
   if (!evidence.length) return '<p class="empty-text">暂无截图证据。</p>';
   return evidence.map((item, index) => {
     const error = item.capture_error;
-    const image = !error && run?.id && index === evidence.length - 1
+    const unavailable = Boolean(error) || item.available === false;
+    const image = !unavailable && run?.id && index === evidence.length - 1
       ? `<img src="${API_BASE}/api/runs/${encodeURIComponent(run.id)}/evidence/latest${UI_TOKEN ? `?token=${encodeURIComponent(UI_TOKEN)}` : ''}" alt="运行最新截图">`
       : '';
-    return `<article class="evidence-item"><div><b>${error ? '截图不可用' : '截图证据'}</b><small>${escapeHtml(error || item.created_at || '已记录')}</small></div>${image || `<p>${escapeHtml(error || '已记录证据，但当前没有可预览文件。')}</p>`}</article>`;
+    const unavailableMessage = error || '截图文件已删除或不可用。';
+    return `<article class="evidence-item"><div><b>${unavailable ? '截图不可用' : '截图证据'}</b><small>${escapeHtml(unavailable ? unavailableMessage : item.created_at || '已记录')}</small></div>${image || `<p>${escapeHtml(unavailable ? unavailableMessage : '已记录证据，但当前没有可预览文件。')}</p>`}</article>`;
   }).join('');
 }
 
@@ -647,6 +676,12 @@ function connectEvents() {
     }
     if (payload.type === 'run_status_changed') {
       refreshCurrentRun().catch((error) => showToast(`刷新运行状态失败：${error.message}`, 'error'));
+    }
+    if (payload.type === 'screenshot_saved' && payload.screenshot) {
+      state.screenshots = [payload.screenshot, ...state.screenshots.filter((item) => item.id !== payload.screenshot.id)];
+      if (state.screenshotsLoaded) renderScreenshotLibrary();
+      showToast(`已保存${payload.screenshot.trigger === 'unknown_scene' ? '未知场景' : ''}截图。`, 'success');
+      return;
     }
     if (payload.type === 'workflow_error') {
       appendLog({ level: 'ERROR', message: `${payload.workflow_id ? `工作流 ${payload.workflow_id}` : '工作流'}：${payload.message || payload.error || '后台执行失败'}` });
@@ -987,6 +1022,280 @@ function setTheme(theme) {
 
 function renderSettings() {
   setTheme(state.theme);
+  renderImageResources();
+  renderScreenshotLibrary();
+  if (!state.imageResourcesLoaded) {
+    loadImageResources().catch((error) => showToast(error.message, 'error'));
+  }
+  if (!state.screenshotsLoaded) {
+    loadScreenshots().catch((error) => showToast(error.message, 'error'));
+  }
+}
+
+const SCREENSHOT_TRIGGER_LABELS = {
+  manual: '手动',
+  unknown_scene: '连续未知场景',
+  script_error: '脚本异常',
+  entry_error: '入口异常',
+  stop_timeout: '停止超时'
+};
+
+function screenshotContentUrl(screenshotId) {
+  const token = UI_TOKEN ? `?token=${encodeURIComponent(UI_TOKEN)}` : '';
+  return `${API_BASE}/api/screenshots/${encodeURIComponent(screenshotId)}/content${token}`;
+}
+
+async function loadScreenshots() {
+  state.screenshots = await apiGet('/api/screenshots');
+  state.screenshotsLoaded = true;
+  renderScreenshotLibrary();
+}
+
+function renderScreenshotLibrary() {
+  const container = document.getElementById('screenshotLibrary');
+  if (!container) return;
+  if (!state.screenshotsLoaded) {
+    container.innerHTML = '<p class="empty-text">正在读取截图库…</p>';
+    return;
+  }
+  if (!state.screenshots.length) {
+    container.innerHTML = '<p class="empty-text">暂无永久截图。</p>';
+    return;
+  }
+  container.innerHTML = state.screenshots.map((item) => `
+    <article class="screenshot-card">
+      ${item.available ? `<img src="${escapeHtml(screenshotContentUrl(item.id))}" alt="${escapeHtml(SCREENSHOT_TRIGGER_LABELS[item.trigger] || item.trigger)}截图预览" loading="lazy">` : '<div class="empty-text">文件已删除</div>'}
+      <div class="screenshot-card-copy"><strong>${escapeHtml(item.kind === 'crop' ? '裁剪图' : '完整帧')}</strong><span>${escapeHtml(SCREENSHOT_TRIGGER_LABELS[item.trigger] || item.trigger)}</span><small>${escapeHtml(item.width)} × ${escapeHtml(item.height)}${item.run_id ? ` · 运行 #${escapeHtml(item.run_id)}` : ''}</small><small>${escapeHtml(formatDateTime(item.created_at))}</small></div>
+      <button class="link-button danger-link" type="button" data-delete-screenshot="${escapeHtml(item.id)}">删除此截图</button>
+    </article>`).join('');
+}
+
+async function captureScreenshot(resourceId = null) {
+  const button = document.getElementById('captureScreenshotButton');
+  let restoreRequired = false;
+  if (button) button.disabled = true;
+  try {
+    const saved = await apiPost('/api/screenshots/capture');
+    restoreRequired = saved.restore_required === true;
+    state.screenshots = [saved, ...state.screenshots.filter((item) => item.id !== saved.id)];
+    if (state.screenshotsLoaded) renderScreenshotLibrary();
+    openScreenshotCropper(saved, resourceId);
+  } catch (error) {
+    restoreRequired = error.restoreRequired === true;
+    showToast(error.message, 'error');
+  } finally {
+    if (restoreRequired) {
+      try { await window.desktopBridge?.restoreGuiFocus?.(); } catch { /* GUI 仍可由用户手动恢复 */ }
+    }
+    if (button) button.disabled = false;
+  }
+}
+
+function openScreenshotCropper(screenshot, resourceId) {
+  closeScreenshotCropper();
+  const dialog = document.getElementById('screenshotCropDialog');
+  const image = document.getElementById('screenshotCropImage');
+  const replace = document.getElementById('replaceFromScreenshotButton');
+  state.screenshotCropSession = { screenshot, resourceId };
+  replace.hidden = !resourceId;
+  replace.textContent = resourceId ? `替换 ${resourceId.split('/').at(-1)}` : '替换当前资源';
+  document.getElementById('screenshotCropFeedback').textContent = `完整帧已永久保存：${screenshot.width} × ${screenshot.height}`;
+  image.onload = () => {
+    const CropperConstructor = window.Cropper?.default;
+    if (typeof CropperConstructor !== 'function') {
+      document.getElementById('screenshotCropFeedback').textContent = '本地 Cropper.js 未能加载。';
+      return;
+    }
+    state.screenshotCropper = new CropperConstructor(image);
+    const cropperImage = state.screenshotCropper.getCropperImage?.();
+    if (cropperImage) cropperImage.rotatable = false;
+    state.screenshotCropper.getCropperSelection()?.focus?.();
+  };
+  image.src = screenshotContentUrl(screenshot.id);
+  dialog.showModal();
+  document.getElementById('closeScreenshotCropButton').focus();
+}
+
+function closeScreenshotCropper() {
+  state.screenshotCropper?.destroy?.();
+  state.screenshotCropper = null;
+  state.screenshotCropSession = null;
+  const image = document.getElementById('screenshotCropImage');
+  if (image) { image.onload = null; image.removeAttribute('src'); }
+  const dialog = document.getElementById('screenshotCropDialog');
+  if (dialog?.open) dialog.close();
+}
+
+async function selectedCropBlob() {
+  const selection = state.screenshotCropper?.getCropperSelection?.();
+  if (!selection || !Number.isFinite(selection.width) || !Number.isFinite(selection.height) || selection.width <= 0 || selection.height <= 0) {
+    throw new Error('请先创建非零尺寸的矩形选区。');
+  }
+  const cropperImage = state.screenshotCropper?.getCropperImage?.();
+  const source = state.screenshotCropSession?.screenshot;
+  if (!cropperImage || !source) throw new Error('原图信息不可用。');
+  const selectionRect = selection.getBoundingClientRect();
+  const imageRect = cropperImage.getBoundingClientRect();
+  if (imageRect.width <= 0 || imageRect.height <= 0) throw new Error('原图预览尺寸无效。');
+  const epsilon = 0.5;
+  if (
+    selectionRect.left < imageRect.left - epsilon
+    || selectionRect.top < imageRect.top - epsilon
+    || selectionRect.right > imageRect.right + epsilon
+    || selectionRect.bottom > imageRect.bottom + epsilon
+  ) throw new Error('裁剪选区不能超出原图。');
+  const width = Math.round(selectionRect.width * source.width / imageRect.width);
+  const height = Math.round(selectionRect.height * source.height / imageRect.height);
+  if (width <= 0 || height <= 0 || width > source.width || height > source.height) throw new Error('裁剪选区无效。');
+  const canvas = await selection.$toCanvas({ width, height });
+  if (!canvas || canvas.width <= 0 || canvas.height <= 0) throw new Error('裁剪选区无效。');
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob || blob.size <= 0) throw new Error('裁剪结果为空。');
+  return blob;
+}
+
+async function saveSelectedCrop() {
+  const session = state.screenshotCropSession;
+  if (!session) return;
+  const feedback = document.getElementById('screenshotCropFeedback');
+  try {
+    const blob = await selectedCropBlob();
+    const saved = await apiPostBinary(`/api/screenshots/${encodeURIComponent(session.screenshot.id)}/crops`, blob);
+    state.screenshots = [saved, ...state.screenshots.filter((item) => item.id !== saved.id)];
+    if (state.screenshotsLoaded) renderScreenshotLibrary();
+    feedback.textContent = `裁剪图已保存：${saved.width} × ${saved.height}`;
+    showToast('裁剪图已永久保存。', 'success');
+  } catch (error) {
+    feedback.textContent = error.message;
+  }
+}
+
+async function replaceResourceFromCrop() {
+  const session = state.screenshotCropSession;
+  if (!session?.resourceId) return;
+  const feedback = document.getElementById('screenshotCropFeedback');
+  try {
+    const blob = await selectedCropBlob();
+    const confirmed = await confirmImageResourceAction({
+      resourceId: session.resourceId,
+      title: '确认用截图替换图片',
+      message: '将使用当前裁剪选区替换目标当前生效图片；已保存的完整帧不会删除。',
+      confirmLabel: '确认替换'
+    });
+    if (!confirmed) return;
+    const updated = await apiPutBinary(`/api/image-resources/override?resource_id=${encodeURIComponent(session.resourceId)}`, blob);
+    updated.preview_version = String(Date.now());
+    state.imageResources = state.imageResources.map((item) => item.resource_id === session.resourceId ? updated : item);
+    renderImageResources();
+    feedback.textContent = `已替换 ${updated.filename}`;
+    showToast(`已替换 ${updated.filename}`, 'success');
+  } catch (error) {
+    feedback.textContent = error.message;
+  }
+}
+
+async function deleteScreenshot(screenshotId) {
+  if (!window.confirm('只删除这张永久截图？关联运行和资源覆盖不会被删除。')) return;
+  await apiDelete(`/api/screenshots/${encodeURIComponent(screenshotId)}`);
+  state.screenshots = state.screenshots.filter((item) => item.id !== screenshotId);
+  renderScreenshotLibrary();
+  showToast('截图已删除。', 'success');
+}
+
+function imageResourceContentUrl(resourceId, previewVersion = '') {
+  const params = new URLSearchParams({ resource_id: resourceId, variant: 'effective' });
+  if (UI_TOKEN) params.set('token', UI_TOKEN);
+  if (previewVersion) params.set('v', previewVersion);
+  return `${API_BASE}/api/image-resources/content?${params.toString()}`;
+}
+
+async function loadImageResources() {
+  state.imageResources = await apiGet('/api/image-resources');
+  state.imageResourcesLoaded = true;
+  renderImageResources();
+}
+
+function renderImageResources() {
+  const container = document.getElementById('imageResourceList');
+  if (!container) return;
+  if (!state.imageResourcesLoaded) {
+    container.innerHTML = '<p class="empty-text">正在读取图片目录…</p>';
+    return;
+  }
+  const query = state.imageResourceQuery.trim().toLowerCase();
+  const filtered = state.imageResources.filter((item) => !query || item.filename.toLowerCase().includes(query) || item.resource_id.toLowerCase().includes(query));
+  const groups = new Map();
+  filtered.forEach((item) => {
+    if (!groups.has(item.group)) groups.set(item.group, []);
+    groups.get(item.group).push(item);
+  });
+  if (!filtered.length) {
+    container.innerHTML = '<p class="empty-text">没有匹配的图片资源。</p>';
+    return;
+  }
+  container.innerHTML = [...groups.entries()].map(([group, items]) => `
+    <section class="image-resource-group">
+      <header><h4>${escapeHtml(group === 'common' || group === 'images' ? '公共目录' : '脚本目录')}</h4><span>yys/${escapeHtml(group)} · ${items.length} 项</span></header>
+      <div class="image-resource-grid">${items.map((item) => `
+        <article class="image-resource-card" data-image-resource="${escapeHtml(item.resource_id)}">
+          <img src="${escapeHtml(imageResourceContentUrl(item.resource_id, item.preview_version))}" alt="${escapeHtml(item.filename)} 当前生效预览" loading="lazy">
+          <div class="image-resource-copy"><div><strong>${escapeHtml(item.filename)}</strong><span class="resource-state ${item.overridden ? 'overridden' : ''}">${item.overridden ? '已覆盖' : '内置'}</span></div><code>${escapeHtml(item.resource_id)}</code><small>${escapeHtml(item.width)} × ${escapeHtml(item.height)} · ${escapeHtml(item.format)}</small></div>
+          <div class="image-resource-actions"><button class="button quiet" type="button" data-image-replace="${escapeHtml(item.resource_id)}">选择文件替换</button><button class="button quiet" type="button" data-image-screenshot="${escapeHtml(item.resource_id)}">截图并替换</button>${item.overridden ? `<button class="link-button danger-link" type="button" data-image-restore="${escapeHtml(item.resource_id)}">恢复默认</button>` : ''}</div>
+        </article>`).join('')}</div>
+    </section>`).join('');
+}
+
+function confirmImageResourceAction({ resourceId, title, message, confirmLabel, danger = false }) {
+  const dialog = document.getElementById('imageResourceConfirmDialog');
+  const preview = document.getElementById('imageResourceConfirmPreview');
+  const submit = document.getElementById('imageResourceConfirmSubmit');
+  document.getElementById('imageResourceConfirmTitle').textContent = title;
+  document.getElementById('imageResourceConfirmPath').textContent = resourceId;
+  document.getElementById('imageResourceConfirmMessage').textContent = message;
+  preview.src = imageResourceContentUrl(resourceId, String(Date.now()));
+  preview.alt = `${resourceId} 当前生效图片预览`;
+  submit.textContent = confirmLabel;
+  submit.classList.toggle('danger', danger);
+  submit.classList.toggle('primary', !danger);
+  dialog.returnValue = 'cancel';
+  return new Promise((resolve) => {
+    dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm'), { once: true });
+    dialog.showModal();
+    document.getElementById('imageResourceConfirmCancel').focus();
+  });
+}
+
+async function replaceImageResource(resourceId, file) {
+  const current = state.imageResources.find((item) => item.resource_id === resourceId);
+  if (!current) return;
+  const confirmed = await confirmImageResourceAction({
+    resourceId,
+    title: '确认替换图片',
+    message: `将使用“${file.name}”替换当前生效图片。${current.overridden ? '现有用户版本将被覆盖。' : ''}`,
+    confirmLabel: '确认替换'
+  });
+  if (!confirmed) return;
+  const updated = await apiPutBinary(`/api/image-resources/override?resource_id=${encodeURIComponent(resourceId)}`, file);
+  updated.preview_version = String(Date.now());
+  state.imageResources = state.imageResources.map((item) => item.resource_id === resourceId ? updated : item);
+  renderImageResources();
+  showToast(`已替换 ${updated.filename}`, 'success');
+}
+
+async function restoreImageResource(resourceId) {
+  const confirmed = await confirmImageResourceAction({
+    resourceId,
+    title: '确认恢复默认',
+    message: '当前用户版本将被删除，并立即恢复为安装包内置图片。',
+    confirmLabel: '恢复默认',
+    danger: true
+  });
+  if (!confirmed) return;
+  const updated = await apiDelete(`/api/image-resources/override?resource_id=${encodeURIComponent(resourceId)}`);
+  updated.preview_version = String(Date.now());
+  state.imageResources = state.imageResources.map((item) => item.resource_id === resourceId ? updated : item);
+  renderImageResources();
+  showToast(`已恢复 ${updated.filename}`, 'success');
 }
 
 function setNavCollapsed(collapsed) {
@@ -1116,6 +1425,41 @@ function bindEvents() {
     if (action && state.history.detail) controlCurrentRun(action.dataset.runAction, state.history.detail).then(() => { if (action.dataset.runAction === 'retry') switchView('run'); });
   });
   document.querySelectorAll('[data-theme-option]').forEach((button) => button.addEventListener('click', () => setTheme(button.dataset.themeOption)));
+  document.getElementById('imageResourceSearch').addEventListener('input', (event) => { state.imageResourceQuery = event.target.value; renderImageResources(); });
+  document.getElementById('imageResourceList').addEventListener('click', (event) => {
+    const replace = event.target.closest('[data-image-replace]');
+    if (replace) {
+      state.pendingImageResourceId = replace.dataset.imageReplace;
+      document.getElementById('imageResourceFile').click();
+      return;
+    }
+    const restore = event.target.closest('[data-image-restore]');
+    if (restore) { restoreImageResource(restore.dataset.imageRestore).catch((error) => showToast(error.message, 'error')); return; }
+    const screenshot = event.target.closest('[data-image-screenshot]');
+    if (screenshot) captureScreenshot(screenshot.dataset.imageScreenshot);
+  });
+  document.getElementById('imageResourceFile').addEventListener('change', (event) => {
+    const file = event.target.files?.[0];
+    const resourceId = state.pendingImageResourceId;
+    event.target.value = '';
+    state.pendingImageResourceId = null;
+    if (file && resourceId) replaceImageResource(resourceId, file).catch((error) => showToast(error.message, 'error'));
+  });
+  document.getElementById('captureScreenshotButton').addEventListener('click', () => captureScreenshot());
+  document.getElementById('refreshScreenshotsButton').addEventListener('click', () => loadScreenshots().catch((error) => showToast(error.message, 'error')));
+  document.getElementById('screenshotLibrary').addEventListener('click', (event) => {
+    const remove = event.target.closest('[data-delete-screenshot]');
+    if (remove) deleteScreenshot(remove.dataset.deleteScreenshot).catch((error) => showToast(error.message, 'error'));
+  });
+  document.getElementById('closeScreenshotCropButton').addEventListener('click', closeScreenshotCropper);
+  document.getElementById('cancelScreenshotCropButton').addEventListener('click', closeScreenshotCropper);
+  document.getElementById('saveScreenshotCropButton').addEventListener('click', saveSelectedCrop);
+  document.getElementById('replaceFromScreenshotButton').addEventListener('click', replaceResourceFromCrop);
+  document.getElementById('screenshotCropDialog').addEventListener('close', () => {
+    state.screenshotCropper?.destroy?.();
+    state.screenshotCropper = null;
+    state.screenshotCropSession = null;
+  });
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && state.workflowView === 'editor') { event.preventDefault(); closeWorkflowEditor(); }

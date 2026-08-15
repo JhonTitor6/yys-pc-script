@@ -1,0 +1,30 @@
+{
+  "id": "gui-assets-screenshot-abyss-config",
+  "name": "gui-assets-screenshot-abyss-config",
+  "title": "GUI资源、截图与狭间配置增强",
+  "description": "规划GUI可替换且重装保留的图片资源、游戏截图能力，以及狭间暗域副将与精英伤害阈值配置。",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "JhonTitor6",
+  "assignee": "JhonTitor6",
+  "createdAt": "2026-08-15",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "08-15-gui-image-resource-persistence",
+    "08-15-gui-game-screenshot",
+    "08-15-abyss-deputy-elite-threshold-config"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

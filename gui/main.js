@@ -96,6 +96,14 @@ function resolveBackendCwd(backendExe) {
   return path.join(__dirname, '..');
 }
 
+function resolveBackendEnvironment() {
+  return {
+    ...process.env,
+    YYS_UI_TOKEN: UI_TOKEN,
+    YYS_USER_DATA_DIR: app.getPath('userData')
+  };
+}
+
 function isPortOpen({ port = PYTHON_PORT, host = PYTHON_HOST, timeout = 1000 } = {}) {
   return new Promise((resolve) => {
     const socket = net.createConnection({ host, port });
@@ -224,7 +232,7 @@ async function startPythonBackend() {
     const backendExe = resolvePythonExecutable();
     pythonProcess = spawn(backendExe, pythonArgs, {
       cwd: resolveBackendCwd(backendExe),
-      env: { ...process.env, YYS_UI_TOKEN: UI_TOKEN },
+      env: resolveBackendEnvironment(),
       stdio: ['pipe', 'pipe', 'pipe']
     });
 
@@ -390,6 +398,15 @@ if (typeof ipcMain.handle === 'function') {
     const win = BrowserWindow.fromWebContents(event.sender);
     return Boolean(win && !win.isDestroyed() && win.isMaximized());
   });
+
+  ipcMain.handle('restore-gui-focus', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || win.isDestroyed()) return false;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+    return true;
+  });
 }
 
 app.whenReady().then(async () => {
@@ -427,5 +444,6 @@ module.exports = {
   assertBackendPortAvailable,
   checkBackendHealth,
   detectBackendState,
-  isPortOpen
+  isPortOpen,
+  resolveBackendEnvironment
 };

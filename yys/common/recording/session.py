@@ -58,6 +58,14 @@ class VideoWriter(Protocol):
 VideoWriterFactory = Callable[[Path, str, float, tuple[int, int]], VideoWriter]
 
 
+def validate_capture_frame(frame: np.ndarray) -> None:
+    """拒绝空帧和近似纯色帧，供录制与截图证据共用。"""
+    if frame.size == 0 or float(frame.std()) < 1.0:
+        raise RuntimeError(
+            "录制首帧近似纯色，请确认游戏窗口已正常显示后重新录制"
+        )
+
+
 @dataclass(frozen=True)
 class _QueuedEvent:
     event: RecordingEvent
@@ -276,10 +284,7 @@ class RecordingSession:
     @staticmethod
     def _validate_first_frame(frame: np.ndarray) -> None:
         """拒绝近似纯色首帧，避免生成无法用于回放的录制。"""
-        if frame.size == 0 or float(frame.std()) < 1.0:
-            raise RuntimeError(
-                "录制首帧近似纯色，请确认游戏窗口已正常显示后重新录制"
-            )
+        validate_capture_frame(frame)
 
     def _new_event(
         self,

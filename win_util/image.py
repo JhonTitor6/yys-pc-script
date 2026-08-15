@@ -1,8 +1,9 @@
+import os
 import sys
 import time
 from ctypes import windll
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import List, Tuple, Union, Any, Optional
 
 import cv2
@@ -23,12 +24,92 @@ if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
 else:
     PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+
+IMAGE_SUFFIXES = frozenset({".bmp", ".png"})
+IMAGE_EXCLUDED_DIRS = frozenset({
+    "test", "tests", "debug", "logs", "example", "recordings",
+})
+
+
+def production_image_ids(project_root: Path = PROJECT_ROOT) -> list[str]:
+    """动态列出安装树中的生产识别图片资源 ID。"""
+    yys_root = project_root / "yys"
+    if not yys_root.is_dir():
+        return []
+    return sorted(
+        path.relative_to(project_root).as_posix()
+        for path in yys_root.rglob("*")
+        if path.is_file()
+        and path.suffix.lower() in IMAGE_SUFFIXES
+        and not IMAGE_EXCLUDED_DIRS.intersection(
+            part.lower() for part in path.relative_to(yys_root).parts[:-1]
+        )
+    )
+
+
+def image_override_root(user_data_dir: Path | str | None = None) -> Path | None:
+    """返回当前用户的图片覆盖根；未配置持久目录时禁用覆盖。"""
+    raw_root = user_data_dir if user_data_dir is not None else os.environ.get("YYS_USER_DATA_DIR")
+    return Path(raw_root) / "image-overrides" if raw_root else None
+
+
+def _is_production_image_id(resource_id: str, builtin_path: Path) -> bool:
+    relative = PurePosixPath(resource_id)
+    return (
+        relative.parts[:1] == ("yys",)
+        and relative.suffix.lower() in IMAGE_SUFFIXES
+        and not IMAGE_EXCLUDED_DIRS.intersection(part.lower() for part in relative.parts[:-1])
+        and builtin_path.is_file()
+    )
+
+
+def _has_expected_image_signature(path: Path, expected_suffix: str) -> bool:
+    """轻量确认覆盖文件类型；完整解码由写入服务负责。"""
+    signature = {
+        ".bmp": b"BM",
+        ".png": b"\x89PNG\r\n\x1a\n",
+    }.get(expected_suffix)
+    if signature is None:
+        return False
+    try:
+        with path.open("rb") as image_file:
+            return image_file.read(len(signature)) == signature
+    except OSError:
+        return False
+
+
+def effective_image_path(
+    resource_id: str,
+    project_root: Path = PROJECT_ROOT,
+    user_data_dir: Path | str | None = None,
+) -> Path:
+    """返回资源当前生效文件；无有效覆盖时返回内置文件。"""
+    relative = PurePosixPath(resource_id)
+    if relative.is_absolute() or ".." in relative.parts or "\\" in resource_id:
+        raise ValueError("资源 ID 无效")
+    builtin = project_root.joinpath(*relative.parts)
+    override_root = image_override_root(user_data_dir)
+    if override_root is None:
+        return builtin
+    override = override_root.joinpath(*relative.parts)
+    return override if _has_expected_image_signature(override, builtin.suffix.lower()) else builtin
+
+
 def to_project_path(path: str) -> str:
-    p = Path(path)
-    # 绝对路径：不动
-    if p.is_absolute():
-        return str(p)
-    return str(PROJECT_ROOT / p)
+    """解析项目路径，并让生产图片文件优先使用当前用户覆盖。"""
+    original = Path(path)
+    builtin = original if original.is_absolute() else PROJECT_ROOT / original
+    if ".." in original.parts:
+        return str(original) if original.is_absolute() else str(builtin)
+    try:
+        resource_id = builtin.relative_to(PROJECT_ROOT).as_posix()
+    except ValueError:
+        return str(original) if original.is_absolute() else str(builtin)
+
+    if not _is_production_image_id(resource_id, builtin):
+        return str(builtin)
+
+    return str(effective_image_path(resource_id, PROJECT_ROOT))
 
 class ScreenCapture:
     """

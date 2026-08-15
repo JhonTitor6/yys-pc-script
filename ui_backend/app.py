@@ -8,11 +8,14 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from PIL import Image
 
 from ui_backend.events.hub import EventHub
+from ui_backend.image_resources import ImageResourceError, ImageResourceService, MAX_IMAGE_BYTES
 from ui_backend.models import RunRequest, RunSourceType, ScriptDefinition
 from ui_backend.runs.manager import RunManager
 from ui_backend.scheduler.service import SchedulerService
+from ui_backend.screenshots import MAX_SCREENSHOT_BYTES, ScreenshotError, ScreenshotService
 from ui_backend.scripts.registry import ScriptRegistry
 from ui_backend.storage.database import Database
 from ui_backend.storage.repositories import Storage
@@ -26,7 +29,11 @@ ALLOWED_ORIGINS = [
 ]
 
 
-def create_app(db_path: Path | str | None = None, api_token: str | None = None) -> FastAPI:
+def create_app(
+    db_path: Path | str | None = None,
+    api_token: str | None = None,
+    user_data_dir: Path | str | None = None,
+) -> FastAPI:
     """创建桌面工作台 FastAPI 应用。"""
     resolved_token = api_token if api_token is not None else os.environ.get("YYS_UI_TOKEN")
     app = FastAPI()
@@ -56,7 +63,19 @@ def create_app(db_path: Path | str | None = None, api_token: str | None = None) 
     storage.runs.mark_unfinished_as_error("后端重启，未完成运行已终止")
     registry = ScriptRegistry()
     event_hub = EventHub()
-    run_manager = RunManager(storage=storage, registry=registry, event_hub=event_hub)
+    resolved_user_data = (
+        user_data_dir if user_data_dir is not None else os.environ.get("YYS_USER_DATA_DIR")
+    )
+    image_resources = ImageResourceService(
+        resolved_user_data
+    )
+    screenshots = ScreenshotService(resolved_user_data)
+    run_manager = RunManager(
+        storage=storage,
+        registry=registry,
+        event_hub=event_hub,
+        screenshot_service=screenshots,
+    )
     scheduler = SchedulerService(run_manager, storage=storage, event_hub=event_hub)
 
     app.state.database = database
@@ -65,6 +84,8 @@ def create_app(db_path: Path | str | None = None, api_token: str | None = None) 
     app.state.event_hub = event_hub
     app.state.run_manager = run_manager
     app.state.scheduler = scheduler
+    app.state.image_resources = image_resources
+    app.state.screenshots = screenshots
     app.state.api_token = resolved_token
 
     @app.on_event("startup")
@@ -85,6 +106,106 @@ def create_app(db_path: Path | str | None = None, api_token: str | None = None) 
             _script_to_dict(item, user_config=current_storage.script_user_configs.get(item.script_id))
             for item in app.state.registry.list_scripts()
         ]
+
+    @app.get("/api/image-resources")
+    def list_image_resources() -> list[dict[str, Any]]:
+        """列出当前安装树中的生产图片资源。"""
+        return app.state.image_resources.list_resources()
+
+    @app.get("/api/image-resources/content")
+    def get_image_resource_content(
+        resource_id: str,
+        variant: str = "effective",
+    ) -> FileResponse:
+        """读取当前生效或安装包内置图片。"""
+        try:
+            path = app.state.image_resources.content_path(resource_id, variant)
+        except ImageResourceError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        with Image.open(path) as image:
+            media_type = f"image/{image.format.lower()}"
+        return FileResponse(path, media_type=media_type)
+
+    @app.put("/api/image-resources/override")
+    async def replace_image_resource(request: Request, resource_id: str) -> dict[str, Any]:
+        """校验二进制图片并原子替换单个用户覆盖。"""
+        payload = bytearray()
+        try:
+            async for chunk in request.stream():
+                payload.extend(chunk)
+                if len(payload) > MAX_IMAGE_BYTES:
+                    raise ImageResourceError(
+                        f"图片内容不能超过 {MAX_IMAGE_BYTES} 字节",
+                        413,
+                    )
+            return app.state.image_resources.replace(resource_id, bytes(payload))
+        except ImageResourceError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+    @app.delete("/api/image-resources/override")
+    def restore_image_resource(resource_id: str) -> dict[str, Any]:
+        """删除单个用户覆盖并恢复安装包内置版本。"""
+        try:
+            return app.state.image_resources.restore(resource_id)
+        except ImageResourceError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+    @app.post("/api/screenshots/capture")
+    def capture_screenshot() -> dict[str, Any]:
+        """手动保存完整客户区；活动运行只复制现有缓存。"""
+        try:
+            return app.state.run_manager.capture_manual_screenshot()
+        except ScreenshotError as exc:
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail={
+                    "message": exc.detail,
+                    "restore_required": exc.restore_required,
+                },
+            ) from exc
+
+    @app.get("/api/screenshots")
+    def list_screenshots() -> list[dict[str, Any]]:
+        """列出 userData 中的永久截图。"""
+        return app.state.screenshots.list()
+
+    @app.get("/api/screenshots/{screenshot_id}/content")
+    def get_screenshot_content(screenshot_id: str) -> FileResponse:
+        """读取指定永久截图 PNG。"""
+        try:
+            path = app.state.screenshots.content_path(screenshot_id)
+        except ScreenshotError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        return FileResponse(path, media_type="image/png", filename=path.name)
+
+    @app.post("/api/screenshots/{screenshot_id}/crops")
+    async def save_screenshot_crop(
+        screenshot_id: str,
+        request: Request,
+    ) -> dict[str, Any]:
+        """校验并保存 Cropper.js 输出的 PNG。"""
+        payload = bytearray()
+        try:
+            async for chunk in request.stream():
+                payload.extend(chunk)
+                if len(payload) > MAX_SCREENSHOT_BYTES:
+                    raise ScreenshotError(
+                        f"裁剪图片不能超过 {MAX_SCREENSHOT_BYTES} 字节",
+                        413,
+                    )
+            saved = app.state.screenshots.save_crop(screenshot_id, bytes(payload))
+            app.state.run_manager.record_saved_screenshot(saved, "保存运行截图裁剪图")
+            return saved
+        except ScreenshotError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+    @app.delete("/api/screenshots/{screenshot_id}")
+    def delete_screenshot(screenshot_id: str) -> dict[str, Any]:
+        """只删除用户明确选中的一张截图。"""
+        try:
+            return app.state.screenshots.delete(screenshot_id)
+        except ScreenshotError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
     @app.patch("/api/scripts/{script_id}/config")
     def patch_script_config(script_id: str, payload: dict[str, Any]) -> dict[str, Any]:

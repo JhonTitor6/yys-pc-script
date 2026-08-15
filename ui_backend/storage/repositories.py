@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from pathlib import Path
 from typing import Any
 
 from ui_backend.models import (
@@ -594,7 +595,7 @@ class EvidenceRepository:
                 "SELECT * FROM run_evidence WHERE run_id = ? ORDER BY id",
                 (run_id,),
             ).fetchall()
-        return [dict(row) for row in rows]
+        return [self._with_availability(dict(row)) for row in rows]
 
     def latest_by_run(self, run_id: int) -> dict[str, Any] | None:
         """读取某次运行的最新证据。"""
@@ -603,7 +604,18 @@ class EvidenceRepository:
                 "SELECT * FROM run_evidence WHERE run_id = ? ORDER BY id DESC LIMIT 1",
                 (run_id,),
             ).fetchone()
-        return _row_to_dict(row)
+        item = _row_to_dict(row)
+        return self._with_availability(item) if item is not None else None
+
+    @staticmethod
+    def _with_availability(item: dict[str, Any]) -> dict[str, Any]:
+        """动态标记证据文件是否仍可读取，不改写历史记录。"""
+        path = item.get("path")
+        try:
+            item["available"] = bool(path and Path(str(path)).is_file() and Path(str(path)).stat().st_size > 0)
+        except OSError:
+            item["available"] = False
+        return item
 
 
 class SnapshotRepository:

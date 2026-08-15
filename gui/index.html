@@ -32,6 +32,7 @@
     <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12.5 4.3 4.3L19 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
     <symbol id="icon-flag" viewBox="0 0 24 24"><path d="M6 20V4m1 1h10l-2.2 3L17 11H7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-camera" viewBox="0 0 24 24"><path d="M4 8.5h3l1.4-2h7.2l1.4 2h3v10H4z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="13.5" r="3.2" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
   </svg>
 
   <div class="app-frame">
@@ -75,6 +76,7 @@
             <span id="currentRunProgress" class="topbar-run-progress" hidden>—</span>
             <span id="globalRunStatus" class="status-pill idle">空闲</span>
             <button id="viewRunButton" class="link-button" type="button" data-view-run>查看运行</button>
+            <button id="captureScreenshotButton" class="button quiet compact-button" type="button"><svg class="icon"><use href="#icon-camera"></use></svg>截图</button>
             <button id="mainStopButton" class="button danger compact-button" type="button" data-run-action="stop" hidden><svg class="icon"><use href="#icon-stop"></use></svg>停止</button>
           </div>
           <button id="themeToggle" class="icon-button" type="button" aria-label="切换深色主题" title="切换主题"><svg class="icon"><use href="#icon-moon"></use></svg></button>
@@ -141,6 +143,8 @@
             <div class="settings-grid">
               <section class="settings-section"><div class="section-heading"><h3>外观</h3><p>默认浅色，选择会保存在本地。</p></div><div class="theme-options" id="themeOptions"><button type="button" class="theme-option" data-theme-option="light">浅色主题</button><button type="button" class="theme-option" data-theme-option="dark">深色主题</button></div></section>
               <section class="settings-section"><div class="section-heading"><h3>应用信息</h3><p>当前桌面端运行能力。</p></div><dl class="info-list"><div><dt>后端</dt><dd>本地 FastAPI + WebSocket</dd></div><div><dt>运行模式</dt><dd>单执行槽，配置运行中只读</dd></div><div><dt>字体</dt><dd>系统字体</dd></div></dl></section>
+              <details id="imageResourcesSection" class="settings-section image-resources-section" open><summary class="settings-section-summary"><div class="section-heading"><h3>识别图片资源</h3><p>替换文件保存在当前用户目录，升级或重新安装后继续生效。</p></div><span class="settings-section-chevron" aria-hidden="true">⌄</span></summary><div class="settings-section-content"><label class="image-resource-search"><span>搜索文件名或路径</span><input id="imageResourceSearch" type="search" placeholder="例如 boss_label 或 yys/common"></label><div id="imageResourceList" class="image-resource-list"><p class="empty-text">正在读取图片目录…</p></div><input id="imageResourceFile" type="file" accept=".bmp,.png,image/bmp,image/png" hidden></div></details>
+              <section class="settings-section screenshot-library-section"><div class="section-heading screenshot-library-heading"><div><h3>永久截图库</h3><p>完整帧和裁剪图不会自动清理。</p></div><button id="refreshScreenshotsButton" class="button quiet" type="button">刷新</button></div><div id="screenshotLibrary" class="screenshot-library"><p class="empty-text">正在读取截图库…</p></div></section>
             </div>
           </section>
         </main>
@@ -149,6 +153,22 @@
   </div>
 
   <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+  <dialog id="imageResourceConfirmDialog" class="image-resource-dialog" aria-labelledby="imageResourceConfirmTitle" aria-describedby="imageResourceConfirmMessage">
+    <form method="dialog">
+      <header><div><span class="eyebrow">图片资源确认</span><h2 id="imageResourceConfirmTitle">确认操作</h2></div></header>
+      <div class="image-resource-dialog-target"><img id="imageResourceConfirmPreview" alt="目标当前生效图片预览"><div><span>目标资源</span><code id="imageResourceConfirmPath"></code><p id="imageResourceConfirmMessage"></p></div></div>
+      <div class="image-resource-dialog-actions"><button id="imageResourceConfirmCancel" class="button quiet" type="submit" value="cancel" autofocus>取消</button><button id="imageResourceConfirmSubmit" class="button primary" type="submit" value="confirm">确认</button></div>
+    </form>
+  </dialog>
+  <dialog id="screenshotCropDialog" class="screenshot-crop-dialog" aria-labelledby="screenshotCropTitle" aria-describedby="screenshotCropHelp">
+    <div class="screenshot-crop-shell">
+      <header><div><span class="eyebrow">永久截图</span><h2 id="screenshotCropTitle">裁剪游戏画面</h2><p id="screenshotCropHelp">拖动创建选区；选区可移动、缩放，方向键可微调。</p></div><button id="closeScreenshotCropButton" class="icon-button" type="button" aria-label="关闭裁剪器"><svg class="icon"><use href="#icon-close"></use></svg></button></header>
+      <div id="screenshotCropViewport" class="screenshot-crop-viewport"><img id="screenshotCropImage" alt="待裁剪的完整游戏截图"></div>
+      <p id="screenshotCropFeedback" class="run-pane-hint" role="status" aria-live="polite"></p>
+      <footer><button id="cancelScreenshotCropButton" class="button quiet" type="button">关闭并保留完整帧</button><button id="saveScreenshotCropButton" class="button primary" type="button">保存裁剪图</button><button id="replaceFromScreenshotButton" class="button primary" type="button" hidden>替换当前资源</button></footer>
+    </div>
+  </dialog>
+  <script src="./node_modules/cropperjs/dist/cropper.min.js"></script>
   <script src="./renderer.js"></script>
 </body>
 </html>

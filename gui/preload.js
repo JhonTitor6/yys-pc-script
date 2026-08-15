@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('desktopBridge', {
   minimizeWindow: () => ipcRenderer.send('minimize-window'),
   maximizeWindow: () => ipcRenderer.send('maximize-window'),
   closeWindow: () => ipcRenderer.send('close-window'),
+  restoreGuiFocus: () => ipcRenderer.invoke('restore-gui-focus'),
   windowAction: (action) => ipcRenderer.invoke('window-action', action),
   isMaximized: () => ipcRenderer.invoke('is-maximized'),
   onWindowState: (callback) => {

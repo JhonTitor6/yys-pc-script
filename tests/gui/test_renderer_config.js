@@ -63,7 +63,77 @@ function testExistingNumberAndBooleanConversionsRemainUnchanged() {
   );
 }
 
+function testImageResourceSettingsContract() {
+  // 产品契约：图片管理留在设置页，搜索/预览/替换/恢复均只调用图片资源 API。
+  const renderer = fs.readFileSync(path.resolve(__dirname, '../../gui/renderer.js'), 'utf8');
+  const html = fs.readFileSync(path.resolve(__dirname, '../../gui/index.html'), 'utf8');
+  assert.ok(html.includes('id="imageResourceSearch"'));
+  assert.ok(html.includes('id="imageResourceList"'));
+  assert.ok(html.includes('<details id="imageResourcesSection"'));
+  assert.ok(html.includes('class="settings-section-summary"'));
+  assert.ok(html.includes('accept=".bmp,.png,image/bmp,image/png"'));
+  assert.ok(html.includes('<dialog id="imageResourceConfirmDialog"'));
+  assert.ok(html.includes('aria-describedby="imageResourceConfirmMessage"'));
+  assert.ok(html.includes('<form method="dialog">'));
+  assert.ok(html.includes('id="imageResourceConfirmPreview"'));
+  assert.ok(html.includes('id="imageResourceConfirmPath"'));
+  assert.ok(html.includes('id="imageResourceConfirmCancel" class="button quiet" type="submit" value="cancel"'));
+  assert.ok(renderer.includes("apiGet('/api/image-resources')"));
+  assert.ok(renderer.includes('/api/image-resources/content?'));
+  assert.ok(renderer.includes('/api/image-resources/override?resource_id='));
+  assert.ok(renderer.includes('item.filename.toLowerCase().includes(query)'));
+  assert.ok(renderer.includes('item.resource_id.toLowerCase().includes(query)'));
+  const start = renderer.indexOf('async function replaceImageResource');
+  const end = renderer.indexOf('\nfunction setNavCollapsed', start);
+  const resourceActions = renderer.slice(start, end);
+  assert.ok(renderer.includes("dialog.returnValue = 'cancel'"));
+  assert.ok(renderer.includes("dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm')"));
+  assert.ok(resourceActions.includes('confirmImageResourceAction'));
+  assert.ok(resourceActions.includes('if (!confirmed) return;'));
+  assert.ok(resourceActions.indexOf('if (!confirmed) return;') < resourceActions.indexOf('apiPutBinary'));
+  assert.ok(resourceActions.lastIndexOf('if (!confirmed) return;') < resourceActions.indexOf('apiDelete'));
+  assert.ok(!resourceActions.includes('window.confirm'));
+  assert.ok(!resourceActions.includes('/api/runs'));
+}
+
+function testScreenshotCropperContract() {
+  // 产品契约：截图独立于运行动作，本地固定 Cropper.js v2 按选择区输出 PNG。
+  const renderer = fs.readFileSync(path.resolve(__dirname, '../../gui/renderer.js'), 'utf8');
+  const html = fs.readFileSync(path.resolve(__dirname, '../../gui/index.html'), 'utf8');
+  const preload = fs.readFileSync(path.resolve(__dirname, '../../gui/preload.js'), 'utf8');
+  const main = fs.readFileSync(path.resolve(__dirname, '../../gui/main.js'), 'utf8');
+  const packageJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../gui/package.json'), 'utf8'));
+
+  assert.strictEqual(packageJson.dependencies.cropperjs, '2.1.1');
+  assert.ok(packageJson.build.files.includes('node_modules/cropperjs/dist/cropper.min.js'));
+  assert.ok(html.includes('id="captureScreenshotButton"'));
+  assert.ok(html.includes('id="screenshotCropDialog"'));
+  assert.ok(html.includes('id="screenshotLibrary"'));
+  assert.ok(html.includes('<script src="./node_modules/cropperjs/dist/cropper.min.js"></script>'));
+  assert.ok(!html.match(/https?:\/\/[^"']*cropper/i));
+  assert.ok(renderer.includes("apiPost('/api/screenshots/capture')"));
+  assert.ok(renderer.includes("apiGet('/api/screenshots')"));
+  assert.ok(renderer.includes('.getCropperSelection?.()'));
+  assert.ok(renderer.includes('await selection.$toCanvas({ width, height })'));
+  assert.ok(renderer.includes('selection.width <= 0 || selection.height <= 0'));
+  assert.ok(renderer.indexOf('selection.width <= 0 || selection.height <= 0') < renderer.indexOf('await selection.$toCanvas({ width, height })'));
+  assert.ok(renderer.includes('selectionRect.width * source.width / imageRect.width'));
+  assert.ok(renderer.includes('selectionRect.right > imageRect.right + epsilon'));
+  assert.ok(renderer.includes('cropperImage.rotatable = false'));
+  assert.ok(renderer.includes('restoreRequired = saved.restore_required === true'));
+  assert.ok(renderer.includes('restoreRequired = error.restoreRequired === true'));
+  assert.ok(!renderer.includes('const shouldRestoreGui = !state.currentRun'));
+  assert.ok(renderer.includes("item.available === false"));
+  assert.ok(renderer.includes('截图文件已删除或不可用。'));
+  assert.ok(renderer.includes('/api/image-resources/override?resource_id='));
+  assert.ok(renderer.includes('confirmImageResourceAction'));
+  assert.ok(preload.includes("ipcRenderer.invoke('restore-gui-focus')"));
+  assert.ok(main.includes("ipcMain.handle('restore-gui-focus'"));
+}
+
 testSelectValuesUseSchemaTypes();
 testStringSelectValuesRemainStrings();
 testExistingNumberAndBooleanConversionsRemainUnchanged();
+testImageResourceSettingsContract();
+testScreenshotCropperContract();
 console.log('renderer config normalization tests passed');

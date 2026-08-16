@@ -217,6 +217,7 @@ __marimo__/
 
 # 本地 SQLite 数据库（如工作台运行时生成的 ui_workbench.db）
 config/*.db
+config/*.db-journal
 
 # 预下载的 OCR 模型（每个 backend 单独目录；spec/build_release 不入仓）
 /assets/ocr_models_rapid/

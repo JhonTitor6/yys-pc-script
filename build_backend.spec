@@ -22,7 +22,10 @@ PROJECT_ROOT = Path(SPECPATH).resolve()
 
 # Conda 环境的运行库位于 Library/bin。PyInstaller 的依赖扫描不会自动把
 # 该目录加入搜索路径，导致打包后的 _ssl、Pillow、SQLite 或 OpenCV 无法启动。
-PYTHON_ENV_ROOT = Path(sys.executable).resolve().parent
+PYTHON_PREFIX = Path(sys.prefix).resolve()
+BASE_PREFIX = Path(getattr(sys, "base_prefix", sys.prefix)).resolve()
+USING_VENV = PYTHON_PREFIX != BASE_PREFIX
+PYTHON_ENV_ROOT = BASE_PREFIX
 CONDA_LIBRARY_BIN = PYTHON_ENV_ROOT / "Library" / "bin"
 if CONDA_LIBRARY_BIN.is_dir():
     os.environ["PATH"] = os.pathsep.join(
@@ -51,10 +54,11 @@ RUNTIME_BINARIES = [
     for name in RUNTIME_DLL_NAMES
     if (CONDA_LIBRARY_BIN / name).is_file()
 ]
-RUNTIME_BINARIES.extend(
-    (str(path), ".")
-    for path in sorted(CONDA_LIBRARY_BIN.glob("opencv_*.dll"))
-)
+if not USING_VENV:
+    RUNTIME_BINARIES.extend(
+        (str(path), ".")
+        for path in sorted(CONDA_LIBRARY_BIN.glob("opencv_*.dll"))
+    )
 
 
 def collect_module_data(
@@ -72,13 +76,23 @@ def collect_module_data(
     if not module_dir.is_dir():
         return []
     exclude_globs = exclude_globs or []
+    # 用目录前缀过滤资源，避免 Path.match 对跨层目录模式的行为差异。
+    exclude_roots = tuple(
+        Path(pattern).parent.parts
+        for pattern in exclude_globs
+        if pattern.endswith("/**")
+    )
     out: list[tuple[str, str]] = []
     for pattern in include_globs:
         for f in module_dir.rglob(pattern):
             if not f.is_file():
                 continue
             rel = f.relative_to(module_dir)
-            if any(rel.match(eg) for eg in exclude_globs):
+            if any(
+                rel.parts[index : index + len(root)] == root
+                for root in exclude_roots
+                for index in range(len(rel.parts) - len(root) + 1)
+            ):
                 continue
             destination = rel.parent.as_posix()
             if destination_root:
@@ -224,7 +238,14 @@ DATAS = []
 DATAS += collect_module_data(
     "yys",
     include_globs=["*.bmp", "*.png", "*.json", "*.txt"],
-    exclude_globs=["test/**", "images/debug/**", "logs/**", "__pycache__/**"],
+    exclude_globs=[
+        "test/**",
+        "images/debug/**",
+        "images/test/**",
+        "images/example/**",
+        "logs/**",
+        "__pycache__/**",
+    ],
     destination_root="yys",
 )
 
@@ -290,6 +311,11 @@ a = Analysis(
         "scikit-image",
         "easyocr",
         "aircv",
+        # loguru 的 Jupyter 兼容分支不是桌面后端需要的运行时依赖。
+        "IPython",
+        "ipykernel",
+        "jedi",
+        "nbformat",
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

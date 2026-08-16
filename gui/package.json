@@ -28,6 +28,7 @@
       "output": "../dist-electron",
       "buildResources": "."
     },
+    "compression": "maximum",
     "files": [
       "main.js",
       "preload.js",

@@ -636,3 +636,103 @@ mandatory for implementation:
 - Contract tests must cover the exact action matrix, schema-driven payload keys, the
   three Abyss damage limits' ranges, payload keys, and per-enemy isolation, the
   `applied: false` behavior, and configuration locking until the run reaches a terminal state.
+
+## Scenario: Windows Release Packaging Contract
+
+This contract applies whenever the PyInstaller backend or Electron NSIS release chain is
+changed. It prevents a lean packaging fix from producing a backend that starts only in the
+developer's Conda environment.
+
+### 1. Scope / Trigger
+
+- Trigger: changes to `build_backend.spec`, `scripts/build_release.ps1`, or the Electron
+  `build` configuration.
+- The release artifact includes both `resources/backend/` and the Electron runtime; an
+  installer exit code alone is not sufficient evidence.
+
+### 2. Signatures
+
+- `pwsh scripts/build_release.ps1 -Target nsis -SkipOcrDownload`
+- `pwsh scripts/prepare_package_env.ps1`
+- Optional environment key: `YYS_PYTHON=<prepared packaging environment python.exe>`.
+- Backend build: `YYS_PYTHON -m PyInstaller build_backend.spec --clean --noconfirm`.
+
+### 3. Contracts
+
+- The default Conda environment remains compatible, but its OpenCV-Contrib build imports
+  every `opencv_*.dll` under `Library/bin`; it is not a lean release environment.
+- A lean release must use a prepared virtual environment with `opencv-python-headless`.
+  When `sys.prefix != sys.base_prefix`, the spec may reuse base-environment SSL/SQLite
+  runtime DLLs but must not copy base-environment `opencv_*.dll` files.
+- Release data must exclude any `images/debug`, `images/test`, `images/example`, `test`,
+  `logs`, or `__pycache__` directory at any nesting level under `yys/`.
+- The unpacked backend must retain `yys-backend.exe`, `config/`, `rapidocr/`, `_ssl.pyd`,
+  `libssl-3-x64.dll`, and `libcrypto-3-x64.dll`.
+- `YYS_PYTHON` means the caller has prepared the environment; the release script skips
+  dependency installation so RapidOCR cannot pull the full OpenCV wheel back in.
+- The prepared environment is created by `scripts/prepare_package_env.ps1` under the
+  ignored `build/package-env` directory by default. It pins the tested runtime versions,
+  installs RapidOCR without dependency resolution, and fails unless headless OpenCV and
+  `cv2.matchTemplate` are importable.
+- `gui/installer.nsh` keeps electron-builder's previous-install lookup and adds only a
+  fallback: when neither registry hive has `InstallLocation` and `D:` exists, the initial
+  directory is `D:/<APP_FILENAME>`; otherwise the normal C: default remains unchanged.
+  If an old registry value contains only the parent directory, initialization appends
+  `<APP_FILENAME>` before the directory page is shown, so the default display and actual
+  install path match.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+|---|---|
+| `YYS_PYTHON` is set | Skip dependency overwrite and build with that interpreter |
+| Release resource path contains a forbidden image directory | Fail the packaging validation; do not publish the artifact |
+| Backend warning reports missing SSL, SQLite, or required runtime DLLs | Treat the build as incomplete |
+| NSIS build succeeds | Inspect installer size and the unpacked `resources/backend/` tree |
+| Port `127.0.0.1:8000` is already listening | Do not stop the owner; report packaged HTTP health as unverified |
+| Port `127.0.0.1:8000` is free | Start the packaged backend from its own directory and request `/api/scripts` |
+| Previous `InstallLocation` exists | Preserve it exactly, regardless of drive letter |
+| Previous `InstallLocation` is absent and `D:` exists | Default the assisted installer to `D:/<APP_FILENAME>` |
+| Previous `InstallLocation` is absent and `D:` is unavailable | Keep electron-builder's normal per-user C: default |
+| Historical `InstallLocation` is a parent directory | Show the normalized `<directory>/<APP_FILENAME>` path |
+
+### 5. Good / Base / Bad Cases
+
+- Good: build with a prepared headless-OpenCV environment, inspect forbidden paths, then
+  perform a real NSIS build and backend smoke test.
+- Good: the custom NSIS initialization changes the default only when no prior install
+  registry value exists, so upgrades keep their recorded directory.
+- Good: a historical parent directory is normalized before the target page is shown.
+- Base: build with the default Conda environment when compatibility matters more than size.
+- Bad: delete arbitrary `opencv_*.dll` files from the current Conda build; its `cv2.pyd`
+  directly imports the full module set and the packaged backend will fail to load.
+
+### 6. Tests Required
+
+- Build the backend and assert zero files under the forbidden image directories.
+- Assert the required runtime files exist at the backend root or expected resource paths.
+- Import `cv2`, `rapidocr_onnxruntime`, and `onnxruntime` from the packaging environment;
+  verify `cv2.matchTemplate` is available.
+- Run the Electron GUI regression tests and inspect the real NSIS artifact.
+- Request `/api/scripts` from the packaged backend when port ownership permits it; otherwise
+  preserve the port-owner evidence and mark HTTP validation blocked.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```powershell
+& .\scripts\build_release.ps1 -Target nsis -SkipOcrDownload
+```
+
+This silently uses the full Conda OpenCV runtime and can restore the large installer.
+
+#### Correct
+
+```powershell
+$env:YYS_PYTHON = "C:\path\to\package-env\Scripts\python.exe"
+& .\scripts\build_release.ps1 -Target nsis -SkipOcrDownload
+```
+
+The selected environment controls the OpenCV wheel, while the build still validates the
+backend resources and the Electron installer as one release artifact.

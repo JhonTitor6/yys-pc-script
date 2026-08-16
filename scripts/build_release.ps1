@@ -2,6 +2,8 @@
 一键打包脚本：PyInstaller -> 同步产物 -> OCR 模型 -> electron-builder
 
 用法（在项目根目录）：
+  pwsh scripts/prepare_package_env.ps1
+  $env:YYS_PYTHON = (Resolve-Path .\build\package-env\Scripts\python.exe).Path
   pwsh scripts/build_release.ps1
   pwsh scripts/build_release.ps1 -SkipOcrDownload   # 跳过 OCR 模型下载
   pwsh scripts/build_release.ps1 -Target portable   # 只出 portable
@@ -10,6 +12,7 @@
 前置条件：
   - Node 20+ 和 npm 已安装
   - conda 环境 win_macro 已就绪（默认路径 D:/ProgramData/anaconda3/envs/win_macro）
+  - 可通过环境变量 YYS_PYTHON 指定专用打包环境；推荐使用不含 Conda OpenCV 的环境
   - 首次运行会把当前 Python 环境内的 RapidOCR 模型复制到 assets/（无需联网下载）
 
 注意：
@@ -28,7 +31,12 @@ $ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'
 
 $PROJECT_ROOT = Split-Path -Parent $PSScriptRoot
-$PYTHON = "D:/ProgramData/anaconda3/envs/win_macro/python.exe"
+$PYTHON = if ($env:YYS_PYTHON) {
+    $env:YYS_PYTHON
+}
+else {
+    "D:/ProgramData/anaconda3/envs/win_macro/python.exe"
+}
 
 function Write-StepHeader {
     param([string]$Text)
@@ -61,8 +69,13 @@ try {
 
     # 2) 安装/更新 Python 依赖
     Write-StepHeader "[2/5] 安装 Python 依赖..."
-    $ec = Invoke-External { & $PYTHON -m pip install -r requirements.txt pyinstaller 2>&1 | Out-Host }
-    if ($ec -ne 0) { throw "pip install 失败（exit code $ec）" }
+    if ($env:YYS_PYTHON) {
+        Write-Host "  - 使用 YYS_PYTHON 指定的专用环境，跳过依赖覆盖"
+    }
+    else {
+        $ec = Invoke-External { & $PYTHON -m pip install -r requirements.txt pyinstaller 2>&1 | Out-Host }
+        if ($ec -ne 0) { throw "pip install 失败（exit code $ec）" }
+    }
 
     # 3) PyInstaller 打包后端（--onedir）
     Write-StepHeader "[3/5] PyInstaller 打包后端..."

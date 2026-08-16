@@ -269,7 +269,7 @@ def test_default_registry_migrated_scripts_use_script_meta_reflection() -> None:
     realm_raid = registry.get("realm_raid")
     keys = {field.key for field in realm_raid.config_schema}
     assert keys == {"max_battle_count", "quit_3_times_config"}
-    assert realm_raid.default_config["max_battle_count"] == 9
+    assert realm_raid.default_config["max_battle_count"] == 30
     assert realm_raid.default_config["quit_3_times_config"] is True
 
     # exploration（SCRIPT_META 含 max_battle_count，默认 244）

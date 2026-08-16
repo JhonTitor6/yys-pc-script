@@ -4,8 +4,9 @@ import inspect
 import json
 import logging
 import threading
+import time
 import traceback
-from typing import Any
+from typing import Any, Callable
 
 from ui_backend.events.hub import EventHub
 from ui_backend.models import (
@@ -22,6 +23,9 @@ from win_util.environment.windows import WindowsEnvironment
 from yys.common.entry_runtime import EntryOutcome, EntryPreparationError
 
 logger = logging.getLogger(__name__)
+
+# 事件脚本持续未识别到注册事件达该时长（秒）后，每段自动保存一张截图留证。
+UNKNOWN_SCENE_SCREENSHOT_GRACE_SECONDS = 10.0
 
 
 class _RunStageReporter:
@@ -999,22 +1003,27 @@ class RunManager:
         run_id: int,
         script_id: str,
         script: Any,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
-        """为事件脚本安装三轮未知、每段一次的截图观察器。"""
+        """为事件脚本安装持续未知达阈值、每段一次的截图观察器。"""
         setter = getattr(script, "set_recognition_observer", None)
         if not callable(setter):
             return
-        consecutive_unknown = 0
+        unknown_since: float | None = None
         captured_for_episode = False
 
         def observe(recognized: bool) -> None:
-            nonlocal consecutive_unknown, captured_for_episode
+            nonlocal unknown_since, captured_for_episode
+            now = monotonic()
             if recognized:
-                consecutive_unknown = 0
+                unknown_since = None
                 captured_for_episode = False
                 return
-            consecutive_unknown += 1
-            if consecutive_unknown != 3 or captured_for_episode:
+            if unknown_since is None:
+                unknown_since = now
+            if captured_for_episode:
+                return
+            if now - unknown_since < UNKNOWN_SCENE_SCREENSHOT_GRACE_SECONDS:
                 return
             captured_for_episode = True
             try:
@@ -1022,7 +1031,7 @@ class RunManager:
             except Exception as exc:
                 threading.Thread(
                     target=self._append_capture_error,
-                    args=(run_id, "连续三轮未识别场景", str(exc)),
+                    args=(run_id, "持续未识别场景", str(exc)),
                     daemon=True,
                 ).start()
                 return
@@ -1048,9 +1057,9 @@ class RunManager:
                 script_id=script_id,
                 stage="script_running",
             )
-            self.record_saved_screenshot(saved, "连续三轮未识别到注册事件")
+            self.record_saved_screenshot(saved, "持续未识别到注册事件")
         except Exception as exc:
-            self._append_capture_error(run_id, "连续三轮未识别场景", str(exc))
+            self._append_capture_error(run_id, "持续未识别场景", str(exc))
 
     def _append_screenshot_evidence(
         self,

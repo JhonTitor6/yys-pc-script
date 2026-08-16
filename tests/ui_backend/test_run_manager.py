@@ -130,6 +130,13 @@ def test_run_manager_publishes_live_state_snapshots_during_run(tmp_path: Path) -
         time.sleep(0.05)
     manager.stop(run_id, timeout=2.0)
     assert saw_intermediate, "运行中应持续推送 state_snapshot"
+    # 产品契约：pusher 事件必须携带 progress，前端 renderer.js 依赖 payload.progress 实时更新进度
+    assert any(
+        e.get("type") == "state_snapshot"
+        and e.get("state", {}).get("battle_count", 0) > 0
+        and e.get("progress", {}).get("current") == e["state"]["battle_count"]
+        for e in manager.event_hub.recent_events()
+    ), "pusher 推送的 state_snapshot 必须携带与 state 一致的 progress 字段"
 
 
 def test_stop_does_not_call_script_stop_while_holding_manager_lock(tmp_path: Path) -> None:

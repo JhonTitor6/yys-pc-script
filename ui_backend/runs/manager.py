@@ -617,10 +617,11 @@ class RunManager:
                     state = holder[0]
                     if not state:
                         continue
+                    progress = self._progress_from_state(state)
                     self.storage.runs.update_observation(
                         run_id,
                         stage="script_running",
-                        progress=self._progress_from_state(state),
+                        progress=progress,
                     )
                     try:
                         self._publish(
@@ -629,6 +630,7 @@ class RunManager:
                                 "run_id": run_id,
                                 "script_id": script_id,
                                 "state": state,
+                                "progress": progress,
                             }
                         )
                     except Exception:

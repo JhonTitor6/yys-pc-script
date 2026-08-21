@@ -230,6 +230,7 @@ class DouJi(YYSBaseScript):
             config: 配置字典（可选）。
         """
         super().__init__(script_name, config=config, env=env)
+        self._douji_target_pending = False
         self._register_image_match_event(ImageMatchConfig("yys/douji/images/douji_zhan.bmp", similarity=0.7), self._on_douji_zhan)
         self._register_image_match_event(ImageMatchConfig("yys/douji/images/change_to_auto_battle.bmp"), self._on_change_to_auto_battle)
         self._register_image_match_event(ImageMatchConfig("yys/douji/images/douji_selection_auto_up.bmp", similarity=0.7),
@@ -243,12 +244,14 @@ class DouJi(YYSBaseScript):
 
     def _on_battle_victory(self, point):
         """战斗胜利处理"""
+        self._douji_target_pending = False
         self.bg_left_click(point)
         self._cur_battle_victory_count += 1
         time.sleep(1.0)
 
     def _on_battle_end(self, point):
         """战斗结束（失败/奖励）处理"""
+        self._douji_target_pending = False
         time.sleep(2.0)
         self.bg_left_click(point, x_range=30, y_range=50)
         self._cur_battle_count += 1
@@ -258,27 +261,50 @@ class DouJi(YYSBaseScript):
     def _on_douji_zhan(self, point):
         self.bg_left_click(point)
 
-    def _on_change_to_auto_battle(self, point: tuple[int, int]) -> None:
-        self.bg_left_click(point)
-        random_sleep(3, 4)
-        target_point: Optional[tuple[int, int]] = None
-        for _ in range(5):
-            if self.image_finder is not None:
-                self.image_finder.update_screenshot_cache()
-                frame = self.image_finder.screenshot_cache
-                if frame is not None:
-                    target_point = _find_douji_slot_point(frame, self.target_slot)
-                    if target_point is not None:
-                        break
-            time.sleep(0.2)
-
+    def _try_click_douji_target(self, *, refresh: bool) -> bool:
+        """尝试从当前截图定位并点击己方目标槽位。"""
+        if self.image_finder is None:
+            return False
+        if refresh:
+            self.image_finder.update_screenshot_cache()
+        frame = self.image_finder.screenshot_cache
+        if frame is None:
+            return False
+        target_point = _find_douji_slot_point(frame, self.target_slot)
         if target_point is None:
-            self.logger.error(f"斗技己方左{self.target_slot}定位失败，停止脚本")
-            self.stop()
-            return
-
+            return False
         self.logger.debug(f"斗技己方左{self.target_slot}点击坐标: {target_point}")
         self.bg_left_click(target_point, x_range=0, y_range=0)
+        return True
+
+    def _log_douji_target_failure(self) -> None:
+        """记录定位失败时的截图和候选信息，不执行兜底点击。"""
+        frame = self.image_finder.screenshot_cache if self.image_finder is not None else None
+        frame_shape = frame.shape if frame is not None else None
+        candidates = _find_douji_bar_candidates(frame) if frame is not None else []
+        self.logger.warning(
+            f"斗技己方左{self.target_slot}暂未定位，继续等待："
+            f"截图尺寸={frame_shape}，候选血条={candidates}"
+        )
+
+    def _on_change_to_auto_battle(self, point: tuple[int, int]) -> None:
+        self._douji_target_pending = False
+        self.bg_left_click(point)
+        random_sleep(3, 4)
+        for _ in range(5):
+            if self._try_click_douji_target(refresh=True):
+                return
+            time.sleep(0.2)
+
+        self._douji_target_pending = True
+        self._log_douji_target_failure()
+
+    def after_iteration(self) -> None:
+        """在战斗画面晚于自动战斗按钮出现时继续尝试定位。"""
+        if self._douji_target_pending and self._try_click_douji_target(refresh=False):
+            self._douji_target_pending = False
+            self.logger.info(f"斗技己方左{self.target_slot}延迟定位成功")
+        super().after_iteration()
 
     def on_run(self):
         """脚本启动钩子（实现抽象基类要求）"""

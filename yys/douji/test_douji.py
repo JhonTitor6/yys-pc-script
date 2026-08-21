@@ -46,3 +46,55 @@ def test_douji_slot_point_rejects_invalid_slot_and_incomplete_frame() -> None:
     with pytest.raises(ValueError, match="1-5"):
         _find_douji_slot_point(frame, 6)
     assert _find_douji_slot_point(frame, 1) is None
+
+
+def test_douji_target_failure_does_not_stop_script(monkeypatch: pytest.MonkeyPatch) -> None:
+    """定位时仍在加载的画面只进入待重试，不得停止脚本。"""
+    import yys.douji.douji_script as douji_script
+    import yys.common.event_script_base as event_script_base
+
+    class FakeFinder:
+        screenshot_cache = np.zeros((640, 1136, 3), dtype=np.uint8)
+
+        def update_screenshot_cache(self) -> None:
+            return None
+
+    class FakeLogger:
+        messages: list[str] = []
+
+        def debug(self, message: str) -> None:
+            self.messages.append(message)
+
+        def info(self, message: str) -> None:
+            self.messages.append(message)
+
+        def warning(self, message: str) -> None:
+            self.messages.append(message)
+
+    script = object.__new__(DouJi)
+    script.image_finder = FakeFinder()
+    script.target_slot = 2
+    script._douji_target_pending = False
+    script.max_battle_count = 30
+    script._cur_battle_count = 0
+    script.logger = FakeLogger()
+    clicks: list[tuple[tuple[int, int], dict[str, int]]] = []
+    script.bg_left_click = lambda point, **kwargs: clicks.append((point, kwargs))
+    script.stop = lambda: pytest.fail("己方槽位定位失败不应停止脚本")
+    monkeypatch.setattr(douji_script, "random_sleep", lambda *_: None)
+    monkeypatch.setattr(douji_script.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(event_script_base, "random_sleep", lambda *_: None)
+
+    script._on_change_to_auto_battle((100, 200))
+
+    assert script._douji_target_pending is True
+    assert clicks == [((100, 200), {})]
+    assert "继续等待" in script.logger.messages[0]
+
+    script.image_finder.screenshot_cache = _build_battle_frame(
+        [(160, 330), (360, 320), (535, 410), (710, 290), (910, 350)]
+    )
+    script.after_iteration()
+
+    assert script._douji_target_pending is False
+    assert clicks[-1] == ((412, 382), {"x_range": 0, "y_range": 0})

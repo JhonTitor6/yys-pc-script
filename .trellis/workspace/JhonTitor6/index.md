@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 10
-- **Last Active**: 2026-08-15
+- **Total Sessions**: 11
+- **Last Active**: 2026-08-29
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~352 | Active |
+| `journal-1.md` | ~385 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 11 | 2026-08-29 | 修复斗技左二槽位错位点击 | `97334c7` | `master` |
 | 10 | 2026-08-15 | 修复狭间已击破识别并固化提交归档偏好 | `b6403ef` | `master` |
 | 9 | 2026-08-15 | 提交 GUI 规划并归档阈值子任务 | `ad060d9`, `f423275`, `c1a591e`, `2d9895d` | `master` |
 | 8 | 2026-08-14 | 修复狭间暗域当前界面启动失败 | `b4e6dae` | `master` |

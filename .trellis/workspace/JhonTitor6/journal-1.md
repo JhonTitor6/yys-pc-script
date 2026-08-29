@@ -350,3 +350,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 11: 修复斗技左二槽位错位点击
+
+**Date**: 2026-08-29
+**Task**: 修复斗技左二槽位错位点击
+**Branch**: `master`
+
+### Summary
+
+按五个缩放后的横向锚区独立归类己方槽位，避免干扰候选导致序号错位；增加回归测试并固化识别契约。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `97334c7` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

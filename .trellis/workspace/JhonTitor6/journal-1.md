@@ -383,3 +383,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: 修复斗技胜利次数重复累计
+
+**Date**: 2026-08-29
+**Task**: 修复斗技胜利次数重复累计
+**Branch**: `master`
+
+### Summary
+
+定位斗技胜利结算图跨事件循环重复触发，增加每场一次的胜利计数状态与回归测试，20 项相关测试通过。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7d9e98f` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

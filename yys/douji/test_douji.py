@@ -109,3 +109,27 @@ def test_douji_target_failure_does_not_stop_script(monkeypatch: pytest.MonkeyPat
 
     assert script._douji_target_pending is False
     assert clicks[-1] == ((412, 382), {"x_range": 0, "y_range": 0})
+
+
+def test_douji_victory_counts_once_per_battle(monkeypatch: pytest.MonkeyPatch) -> None:
+    """产品契约：同场胜利结算重复识别只计一次，下一场可继续计数。"""
+    import yys.douji.douji_script as douji_script
+
+    script = object.__new__(DouJi)
+    script._cur_battle_victory_count = 0
+    script._douji_target_pending = False
+    script._douji_victory_counted = False
+    clicks: list[tuple[int, int]] = []
+    script.bg_left_click = clicks.append
+    monkeypatch.setattr(douji_script.time, "sleep", lambda *_: None)
+
+    script._on_battle_victory((100, 200))
+    script._on_battle_victory((100, 200))
+
+    assert script._cur_battle_victory_count == 1
+    assert clicks == [(100, 200), (100, 200)]
+
+    script._on_douji_zhan((300, 400))
+    script._on_battle_victory((100, 200))
+
+    assert script._cur_battle_victory_count == 2

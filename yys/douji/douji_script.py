@@ -232,6 +232,7 @@ class DouJi(YYSBaseScript):
         """
         super().__init__(script_name, config=config, env=env)
         self._douji_target_pending = False
+        self._douji_victory_counted = False
         self._register_image_match_event(ImageMatchConfig("yys/douji/images/douji_zhan.bmp", similarity=0.7), self._on_douji_zhan)
         self._register_image_match_event(ImageMatchConfig("yys/douji/images/change_to_auto_battle.bmp"), self._on_change_to_auto_battle)
         self._register_image_match_event(ImageMatchConfig("yys/douji/images/douji_selection_auto_up.bmp", similarity=0.7),
@@ -243,11 +244,13 @@ class DouJi(YYSBaseScript):
         self._register_image_match_event(ImageMatchConfig("yys/exploration/images/exploration_close.bmp", similarity=0.7), self.bg_left_click)
         self._register_image_match_event(ImageMatchConfig("yys/images/ready.bmp", similarity=0.7), self.bg_left_click)
 
-    def _on_battle_victory(self, point):
-        """战斗胜利处理"""
+    def _on_battle_victory(self, point: tuple[int, int]) -> None:
+        """战斗胜利处理，同一场只计数一次。"""
         self._douji_target_pending = False
         self.bg_left_click(point)
-        self._cur_battle_victory_count += 1
+        if not self._douji_victory_counted:
+            self._cur_battle_victory_count += 1
+            self._douji_victory_counted = True
         time.sleep(1.0)
 
     def _on_battle_end(self, point):
@@ -259,7 +262,8 @@ class DouJi(YYSBaseScript):
         self._log_battle_count()
         time.sleep(0.5)
 
-    def _on_douji_zhan(self, point):
+    def _on_douji_zhan(self, point: tuple[int, int]) -> None:
+        self._douji_victory_counted = False
         self.bg_left_click(point)
 
     def _try_click_douji_target(self, *, refresh: bool) -> bool:
@@ -307,9 +311,10 @@ class DouJi(YYSBaseScript):
             self.logger.info(f"斗技己方左{self.target_slot}延迟定位成功")
         super().after_iteration()
 
-    def on_run(self):
+    def on_run(self) -> None:
         """脚本启动钩子（实现抽象基类要求）"""
         super().on_run()
+        self._douji_victory_counted = False
 
 
 if __name__ == '__main__':

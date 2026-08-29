@@ -49,6 +49,11 @@ mock replay, observe-only mode, action limits, or emergency stop.
 - Production image templates that participate in a recorded flow must be exercised
   against a sanitized real fixture. A unit test with a mocked match result is not enough
   to detect live UI drift.
+- Ordered game targets must be identified independently by normalized spatial gates or
+  another target-specific invariant. A correct total candidate count does not prove target
+  identity: one false candidate plus one merged or missing target can preserve the count
+  while shifting every later index. If any required target is untrusted, retry without
+  input. Add a regression containing both an extra candidate and a merged-target chain.
 - Unit-test modules collected in the same pytest process as recorded-replay tests must
   not replace `cv2`, `numpy`, or the root `PIL` package in `sys.modules`. Mock only the
   OS-facing leaf dependencies needed by that test; otherwise later replay collection

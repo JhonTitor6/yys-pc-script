@@ -20,6 +20,8 @@ _DOUJI_SLOT_CLICK_OFFSETS: tuple[tuple[int, int], ...] = (
     (3, 110),
     (-28, 70),
 )
+_DOUJI_SLOT_ANCHOR_XS: tuple[int, ...] = (184, 400, 574, 750, 952)
+_DOUJI_SLOT_ANCHOR_TOLERANCE = 80
 
 
 def _find_douji_bar_candidates(frame: np.ndarray) -> list[tuple[int, int, int]]:
@@ -103,26 +105,25 @@ def _find_douji_slot_anchors(frame: np.ndarray) -> Optional[list[tuple[int, int]
         for candidate in _find_douji_bar_candidates(frame)
         if candidate[2] >= min_bar_width and candidate[1] <= max_bar_y
     ]
-    candidates.sort(key=lambda candidate: candidate[0])
-
-    clusters: list[list[tuple[int, int, int]]] = []
-    cluster_gap = int(80 * scale_x)
-    for candidate in candidates:
-        if clusters and candidate[0] - clusters[-1][-1][0] <= cluster_gap:
-            clusters[-1].append(candidate)
-        else:
-            clusters.append([candidate])
-
-    if len(clusters) != 5:
-        return None
-
     anchors: list[tuple[int, int]] = []
-    for index, cluster in enumerate(clusters):
+    tolerance = _DOUJI_SLOT_ANCHOR_TOLERANCE * scale_x
+    # ponytail：按当前五槽位横向布局归类；布局改版时用真实战斗帧重新标定。
+    for index, base_x in enumerate(_DOUJI_SLOT_ANCHOR_XS):
+        expected_x = base_x * scale_x
+        slot_candidates = [
+            candidate for candidate in candidates
+            if abs(candidate[0] - expected_x) <= tolerance
+        ]
+        if not slot_candidates:
+            return None
         # 中间槽位可能同时命中对手和己方血条，己方血条位于更下方。
         if index == 2:
-            selected = max(cluster, key=lambda candidate: candidate[1])
+            selected = max(slot_candidates, key=lambda candidate: candidate[1])
         else:
-            selected = min(cluster, key=lambda candidate: candidate[1])
+            selected = min(
+                slot_candidates,
+                key=lambda candidate: (abs(candidate[0] - expected_x), candidate[1]),
+            )
         anchors.append((selected[0], selected[1]))
 
     min_spacing = int(100 * scale_x)

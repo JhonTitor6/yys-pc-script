@@ -40,6 +40,17 @@ def test_douji_slot_point_uses_slot_offset() -> None:
     assert _find_douji_slot_point(frame, 4) == (757, 402)
 
 
+def test_douji_slot_point_ignores_noise_that_shifts_slot_numbers() -> None:
+    """产品契约：画面干扰不得把己方左1误报为配置的左2。"""
+    frame = _build_battle_frame([(160, 330), (360, 320), (535, 410), (710, 290), (910, 350)])
+    hsv_color = np.array([[[20, 180, 240]]], dtype=np.uint8)
+    bar_color = tuple(int(value) for value in cv2.cvtColor(hsv_color, cv2.COLOR_HSV2BGR)[0, 0])
+    for x, y in [(16, 300), (786, 370), (866, 390)]:
+        cv2.rectangle(frame, (x, y), (x + 88, y + 4), bar_color, -1)
+
+    assert _find_douji_slot_point(frame, 2) == (412, 382)
+
+
 def test_douji_slot_point_rejects_invalid_slot_and_incomplete_frame() -> None:
     frame = _build_battle_frame([(160, 330), (360, 320), (535, 410), (710, 290)])
 

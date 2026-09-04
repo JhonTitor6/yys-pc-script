@@ -416,3 +416,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 13: 修复斗技结算漏记战斗次数
+
+**Date**: 2026-09-04
+**Task**: 修复斗技结算漏记战斗次数
+**Branch**: `master`
+
+### Summary
+
+修复斗技多结算模板优先级导致的场次和日志漏记；首个胜负终态原子计数并去重，相关测试 20 项通过。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f571bba` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

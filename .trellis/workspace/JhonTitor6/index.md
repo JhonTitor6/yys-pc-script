@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 12
-- **Last Active**: 2026-08-29
+- **Total Sessions**: 13
+- **Last Active**: 2026-09-04
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~418 | Active |
+| `journal-1.md` | ~451 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 13 | 2026-09-04 | 修复斗技结算漏记战斗次数 | `f571bba` | `master` |
 | 12 | 2026-08-29 | 修复斗技胜利次数重复累计 | `7d9e98f` | `master` |
 | 11 | 2026-08-29 | 修复斗技左二槽位错位点击 | `97334c7` | `master` |
 | 10 | 2026-08-15 | 修复狭间已击破识别并固化提交归档偏好 | `b6403ef` | `master` |

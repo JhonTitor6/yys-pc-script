@@ -112,24 +112,40 @@ def test_douji_target_failure_does_not_stop_script(monkeypatch: pytest.MonkeyPat
 
 
 def test_douji_victory_counts_once_per_battle(monkeypatch: pytest.MonkeyPatch) -> None:
-    """产品契约：同场胜利结算重复识别只计一次，下一场可继续计数。"""
+    """产品契约：首个胜负终态原子记录整场，同场其他模板不重复记录。"""
     import yys.douji.douji_script as douji_script
 
     script = object.__new__(DouJi)
+    script._cur_battle_count = 0
     script._cur_battle_victory_count = 0
     script._douji_target_pending = False
-    script._douji_victory_counted = False
-    clicks: list[tuple[int, int]] = []
-    script.bg_left_click = clicks.append
+    script._douji_result_counted = False
+    clicks: list[tuple[tuple[int, int], dict[str, int]]] = []
+    logs: list[tuple[int, int]] = []
+    script.bg_left_click = lambda point, **kwargs: clicks.append((point, kwargs))
+    script._log_battle_count = lambda: logs.append(
+        (script._cur_battle_count, script._cur_battle_victory_count)
+    )
     monkeypatch.setattr(douji_script.time, "sleep", lambda *_: None)
 
     script._on_battle_victory((100, 200))
     script._on_battle_victory((100, 200))
 
+    assert script._cur_battle_count == 1
     assert script._cur_battle_victory_count == 1
-    assert clicks == [(100, 200), (100, 200)]
+    assert logs == [(1, 1)]
+    assert clicks == [((100, 200), {}), ((100, 200), {})]
 
-    script._on_douji_zhan((300, 400))
-    script._on_battle_victory((100, 200))
+    script._on_battle_end((200, 300))
 
-    assert script._cur_battle_victory_count == 2
+    assert script._cur_battle_count == 1
+    assert logs == [(1, 1)]
+
+    script._try_click_douji_target = lambda *, refresh: True
+    monkeypatch.setattr(douji_script, "random_sleep", lambda *_: None)
+    script._on_change_to_auto_battle((300, 400))
+    script._on_battle_end((200, 300))
+
+    assert script._cur_battle_count == 2
+    assert script._cur_battle_victory_count == 1
+    assert logs == [(1, 1), (2, 1)]

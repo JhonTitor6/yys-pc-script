@@ -30,7 +30,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
 - `python tools/run_guarded_script.py realm_raid [--execute] [--confirmation-phrase <exact>]`
 - `RealmRaidScript._on_battling(point: tuple[int, int]) -> None`
 - `DouJi._on_battle_victory(point: tuple[int, int]) -> None`
-- `DouJi._on_douji_zhan(point: tuple[int, int]) -> None`
+- `DouJi._record_douji_result(*, victory: bool) -> None`
+- `DouJi._on_change_to_auto_battle(point: tuple[int, int]) -> None`
 - `RunGuard.allow_unknown_for(seconds: float) -> None`
 
 ### 3. Contracts
@@ -75,8 +76,9 @@ mock replay, observe-only mode, action limits, or emergency stop.
   dismiss an unarmed reward dialog without increasing the battle count.
 - A persistent settlement template may trigger on every event-loop screenshot. Business
   counters must consume that visual result at most once per battle while still clicking
-  repeated matches needed to dismiss the screen. DouJi resets its victory-consumed state
-  only at the next `douji_zhan` battle boundary, never on another settlement match.
+  repeated matches needed to dismiss the screen. DouJi atomically records total battles,
+  victories, and the completion log from the first victory/loss terminal event, then resets
+  its result-consumed state at the next observed `change_to_auto_battle` battle boundary.
 - Every long-lived runtime state must own at least one registered image event. A real
   frame is considered known by `RunGuard` only when `_trigger_event_from_screenshot_cache`
   returns a registered event; adding a fixture scene or a `SceneManager` template alone
@@ -151,7 +153,7 @@ mock replay, observe-only mode, action limits, or emergency stop.
 | Victory increased and record-zero matches, but fewer than nine grid cells are attackable | Keep the current round; this is a partial old grid with a false-positive record template |
 | Realm-raid total battles reach the configured target before victories do | Continue; stop only when the victory target is reached |
 | Realm-raid settlement image appears without an armed attack/battle state | Dismiss the reward dialog, keep the battle count unchanged, and continue scene detection |
-| The same DouJi victory settlement matches repeatedly before the next battle | Click every match, but increment the victory count only on the first match |
+| Multiple DouJi victory/loss templates match before the next battle | Click every match, but atomically record total count, victory count, and log only for the first terminal event |
 | Battle frame matches no registered image event | Count as unknown and stop at `unknown_limit`; add a confirmed state marker rather than increasing the limit |
 | Battle-running marker matches | Return a known event, reset the unknown counter, and send no input |
 | Battle marker disappears before a settlement template appears | Keep unknown count at zero only for the marker-refreshed trailing grace; recognize settlement normally when it appears |
@@ -203,8 +205,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
 - Good: realm raid consumes one armed settlement on the first matching reward image;
   the same image used by a 3/6/9-grid milestone reward is dismissed without a second
   battle count.
-- Good: DouJi clicks a repeatedly recognized victory settlement but records one victory,
-  then resets the consumed state when the next `douji_zhan` entry is recognized.
+- Good: DouJi clicks every recognized settlement, atomically records the first terminal
+  result and completion log, then resets at the next `change_to_auto_battle` entry.
 - Good: realm raid counts attackable targets once per fixed grid cell and recognizes an
   automatic new group only when all nine cells are present.
 - Good: an explicitly authorized debugging process passes
@@ -235,8 +237,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
   targets, or stopping RealmRaid from total battle settlements instead of victories.
 - Bad: incrementing the realm-raid battle counter whenever `battle_end_1.bmp` matches;
   milestone rewards and a repeated settlement frame can use the same image.
-- Bad: incrementing a DouJi victory counter on every victory-template callback; one
-  persistent result screen spans several event-loop iterations.
+- Bad: relying on a DouJi victory callback to be followed by another battle-end callback;
+  event priority and the first callback's click can make the second template disappear.
 - Bad: assuming that a scene present in a replay fixture is automatically known to the
   event loop. `SceneReplayEnvironment`, `SceneManager`, and registered image events are
   separate layers.
@@ -286,8 +288,10 @@ mock replay, observe-only mode, action limits, or emergency stop.
   settlement-transition grace; three unknown observations during that grace do not stop.
 - Realm raid: a recorded milestone reward image is dismissed without incrementing the
   battle counter, while one armed battle settlement increments it exactly once.
-- DouJi: call the victory callback twice before another `douji_zhan` event and assert one
-  victory plus two dismiss clicks; after `douji_zhan`, assert the next victory increments.
+- DouJi: call victory twice and then a generic end callback before another
+  `change_to_auto_battle`; assert one total battle, one victory, one log, and all dismiss
+  clicks. After that boundary, call a loss callback and assert the second total battle and
+  log without another victory.
 - CLI: non-interactive startup without a phrase and any mismatched phrase fail before
   window construction; an exact authorized phrase reaches the same guarded execute
   orchestration without calling interactive input.

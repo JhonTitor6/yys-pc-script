@@ -61,6 +61,11 @@ mock replay, observe-only mode, action limits, or emergency stop.
 - Production image templates that participate in a recorded flow must be exercised
   against a sanitized real fixture. A unit test with a mocked match result is not enough
   to detect live UI drift.
+- An entry target with multiple visual variants must register a persistent marker for
+  every accepted variant. A battle → settlement → team-page replay must prove that
+  battle frames send no input, the current settlement template produces one click, and
+  the returned team page reaches READY; a fixture for only one team-page variant is
+  not sufficient evidence for all returned team pages.
 - Ordered game targets must be identified independently by normalized spatial gates or
   another target-specific invariant. A correct total candidate count does not prove target
   identity: one false candidate plus one merged or missing target can preserve the count

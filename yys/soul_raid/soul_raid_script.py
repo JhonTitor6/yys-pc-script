@@ -58,8 +58,8 @@ class SoulRaidScript(YYSBaseScript):
             "loop_interval": 300,
         },
     )
-    # 新入口契约：御魂作为首个试点，从任意可识别页面安全进入御魂选择界面
-    # （任务 08-08-universal-entry-recovery；旧 entry_scene 声明已废弃）
+    # 新入口契约：御魂目标页为组队界面，场景名 soul_selection 保持历史兼容。
+    # 战斗中启动时只观察战斗，命中结算白名单后关闭结算，再回到组队页 READY。
     entry_spec: Optional[TaskEntrySpec] = TaskEntrySpec(
         target_scene="soul_selection",
         safe_overlay_policy=SafeOverlayPolicy(

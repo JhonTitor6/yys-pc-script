@@ -801,6 +801,49 @@ def test_replay_entry_fixture_battle_start_reaches_ready() -> None:
     log.assert_click_count(1)
 
 
+def test_soul_raid_battle_settlement_returns_to_team_ready() -> None:
+    """产品契约：御魂战斗中启动，结算关闭后回到组队界面并 READY。"""
+    from win_util.image import ImageFinder
+    from yys.common.entry_runtime import ImageSceneStateResolver
+    from yys.soul_raid.soul_raid_script import SoulRaidScript
+
+    spec = SoulRaidScript.entry_spec
+    assert spec is not None
+    image_finder = ImageFinder(env=None, hwnd=None)
+    scene_manager = _real_scene_manager(image_finder)
+    resolver = ImageSceneStateResolver(scene_manager, image_finder, spec)
+
+    battle = "yys/soul_raid/images/test/example/御魂_战斗.png"
+    settlement = "yys/soul_raid/images/test/example/御魂_战斗结算.png"
+    team = "yys/soul_raid/images/test/example/御魂_组队界面.png"
+    frames = _queue_frame([
+        battle,
+        battle,
+        settlement,
+        team,
+        team,
+        team,
+    ])
+    log = ActionLog()
+    env = FrameEnv(log, frames)
+    preparer = EntryPreparer(
+        env=env,
+        resolver=resolver,
+        image_finder=image_finder,
+        scene_manager=scene_manager,
+        spec=spec,
+        monotonic=FakeClock(),
+        sleep=lambda _seconds: None,
+    )
+
+    result = preparer.prepare(StageRecorder())
+
+    assert result.outcome is EntryOutcome.READY
+    assert result.snapshot is not None
+    assert result.snapshot.base_scene == "soul_selection"
+    log.assert_click_count(1)
+
+
 def test_replay_entry_fixture_battle_then_unknown_fails_safely() -> None:
     """确认夹具回放：战斗后无入口帧可识别 → 有界重识别 → 安全失败（AC11 未知画面）。"""
     import numpy as np

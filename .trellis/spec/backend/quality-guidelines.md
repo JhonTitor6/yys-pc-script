@@ -43,6 +43,15 @@ mock replay, observe-only mode, action limits, or emergency stop.
   mouse movement.
 - Raw recordings stay under ignored `recordings/`; only user-confirmed minimal fixtures
   may enter Git.
+- A fixed-size visual status marker whose colors also occur in artwork must be matched
+  in feature-mask space (for example, an HSV binary mask with
+  `cv2.TM_CCOEFF_NORMED`), not by total color area or connected-component fill rate.
+  Load the production mask once at script initialization with
+  `to_project_path()` plus `np.fromfile()`/`cv2.imdecode()`, validate its expected
+  shape, `uint8` type, and non-constant content, and raise an explicit error when the
+  resource is missing or invalid. Regression must call the production matcher on
+  sanitized real fixtures containing both marked positives and artwork-only negatives;
+  do not add OCR fallback or lower a geometry threshold to hide a missed marker.
 - A confirmation may define top-level `scenes` independently from `transitions`.
   Each scene selects either `event_seq` plus `frame_phase` (`before` or `after`), or a
   relative `source_path` contained by the recording directory. Transitions may reference

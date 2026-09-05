@@ -22,12 +22,9 @@ _DEFEATED_RED_RANGES: tuple[
     ((0, 100, 80), (10, 255, 255)),
     ((170, 100, 80), (179, 255, 255)),
 )
-_DEFEATED_MIN_WIDTH_RATIO: float = 0.4
-_DEFEATED_MIN_HEIGHT_RATIO: float = 0.25
-_DEFEATED_MIN_AREA_RATIO: float = 0.04
-_DEFEATED_MIN_FILL_RATIO: float = 0.3
-_DEFEATED_CENTER_Y_MIN: float = 0.3
-_DEFEATED_CENTER_Y_MAX: float = 0.7
+_DEFEATED_STAMP_MASK_PATH = "yys/abyss_shadows/images/defeated_stamp_mask.png"
+_DEFEATED_STAMP_SIZE: tuple[int, int] = (30, 68)
+_DEFEATED_STAMP_THRESHOLD: float = 0.50
 
 
 class AbyssShadowsConfig(TypedDict, total=False):
@@ -220,6 +217,7 @@ class Main(YYSBaseScript):
             config: 配置字典（可选）。
         """
         super().__init__(script_name, config=config, env=env)
+        self._defeated_stamp_mask = self._load_defeated_stamp_mask()
 
         # 注册狭间暗域专属场景和跳转
         self.scene_manager.register_scenes_from_directory(
@@ -595,6 +593,28 @@ class Main(YYSBaseScript):
 
     # ==================== 已击破识别 ====================
 
+    @staticmethod
+    def _load_defeated_stamp_mask() -> np.ndarray:
+        """加载并校验狭间暗域已击破印章模板。"""
+        template_path = to_project_path(_DEFEATED_STAMP_MASK_PATH)
+        try:
+            template = cv2.imdecode(
+                np.fromfile(template_path, dtype=np.uint8),
+                cv2.IMREAD_GRAYSCALE,
+            )
+        except (OSError, cv2.error) as error:
+            raise ValueError(f"无法加载狭间暗域已击破印章模板：{template_path}") from error
+
+        if (
+            template is None
+            or template.ndim != 2
+            or template.dtype != np.uint8
+            or template.shape != _DEFEATED_STAMP_SIZE
+            or template.std() == 0
+        ):
+            raise ValueError(f"狭间暗域已击破印章模板无效：{template_path}")
+        return template
+
     def _is_enemy_defeated(self, position: tuple[int, int, int, int]) -> bool:
         """检测敌人头像中央的红色“已击破”印章。"""
         image_finder = getattr(self, "image_finder", None)
@@ -613,7 +633,12 @@ class Main(YYSBaseScript):
             return False
 
         crop_height, crop_width = image.shape[:2]
-        if crop_height == 0 or crop_width == 0 or image.dtype != np.uint8:
+        template_height, template_width = self._defeated_stamp_mask.shape
+        if (
+            crop_height < template_height
+            or crop_width < template_width
+            or image.dtype != np.uint8
+        ):
             return False
 
         try:
@@ -625,25 +650,18 @@ class Main(YYSBaseScript):
         for lower, upper in _DEFEATED_RED_RANGES:
             red_mask |= cv2.inRange(hsv, lower, upper)
 
-        _, _, components, _ = cv2.connectedComponentsWithStats(red_mask, 8)
-        crop_area = crop_width * crop_height
-        for _, y, width, height, area in components[1:]:
-            if width <= 0 or height <= 0:
-                continue
-            component_width_ratio = width / crop_width
-            component_height_ratio = height / crop_height
-            component_area_ratio = area / crop_area
-            component_fill_ratio = area / (width * height)
-            component_center_y = (y + height / 2) / crop_height
-            if (
-                component_width_ratio >= _DEFEATED_MIN_WIDTH_RATIO
-                and component_height_ratio >= _DEFEATED_MIN_HEIGHT_RATIO
-                and component_area_ratio >= _DEFEATED_MIN_AREA_RATIO
-                and component_fill_ratio >= _DEFEATED_MIN_FILL_RATIO
-                and _DEFEATED_CENTER_Y_MIN <= component_center_y <= _DEFEATED_CENTER_Y_MAX
-            ):
-                return True
-        return False
+        try:
+            result = cv2.matchTemplate(
+                red_mask,
+                self._defeated_stamp_mask,
+                cv2.TM_CCOEFF_NORMED,
+            )
+            if result.size == 0:
+                return False
+            _, score, _, _ = cv2.minMaxLoc(result)
+        except cv2.error:
+            return False
+        return bool(np.isfinite(score) and score >= _DEFEATED_STAMP_THRESHOLD)
 
     def _is_current_tab(self) -> bool:
         """

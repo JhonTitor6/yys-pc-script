@@ -545,7 +545,7 @@ class TestAbyssShadowsFlow(unittest.TestCase):
     # ==================== 敌人已击破识别测试 ====================
 
     def test_enemy_defeated_is_skipped_from_real_report(self):
-        """产品契约：真实战报中的已击破目标必须被识别并跳过。"""
+        """产品契约：已击破印章必须跳过，红色式神立绘不能误判。"""
         def load_report_image(filename: str) -> np.ndarray:
             image_path = PROJECT_ROOT / "yys/abyss_shadows/images/example" / filename
             image = cv2.imdecode(
@@ -555,6 +555,18 @@ class TestAbyssShadowsFlow(unittest.TestCase):
             if image is None:
                 raise AssertionError(f"无法读取测试图片: {image_path}")
             return image
+
+        def load_fixture_image(filename: str) -> np.ndarray:
+            image_path = PROJECT_ROOT / "tests/fixtures/abyss_shadows/defeated_stamp" / filename
+            image = cv2.imdecode(
+                np.fromfile(str(image_path), dtype=np.uint8),
+                cv2.IMREAD_COLOR,
+            )
+            if image is None or image.shape[:2] != (315, 563):
+                raise AssertionError(f"无法读取或尺寸错误的测试夹具: {image_path}")
+            restored = np.zeros((435, 905, 3), dtype=np.uint8)
+            restored[120:435, 342:905] = image
+            return restored
 
         def use_image(image: np.ndarray) -> None:
             def crop_image(
@@ -575,22 +587,22 @@ class TestAbyssShadowsFlow(unittest.TestCase):
             for enemy_type in EnemyType
             for enemy in self.script.enemies[enemy_type]
         ]
-        current_image = load_report_image("战报界面_当前.png")
-        defeated_image = load_report_image("战报界面_已击破.png")
+        cases = [
+            ("当前战报", load_report_image("战报界面_当前.png"), [False] * 6),
+            ("已击破战报", load_report_image("战报界面_已击破.png"), [False, True, True, True, True, True]),
+            ("其他暗域战报", load_report_image("战报界面_其他暗域.png"), [False] * 6),
+            ("完整战斗录制负样本", load_fixture_image("recording_negative.png"), [False] * 6),
+            ("本次黑豹已击破样本", load_fixture_image("leopard_defeated.png"), [True] * 6),
+        ]
+        for name, image, expected in cases:
+            with self.subTest(name=name):
+                use_image(image)
+                self.assertEqual(
+                    [self.script._is_enemy_defeated(enemy.label_and_pic_position) for enemy in enemies],
+                    expected,
+                )
 
-        # 当前战报没有印章，六个目标都不能被误判。
-        use_image(current_image)
-        self.assertEqual(
-            [self.script._is_enemy_defeated(enemy.label_and_pic_position) for enemy in enemies],
-            [False] * 6,
-        )
-
-        # 旧真实战报中首领未击破，其余五个目标有印章。
-        use_image(defeated_image)
-        self.assertEqual(
-            [self.script._is_enemy_defeated(enemy.label_and_pic_position) for enemy in enemies],
-            [False, True, True, True, True, True],
-        )
+        self.assertEqual(sum(expected for _, _, labels in cases for expected in labels), 11)
 
         # 首领已在内存中处理后，扫描会标记并跳过五个已击破目标。
         for enemy_type in EnemyType:
@@ -601,6 +613,48 @@ class TestAbyssShadowsFlow(unittest.TestCase):
 
         self.assertIsNone(self.script.get_next_enemy())
         self.assertTrue(all(enemy.has_challenged for enemy in enemies))
+
+    def test_enemy_defeated_returns_false_for_invalid_or_uniform_images(self):
+        """产品契约：异常截图和纯色区域不能触发已击破判定。"""
+        position = (0, 0, 134, 90)
+        valid_screenshot = np.zeros((90, 134, 3), dtype=np.uint8)
+
+        self.script.image_finder = SimpleNamespace(
+            screenshot_cache=None,
+            crop_screenshot_cache=MagicMock(return_value=None),
+        )
+        self.assertFalse(self.script._is_enemy_defeated(position))
+
+        for name, cropped in [
+            ("缺失裁剪", None),
+            ("空裁剪", np.empty((0, 0, 3), dtype=np.uint8)),
+            ("灰度图", np.zeros((90, 134), dtype=np.uint8)),
+            ("浮点图", np.zeros((90, 134, 3), dtype=np.float32)),
+            ("尺寸不足", np.zeros((29, 68, 3), dtype=np.uint8)),
+        ]:
+            with self.subTest(name=name):
+                self.script.image_finder = SimpleNamespace(
+                    screenshot_cache=valid_screenshot,
+                    crop_screenshot_cache=MagicMock(return_value=cropped),
+                )
+                self.assertFalse(self.script._is_enemy_defeated(position))
+
+        for name, color in [("纯红", (0, 0, 255)), ("纯黑", (0, 0, 0))]:
+            with self.subTest(name=name):
+                image = np.full((90, 134, 3), color, dtype=np.uint8)
+                self.script.image_finder = SimpleNamespace(
+                    screenshot_cache=image,
+                    crop_screenshot_cache=lambda *_position: image,
+                )
+                self.assertFalse(self.script._is_enemy_defeated(position))
+
+    def test_missing_defeated_stamp_template_raises_explicit_error(self):
+        """产品契约：模板缺失不能静默回退旧算法。"""
+        with patch(
+            "yys.abyss_shadows.abyss_shadows_script.to_project_path",
+            return_value="missing-defeated-stamp-mask.png",
+        ), self.assertRaisesRegex(ValueError, "已击破印章模板"):
+            Main._load_defeated_stamp_mask()
 
     # ==================== 阈值常量验证 ====================
 

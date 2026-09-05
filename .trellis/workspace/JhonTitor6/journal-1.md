@@ -449,3 +449,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 14: 狭间暗域印章形状识别修复
+
+**Date**: 2026-09-05
+**Task**: 狭间暗域印章形状识别修复
+**Branch**: `master`
+
+### Summary
+
+将狭间暗域已击破识别改为固定 68x30 HSV 二值印章模板匹配，新增两张最小真实图像夹具与 30 区域回归；48 个 flow/replay 测试通过，生产 Ruff 与编译检查通过；完成 Trellis 规范固化并归档任务。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `48cf3db` | (see git log) |
+| `3554557` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -483,3 +483,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 15: 滚轮录制与狭间阵容切换
+
+**Date**: 2026-09-06
+**Task**: 滚轮录制与狭间阵容切换
+**Branch**: `master`
+
+### Summary
+
+完成鼠标滚轮录制、版本化事件和安全环境路由；新增按分组与阵容名称切换队伍预设的通用能力，并接入狭间暗域 Home 启动流程。使用真实录制截图完成 OCR、模板、确认成功和入口回归验证；相关 85 项测试通过。当前未做真实游戏切换，滚轮长列表实机效果仍需单独补录验证。
+
+### Main Changes
+
+- Detailed change bullets were not supplied; see the summary above.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `69af658` | (see git log) |
+
+### Testing
+
+- Validation was not recorded for this session.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

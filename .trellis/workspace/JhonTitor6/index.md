@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 14
-- **Last Active**: 2026-09-05
+- **Total Sessions**: 15
+- **Last Active**: 2026-09-06
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~485 | Active |
+| `journal-1.md` | ~518 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 15 | 2026-09-06 | 滚轮录制与狭间阵容切换 | `69af658` | `master` |
 | 14 | 2026-09-05 | 狭间暗域印章形状识别修复 | `48cf3db`, `3554557` | `master` |
 | 13 | 2026-09-04 | 修复斗技结算漏记战斗次数 | `f571bba` | `master` |
 | 12 | 2026-08-29 | 修复斗技胜利次数重复累计 | `7d9e98f` | `master` |

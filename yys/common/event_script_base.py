@@ -7,6 +7,7 @@ from abc import ABCMeta, abstractmethod
 from enum import IntEnum
 from typing import Annotated, Any, Optional, TYPE_CHECKING, get_args, get_origin, get_type_hints
 
+import win32con
 import win32gui
 from loguru import logger
 
@@ -82,7 +83,7 @@ def find_window(title_part: str = "阴阳师-网易游戏") -> int:
         raise Exception("未找到游戏窗口")
 
     # 设置窗口大小
-    # win32gui.SetWindowPos(hwnd, None, 0, 0, 1154, 680, win32con.SWP_NOMOVE)
+    win32gui.SetWindowPos(hwnd, None, 0, 0, 1154, 680, win32con.SWP_NOMOVE)
 
     # 获取客户区大小
     _, _, width, height = win32gui.GetClientRect(hwnd)

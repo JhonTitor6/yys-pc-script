@@ -66,8 +66,10 @@ class TestAbyssShadowsSceneReplay(unittest.TestCase):
             scene_name="home",
         )
         script.scene_manager.goto_scene.return_value = True
+        script.switch_lineup = MagicMock()
 
         script.on_run()
+        script.switch_lineup.assert_called_once_with("寮活动", "通用")
         assert env.get_current_scene() == "abyss_selection"
         script.scene_manager.goto_scene.assert_called_once_with("abyss_dragon")
         assert [record.action_type for record in env.action_log.records] == [

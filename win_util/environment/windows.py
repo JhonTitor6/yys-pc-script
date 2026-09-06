@@ -189,6 +189,20 @@ class WindowsEnvironment(GameEnvironment):
         )
         win32api.SendMessage(self._hwnd, win32con.WM_LBUTTONUP, 0, end)
 
+    def wheel(self, x: int, y: int, delta: int) -> None:
+        """发送竖向滚轮消息；WM_MOUSEWHEEL 的位置必须转换为屏幕坐标。"""
+        left, top, right, bottom = self.get_window_client_rect()
+        if not (left <= x < right and top <= y < bottom):
+            raise ValueError("滚轮位置超出客户区")
+        if type(delta) is not int or not -32768 <= delta <= 32767 or delta == 0:
+            raise ValueError("滚轮增量必须是非零有符号 16 位整数")
+        screen_x, screen_y = win32gui.ClientToScreen(self._hwnd, (x, y))
+        win32api.SendMessage(
+            self._hwnd, win32con.WM_MOUSEWHEEL,
+            win32api.MAKELONG(0, delta & 0xFFFF),
+            win32api.MAKELONG(screen_x & 0xFFFF, screen_y & 0xFFFF),
+        )
+
     def key_press(self, key_code: int) -> None:
         """发送一次按键。"""
         self.key_down(key_code)

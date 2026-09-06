@@ -72,6 +72,7 @@ def record_command(args: argparse.Namespace) -> int:
         on_mouse=session.record_mouse,
         on_keyboard=session.record_keyboard,
         on_stop=session.request_stop,
+        on_wheel=session.record_wheel,
     )
     print(f"已找到游戏窗口，录制编号: {session.recording_id}")
     input("按 Enter 后将自动切换到游戏；录制中按 F12 停止：")

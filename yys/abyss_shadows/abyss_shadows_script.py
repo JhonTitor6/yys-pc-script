@@ -160,6 +160,8 @@ class Main(YYSBaseScript):
     _ENTRY_ABYSS_JOIN_OFFSET: tuple[int, int] = (114, 18)
     # 最新 1136x640 证据中，点击“参加”后弹窗“前往”按钮中心。
     _ENTRY_ABYSS_FORWARD_POINT: tuple[float, float] = (566 / 1136, 459 / 640)
+    _DEFAULT_LINEUP_GROUP: str = "寮活动"
+    _DEFAULT_LINEUP_NAME: str = "通用"
 
     # 录制事件中的客户区坐标归一化结果：
     # 1. Home 横向拖拽，露出左侧入口图标；
@@ -849,6 +851,30 @@ class Main(YYSBaseScript):
         self.logger.info("已进入狭间暗域选择界面")
         return True
 
+    def _prepare_default_lineup(self) -> bool:
+        """从 Home 应用狭间默认阵容并确认已经回到 Home。"""
+        try:
+            self.switch_lineup(self._DEFAULT_LINEUP_GROUP, self._DEFAULT_LINEUP_NAME)
+        except Exception:
+            self.logger.exception(
+                "切换狭间默认阵容失败: %s / %s",
+                self._DEFAULT_LINEUP_GROUP,
+                self._DEFAULT_LINEUP_NAME,
+            )
+            return False
+
+        # 阵容服务成功后停在预设页；使用已有返回模板回到 Home，最多尝试两次。
+        for attempt in range(2):
+            self.win_controller.update_screenshot_cache()
+            detection = self.scene_manager.detect_current_scene()
+            if detection is not None and detection.scene_name == "home":
+                return True
+            if attempt == 1 or not self.scene_manager.click_return():
+                self.logger.error("切换阵容后未能安全返回 Home")
+                return False
+            time.sleep(0.5)
+        return False
+
     def check_current_area(self) -> Optional[str]:
         """
         检查当前暗域区域
@@ -980,10 +1006,15 @@ class Main(YYSBaseScript):
             self.stop()
             return
 
-        if current_scene == "home" and not self.goto_abyss_shadows():
-            self.logger.error("未能从 Home 进入狭间暗域，停止脚本")
-            self.stop()
-            return
+        if current_scene == "home":
+            if not self._prepare_default_lineup():
+                self.logger.error("未能切换狭间默认阵容，停止脚本")
+                self.stop()
+                return
+            if not self.goto_abyss_shadows():
+                self.logger.error("未能从 Home 进入狭间暗域，停止脚本")
+                self.stop()
+                return
         if not self.scene_manager.goto_scene("abyss_dragon"):
             self.logger.error("未能进入神龙暗域，停止脚本")
             self.stop()

@@ -167,12 +167,8 @@ class _LegacyControllerEnv:
         self._win_controller = win_controller
 
     def capture_screen(self):
-        """返回最近截图缓存（numpy BGR），必要时先刷新。"""
-        cache = self._win_controller.image_finder.screenshot_cache
-        if cache is None:
-            self._win_controller.update_screenshot_cache()
-            cache = self._win_controller.image_finder.screenshot_cache
-        return cache
+        """刷新并返回当前截图（numpy BGR）。"""
+        return self._win_controller.update_screenshot_cache()
 
     def left_click(self, x: int, y: int) -> None:
         """转发点击到 WinController（与既有 bg_left_click 一致）。"""
@@ -472,6 +468,35 @@ class YYSBaseScript(EventBaseScript, metaclass=_ABCMetaRelaxDel):
                 self._stop_threading_event.clear()  # 防御性清理，允许重新 run
                 return
         super().run()
+
+    def switch_lineup(
+        self, group_name: str, lineup_name: str, *,
+        timeout_seconds: float = 60.0, max_scrolls: int = 30,
+    ) -> None:
+        """按分组和名称应用式神录队伍预设；成功后停留在预设页。
+
+        只有显式调用才切换，不修改战斗计数或默认入口流程。
+        未找到目标或应用结果未证实时抛 RuntimeError，调用方不得自动重试确认。
+        """
+        from win_util.environment.guarded import GuardedEnvironment
+        from win_util.environment.windows import WindowsEnvironment
+        from yys.common.lineup import LineupSwitcher
+
+        def checkpoint() -> None:
+            """等待脚本恢复并检查停止状态，所有阵容输入前均执行。"""
+            self.pause_point()
+            if self._stop_threading_event.is_set():
+                raise RuntimeError("脚本已停止，取消阵容切换")
+
+        checkpoint()
+        env = self._env if self._env is not None else WindowsEnvironment(hwnd=self.hwnd)
+        if self._run_guard is not None and (
+            not isinstance(env, GuardedEnvironment) or env.guard is not self._run_guard
+        ):
+            env = GuardedEnvironment(env, self._run_guard, observe_only=False)
+        LineupSwitcher(env, ocr=self.win_controller.ocr, checkpoint=checkpoint).switch(
+            group_name, lineup_name, timeout_seconds=timeout_seconds, max_scrolls=max_scrolls,
+        )
 
     def prepare_entry(self, reporter: Optional[EntryReporter] = None) -> EntryPreparationResult:
         """按 TaskEntrySpec 运行入口准备状态机（新契约）。

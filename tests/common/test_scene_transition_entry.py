@@ -94,14 +94,27 @@ def test_business_scripts_declare_entry_scene() -> None:
 
 
 def test_soul_raid_declares_entry_spec() -> None:
-    """御魂作为首个试点声明 TaskEntrySpec(target_scene="soul_selection")。"""
+    """产品契约：御魂入口目标是组队页，而不是御魂选择页。"""
     from yys.soul_raid.soul_raid_script import SoulRaidScript
 
     spec = SoulRaidScript.entry_spec
     assert spec is not None
-    assert spec.target_scene == "soul_selection"
+    assert spec.target_scene == "soul_team"
     # 新契约下御魂不再使用旧 entry_scene 跳转
     assert SoulRaidScript.entry_scene is None or SoulRaidScript.entry_scene == ""
+
+
+def test_legacy_entry_environment_refreshes_each_observation() -> None:
+    """产品契约：真实入口等待的每次观察必须刷新截图，不能重复旧缓存。"""
+    from yys.common.event_script_base import _LegacyControllerEnv
+
+    controller = MagicMock()
+    frames = [object(), object()]
+    controller.update_screenshot_cache.side_effect = frames
+    env = _LegacyControllerEnv(controller)
+
+    assert [env.capture_screen(), env.capture_screen()] == frames
+    assert controller.update_screenshot_cache.call_count == 2
 
 
 def test_entry_spec_prepare_ready_then_business() -> None:

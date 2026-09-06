@@ -7,10 +7,10 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable, Literal, Mapping, Optional
 
-RECORDING_SCHEMA_VERSION = 1
+RECORDING_SCHEMA_VERSION = 2
 RecordingEventKind = Literal["mouse", "keyboard"]
 
-_MOUSE_ACTIONS = {"left_click", "right_click", "left_double_click", "drag"}
+_MOUSE_ACTIONS = {"left_click", "right_click", "left_double_click", "drag", "wheel"}
 _KEYBOARD_ACTIONS = {"key_press", "key_down", "key_up"}
 
 
@@ -31,11 +31,19 @@ class RecordingEvent:
     end_client_y: Optional[int] = None
     button: Optional[str] = None
     key: Optional[str] = None
+    wheel_delta: Optional[int] = None
 
     def validate(self, client_size: Optional[tuple[int, int]] = None) -> None:
         """校验版本、顺序字段和种类特有字段。"""
-        if self.schema_version != RECORDING_SCHEMA_VERSION:
+        if self.schema_version not in (1, RECORDING_SCHEMA_VERSION):
             raise ValueError(f"不支持的录制事件版本: {self.schema_version}")
+        if self.action == "wheel":
+            if self.schema_version < 2 or self.kind != "mouse":
+                raise ValueError("滚轮事件必须使用 v2 鼠标事件")
+            if type(self.wheel_delta) is not int or not -32768 <= self.wheel_delta <= 32767 or self.wheel_delta == 0:
+                raise ValueError("wheel_delta 必须是非零有符号 16 位整数")
+        elif self.wheel_delta is not None:
+            raise ValueError("wheel_delta 只能用于滚轮事件")
         if self.seq < 1:
             raise ValueError("事件 seq 必须从 1 开始")
         if self.elapsed_ms < 0:
@@ -118,7 +126,7 @@ class RecordingMetadata:
 
     def validate(self) -> None:
         """校验元数据的稳定字段。"""
-        if self.schema_version != RECORDING_SCHEMA_VERSION:
+        if self.schema_version not in (1, RECORDING_SCHEMA_VERSION):
             raise ValueError(f"不支持的录制元数据版本: {self.schema_version}")
         if self.client_width <= 0 or self.client_height <= 0:
             raise ValueError("录制客户区尺寸必须为正数")

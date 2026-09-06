@@ -13,8 +13,6 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
-import pytest
-
 from tests.common.recorders.action_log import ActionLog
 from win_util.environment.guarded import RunGuard
 from win_util.image import ImageMatchResult
@@ -26,7 +24,6 @@ from yys.common.entry_runtime import (
     ENTRY_TRANSITION_NOT_FOUND,
     EntryOutcome,
     EntryPreparer,
-    EntryPreparationResult,
     SafeOverlayPolicy,
     SceneMode,
     SceneSnapshot,
@@ -642,7 +639,7 @@ def _real_resolver_for_fixture():
     image_finder = ImageFinder(env=None, hwnd=None)
     scene_manager = _real_scene_manager(image_finder)
     spec = TaskEntrySpec(
-        target_scene="soul_selection",
+        target_scene="soul_team",
         safe_overlay_policy=SafeOverlayPolicy(
             settlement_templates=(
                 "yys/images/battle_end.bmp",
@@ -669,11 +666,6 @@ def test_resolver_classifies_real_soul_raid_frames() -> None:
     产品契约：battling 模板必须覆盖真实战斗帧且不得匹配结算帧
     （quality-guidelines：长时状态标记需对相邻状态为负样本）。
     """
-    import cv2
-
-    import numpy as np
-    from unittest.mock import Mock
-
     from win_util.image import ImageFinder
     from yys.common.entry_runtime import ImageSceneStateResolver
 
@@ -685,7 +677,7 @@ def test_resolver_classifies_real_soul_raid_frames() -> None:
     image_finder = ImageFinder(env=None, hwnd=None)
     scene_manager = _real_scene_manager(image_finder)
     spec = TaskEntrySpec(
-        target_scene="soul_selection",
+        target_scene="soul_team",
         safe_overlay_policy=SafeOverlayPolicy(
             settlement_templates=(
                 "yys/images/battle_end.bmp",
@@ -811,6 +803,14 @@ def test_soul_raid_battle_settlement_returns_to_team_ready() -> None:
     assert spec is not None
     image_finder = ImageFinder(env=None, hwnd=None)
     scene_manager = _real_scene_manager(image_finder)
+    assert any(
+        path.replace("\\", "/").endswith("/scene/soul_selection.bmp")
+        for path in scene_manager.scene_images["soul_selection"]
+    )
+    assert any(
+        path.replace("\\", "/").endswith("/soul_team/soul_team_captain.bmp")
+        for path in scene_manager.scene_images["soul_team"]
+    )
     resolver = ImageSceneStateResolver(scene_manager, image_finder, spec)
 
     battle = "yys/soul_raid/images/test/example/御魂_战斗.png"
@@ -840,8 +840,26 @@ def test_soul_raid_battle_settlement_returns_to_team_ready() -> None:
 
     assert result.outcome is EntryOutcome.READY
     assert result.snapshot is not None
-    assert result.snapshot.base_scene == "soul_selection"
+    assert result.snapshot.base_scene == "soul_team"
     log.assert_click_count(1)
+
+
+def test_soul_selection_without_team_path_fails_without_input() -> None:
+    """产品契约：御魂选择页不是组队目标；无可靠导航边时零输入失败。"""
+    log = ActionLog()
+    env = StubEnv(log)
+    preparer, _, _ = make_preparer(
+        env,
+        ScriptedResolver([snapshot("soul_selection")]),
+        FakeFinder(),
+        make_spec(target="soul_team"),
+    )
+
+    result = preparer.prepare(StageRecorder())
+
+    assert result.outcome is EntryOutcome.ERROR
+    assert result.error_code == ENTRY_TRANSITION_NOT_FOUND
+    log.assert_click_count(0)
 
 
 def test_replay_entry_fixture_battle_then_unknown_fails_safely() -> None:

@@ -38,6 +38,14 @@ mock replay, observe-only mode, action limits, or emergency stop.
 
 - Coordinates persisted by the recorder are client-relative; desktop absolute coordinates
   are forbidden.
+- `GameEnvironment.wheel(x, y, delta)` 保留客户区坐标和 Windows 原始有符号增量；
+  仅 Windows 消息边界转为屏幕坐标，必须经过 GuardedEnvironment 的观察模式和动作预算。
+  未实现滚轮的旧环境仍可实例化，调用时明确报不支持。
+- 阵容预设通用能力使用 `LineupSwitcher` / `YYSBaseScript.switch_lineup`，按分组和
+  阵容全名分别匹配；同行应用图标、分组高亮、专用确认原文及本次成功提示都必须验证。
+  不从预先存在的确认弹窗恢复，不把发送确认或回到列表当作成功，不自动重试结果不明的应用。
+  只有显式调用才执行，完成后留在预设页，不改变原有业务计数和入口导航。
+  验证约定及已知实机边界见 `docs/lineup-switch.md` 和 `tests/common/test_lineup.py`。
 - A replay transition with `action: "drag"` must preserve both the recorded start region
   and `end_region`; matching only the first point can advance a scene after an unrelated
   mouse movement.
@@ -66,6 +74,12 @@ mock replay, observe-only mode, action limits, or emergency stop.
   battle frames send no input, the current settlement template produces one click, and
   the returned team page reaches READY; a fixture for only one team-page variant is
   not sufficient evidence for all returned team pages.
+- A scene ID may group visual variants only when they represent the same actionable
+  page. Soul selection and Soul Raid team pages use distinct IDs; only `soul_team` may
+  satisfy the Soul Raid READY contract.
+- Every entry-state observation must capture a fresh frame in the production adapter.
+  A replay environment that advances frames does not prove that a cache-backed real
+  adapter refreshes; its contract test must call the production adapter repeatedly.
 - Ordered game targets must be identified independently by normalized spatial gates or
   another target-specific invariant. A correct total candidate count does not prove target
   identity: one false candidate plus one merged or missing target can preserve the count
@@ -174,6 +188,8 @@ mock replay, observe-only mode, action limits, or emergency stop.
 | Candidate marker matches only an entrance panel or a short prefix of a long-lived state | Reject it; select a persistent control and verify early/middle/late coverage |
 | Candidate battle-running marker also matches the recorded battle summary | Reject it; the passive running event must not mask battle-end handling |
 | Unknown frame occurs inside an action-scoped grace period | Keep `consecutive_unknown=0`; continue checking all other fuses |
+| Soul Raid starts on `soul_selection` without a verified path to `soul_team` | Fail with zero input; do not report READY or guess-click |
+| Battle changes to settlement during legacy entry preparation | Refresh the screenshot, recognize settlement, and run the whitelist dismiss action |
 | The same recognized event that armed grace reaches `note_iteration(True)` | Reset unknown count but preserve grace for the following transition |
 | A later event is recognized during grace | Reset unknown count and terminate grace immediately |
 | Grace seconds are zero or negative | Raise `ValueError` |

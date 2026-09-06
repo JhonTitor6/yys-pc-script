@@ -185,6 +185,14 @@ class GuardedEnvironment(GameEnvironment):
             {"end_x": x2, "end_y": y2},
         )
 
+    def wheel(self, x: int, y: int, delta: int) -> None:
+        """一次滚轮消耗一个逻辑动作；观察模式只记下位置和增量。"""
+        self._perform(
+            ActionType.WHEEL.value, x, y,
+            lambda px, py: self._delegate.wheel(px, py, delta),
+            {"wheel_delta": delta},
+        )
+
     def key_press(self, key_code: int) -> None:
         """在预算允许时执行或记录一次按键。"""
         self._perform_key(ActionType.KEY_PRESS.value, key_code, self._delegate.key_press)

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "scenario_id": "lineup_switch_recorded_20260906",
+  "client_size": [1136, 640],
+  "initial_scene": "home",
+  "scenes": {
+    "home": "home.png",
+    "shikigami": "shikigami.png",
+    "preset_other": "preset_other.png",
+    "preset_target": "preset_target.png",
+    "confirm": "confirm.png",
+    "success": "success.png"
+  },
+  "transitions": [
+    {"from_scene": "home", "to_scene": "shikigami", "action": "left_click", "region": [970, 530, 1048, 612]},
+    {"from_scene": "shikigami", "to_scene": "preset_other", "action": "left_click", "region": [296, 61, 375, 110]},
+    {"from_scene": "preset_other", "to_scene": "preset_target", "action": "left_click", "region": [966, 512, 1107, 560]},
+    {"from_scene": "preset_target", "to_scene": "confirm", "action": "left_click", "region": [865, 132, 897, 163]},
+    {"from_scene": "confirm", "to_scene": "success", "action": "left_click", "region": [595, 357, 750, 413]}
+  ],
+  "expected_actions": []
+}

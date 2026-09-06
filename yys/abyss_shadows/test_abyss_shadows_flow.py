@@ -437,6 +437,32 @@ class TestAbyssShadowsFlow(unittest.TestCase):
                 self.assertEqual(script.win_controller.mouse.mock_calls, [])
                 self.assertEqual(script.win_controller.keyboard.mock_calls, [])
 
+    def test_on_run_switches_default_lineup_only_from_home(self) -> None:
+        """从 Home 启动时切换寮活动/通用并安全回 Home，再进入狭间。"""
+        script = self._create_mock_script_instance()
+        script.scene_manager.detect_current_scene.return_value = MagicMock(scene_name="home")
+        script.switch_lineup = MagicMock()
+        script.goto_abyss_shadows = MagicMock(return_value=True)
+
+        script.on_run()
+
+        script.switch_lineup.assert_called_once_with("寮活动", "通用")
+        script.goto_abyss_shadows.assert_called_once_with()
+        script.scene_manager.goto_scene.assert_called_once_with("abyss_dragon")
+
+    def test_on_run_stops_when_default_lineup_fails(self) -> None:
+        """阵容切换失败时必须停止，不能继续点击狭间入口。"""
+        script = self._create_mock_script_instance()
+        script.scene_manager.detect_current_scene.return_value = MagicMock(scene_name="home")
+        script.switch_lineup = MagicMock(side_effect=RuntimeError("未识别到阵容"))
+        script.goto_abyss_shadows = MagicMock(return_value=True)
+        script.stop = MagicMock()
+
+        script.on_run()
+
+        script.stop.assert_called_once_with()
+        script.goto_abyss_shadows.assert_not_called()
+
     def test_on_abyss_shadows_selection_navigates_to_dragon(self):
         """验证在狭间暗域选择界面时导航到神龙暗域"""
         # 调用选择界面回调

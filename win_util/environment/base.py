@@ -17,6 +17,7 @@ class ActionType(Enum):
     RIGHT_CLICK = "right_click"
     LEFT_DOUBLE_CLICK = "left_double_click"
     DRAG = "drag"
+    WHEEL = "wheel"
     KEY_PRESS = "key_press"
     KEY_DOWN = "key_down"
     KEY_UP = "key_up"
@@ -55,6 +56,10 @@ class GameEnvironment(ABC):
     @abstractmethod
     def drag(self, x1: int, y1: int, x2: int, y2: int) -> None:
         """在客户区坐标执行拖拽。"""
+
+    def wheel(self, x: int, y: int, delta: int) -> None:
+        """在客户区位置滚动；delta 为 Windows 原始增量，正数向上。"""
+        raise NotImplementedError("当前游戏环境不支持鼠标滚轮")
 
     @abstractmethod
     def key_press(self, key_code: int) -> None:

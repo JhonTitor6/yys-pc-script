@@ -138,6 +138,7 @@ class RecordingSession:
         end_x: Optional[int] = None,
         end_y: Optional[int] = None,
         button: str = "left",
+        wheel_delta: Optional[int] = None,
     ) -> None:
         """将一个客户区鼠标动作放入无损事件队列。"""
         width, height = self._client_size
@@ -153,9 +154,14 @@ class RecordingSession:
             end_client_x=end_x,
             end_client_y=end_y,
             button=button,
+            wheel_delta=wheel_delta,
         )
         event.validate(self._client_size)
         self._enqueue_event(event)
+
+    def record_wheel(self, x: int, y: int, delta: int) -> None:
+        """保存竖向滚轮原始增量，正数向上、负数向下。"""
+        self.record_mouse("wheel", x, y, button="wheel", wheel_delta=delta)
 
     def record_keyboard(self, action: str, key: str) -> None:
         """将一个目标窗口键盘动作放入无损事件队列。"""

@@ -51,6 +51,9 @@ def test_record_command_activates_game_before_session_run(
         def record_keyboard(self, *_args: object, **_kwargs: object) -> None:
             """模拟键盘事件回调。"""
 
+        def record_wheel(self, *_args: object, **_kwargs: object) -> None:
+            """模拟滚轮事件回调。"""
+
         def request_stop(self, *_args: object, **_kwargs: object) -> None:
             """模拟停止回调。"""
 

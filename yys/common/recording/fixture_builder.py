@@ -211,6 +211,8 @@ def build_candidates(recording_dir: Path, output_path: Path) -> Path:
                 metadata.client_height,
             )
         candidates.append(candidate)
+        if event.wheel_delta is not None:
+            candidate["wheel_delta"] = event.wheel_delta
     payload = {
         "schema_version": REPLAY_FIXTURE_SCHEMA_VERSION,
         "recording_id": metadata.recording_id,
@@ -240,6 +242,17 @@ def build_confirmed_fixture(
     if not isinstance(selections, list) or not selections:
         raise ValueError("确认清单必须包含非空 transitions")
     initial_scene = _decode_scene_name(confirmation["initial_scene"], "initial_scene")
+    recorded_wheels = {
+        str(event.seq) for event in load_events(recording_dir / "events.jsonl")
+        if event.action == "wheel"
+    }
+    if any(
+        isinstance(item, dict) and (
+            item.get("action") == "wheel" or str(item.get("event_seq")) in recorded_wheels
+        )
+        for item in selections
+    ):
+        raise ValueError("当前场景回放器尚不支持滚轮；请使用原始事件和候选材料生成脚本")
 
     scenes_dir = output_dir / "scenes"
     scenes_dir.mkdir(parents=True, exist_ok=True)

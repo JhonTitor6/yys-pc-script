@@ -58,10 +58,10 @@ class SoulRaidScript(YYSBaseScript):
             "loop_interval": 300,
         },
     )
-    # 新入口契约：御魂目标页为组队界面，场景名 soul_selection 保持历史兼容。
+    # 新入口契约：御魂目标页为组队界面；soul_selection 只表示御魂选择页。
     # 战斗中启动时只观察战斗，命中结算白名单后关闭结算，再回到组队页 READY。
     entry_spec: Optional[TaskEntrySpec] = TaskEntrySpec(
-        target_scene="soul_selection",
+        target_scene="soul_team",
         safe_overlay_policy=SafeOverlayPolicy(
             settlement_templates=(
                 "yys/images/battle_end_success.bmp",

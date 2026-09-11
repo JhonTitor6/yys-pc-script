@@ -33,6 +33,43 @@ def test_recorded_switch_uses_real_ocr_and_same_five_actions() -> None:
     assert env._current_scene == "success"
 
 
+@pytest.mark.parametrize("reward_visible", [True, False])
+def test_open_presets_dismisses_gained_reward_once(
+    reward_visible: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """入口命中奖励遮罩只点击一次并等待消失，未命中不产生动作。"""
+    reward_template = Image.open(Path("yys/common_challenge/images/gained_reward.bmp"))
+    reward_frame = Image.new("RGB", (1136, 640))
+    reward_frame.paste(reward_template.convert("RGB"), (450, 187))
+    clear_frame = Image.new("RGB", (1136, 640))
+    current = [reward_frame if reward_visible else clear_frame]
+    captures: list[Image.Image] = []
+    env = MockEnvironment()
+
+    def capture_screen() -> Image.Image:
+        captures.append(current[0])
+        return current[0]
+
+    monkeypatch.setattr(env, "capture_screen", capture_screen)
+    switcher = LineupSwitcher(env)
+    switcher._guard = RunGuard()
+    monkeypatch.setattr(switcher, "_panel", lambda _: True)
+    original_click = env.left_click
+
+    def dismiss_reward(x: int, y: int) -> None:
+        original_click(x, y)
+        current[0] = clear_frame
+
+    monkeypatch.setattr(env, "left_click", dismiss_reward)
+    switcher._open_presets()
+
+    env.action_log.assert_click_count(1 if reward_visible else 0)
+    if reward_visible:
+        env.action_log.assert_click_at(960, 535, tolerance=0)
+        assert captures[-1] is clear_frame
+        assert len(captures) >= 2
+
+
 @pytest.mark.parametrize("initial", ["confirm", "unknown"])
 def test_existing_dialog_or_unknown_screen_sends_no_input(initial: str, monkeypatch: pytest.MonkeyPatch) -> None:
     """现存确认弹窗不能冒认为本次操作，未知画面不得猜点。"""

@@ -24,6 +24,7 @@ _REGIONS = {
     "lineups": (504, 123, 754, 556),
     "dialog": (375, 255, 765, 315),
     "confirm": (593, 355, 752, 414),
+    "gained_reward": (300, 130, 850, 300),
     "toast": (430, 151, 722, 245),
 }
 _CONFIRM_TEXT = "即将为全队式神更换预设御魂"
@@ -58,6 +59,13 @@ class LineupSwitcher:
             if template is None or float(template.std()) < 1:
                 raise ValueError(f"阵容识别模板无效：{path}")
             self._templates[name] = template
+        reward_path = to_project_path("yys/common_challenge/images/gained_reward.bmp")
+        reward_template = cv2.imdecode(
+            np.fromfile(reward_path, dtype=np.uint8), cv2.IMREAD_GRAYSCALE
+        )
+        if reward_template is None or float(reward_template.std()) < 1:
+            raise ValueError(f"获得奖励模板无效：{reward_path}")
+        self._templates["gained_reward"] = reward_template
         self._client_size = _SIZE
         self._guard: RunGuard | None = None
 
@@ -221,6 +229,12 @@ class LineupSwitcher:
 
     def _open_presets(self) -> None:
         image = self._read()
+        if self._match(image, "gained_reward") is not None:
+            self._click((960, 535))
+            image = self._wait_for(
+                lambda frame: self._match(frame, "gained_reward") is None,
+                "获得奖励遮罩点击后未消失，未重复点击",
+            )
         if self._panel(image):
             return
         if not self._heading(image):

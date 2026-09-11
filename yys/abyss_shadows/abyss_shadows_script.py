@@ -857,7 +857,7 @@ class Main(YYSBaseScript):
             self.switch_lineup(self._DEFAULT_LINEUP_GROUP, self._DEFAULT_LINEUP_NAME)
         except Exception:
             self.logger.exception(
-                "切换狭间默认阵容失败: %s / %s",
+                "切换狭间默认阵容失败: {} / {}",
                 self._DEFAULT_LINEUP_GROUP,
                 self._DEFAULT_LINEUP_NAME,
             )

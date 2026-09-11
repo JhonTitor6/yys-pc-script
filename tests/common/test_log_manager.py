@@ -2,6 +2,10 @@
 测试日志管理系统的功能
 """
 
+from pathlib import Path
+
+import pytest
+
 from yys.common.log_manager import get_logger, LoggerManager, electron_log_sink
 
 
@@ -59,6 +63,31 @@ def test_singleton_behavior():
     logger2.info("来自 logger2 的消息")
     
     print("单例行为测试完成")
+
+
+def test_exception_writes_message_and_traceback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """产品契约：异常日志文件必须同时包含消息和 traceback。"""
+    monkeypatch.chdir(tmp_path)
+    script_name = f"exception_traceback_{tmp_path.name}"
+    manager = LoggerManager(script_name)
+    test_logger = manager.get_logger()
+
+    try:
+        raise ValueError("日志测试异常")
+    except ValueError:
+        test_logger.exception(
+            "切换狭间默认阵容失败: {} / {}", "寮活动", "通用"
+        )
+
+    test_logger.complete()
+    log_file = next(manager.log_dir.glob("*.log"))
+    content = log_file.read_text(encoding="utf-8")
+
+    assert "切换狭间默认阵容失败: 寮活动 / 通用" in content
+    assert "Traceback (most recent call last)" in content
+    assert "ValueError: 日志测试异常" in content
 
 
 if __name__ == "__main__":

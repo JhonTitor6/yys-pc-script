@@ -65,23 +65,13 @@ class LoggerManager:
         """
         log_file_path = self.log_dir / "{time:YYYY-MM-DD}.log"
 
-        # 为避免格式错误，使用一个默认值格式化函数
-        def format_record(record):
-            script_name = record["extra"].get("script_name", "general")
-            return "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {extra[script_name]: <10} | {message}\n".format(
-                time=record["time"],
-                level=record["level"].name,
-                extra={"script_name": script_name},
-                message=record["message"]
-            )
-
         self._logger.add(
             log_file_path,
             rotation="00:00",  # 每天轮换
             retention="7 days",  # 保留7天
             encoding="utf-8",
             level="DEBUG",
-            format=format_record,  # 使用自定义格式化函数
+            format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {extra[script_name]: <10} | {message}\n{exception}",
             filter=self._filter_records  # 只记录当前脚本的日志
         )
 

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import tempfile
 import time
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Annotated, Any, Optional, TYPE_CHECKING, TypedDict, get_type_hints
+
+import cv2
 
 # 仅在本脚本作为 __main__ 进程运行时生效：在父类 from-import 之前修改包级属性，
 # 让 YYSBaseScript 的 BATTLE_END_CLICK_SLEEP 绑定为 3。其他独立脚本进程不受影响。
@@ -50,6 +54,7 @@ class RealmRaidStopReason(str, Enum):
 
     TICKET_NOT_ENOUGH = "ticket_not_enough"
     RETRY_FAILED = "retry_failed"
+    BATTLE_NOT_READY = "battle_not_ready"
     REFRESH_FAILED = "refresh_failed"
     REFRESH_RESULT_EMPTY = "refresh_result_empty"
     NO_ATTACKABLE_TARGET = "no_attackable_target"
@@ -294,8 +299,15 @@ class RealmRaidScript(YYSBaseScript):
     def quit_3_times(self) -> bool:
         """执行三次退出并再次挑战；任一步失败都会安全停机。"""
         self.logger.info("准备退3次...")
-        time.sleep(3)
         for i in range(0, 3):
+            battle_point = self.image_finder.bg_find_pic_with_timeout(
+                "yys/realm_raid/images/realm_raid_battling.bmp",
+                timeout=self.BATTLE_TRANSITION_GRACE_SECONDS,
+                x0=0, y0=520, x1=130, y1=640,
+            )
+            if battle_point is None or battle_point == (-1, -1):
+                self._stop_with_reason(RealmRaidStopReason.BATTLE_NOT_READY)
+                return False
             self.logger.info(f"退出第{i + 1}次")
             self.keyboard.bg_press_key('ESC')
             random_sleep(0.05, 0.2)
@@ -318,7 +330,6 @@ class RealmRaidScript(YYSBaseScript):
                 self.bg_left_click((494, 317), x_range=10, y_range=10)
                 random_sleep(0.2, 0.6)
                 self.bg_left_click((672, 379), y_range=10)
-            random_sleep(2.5, 3)
         self.logger.info("完成退3次")
         return True
 
@@ -377,6 +388,20 @@ class RealmRaidScript(YYSBaseScript):
         """记录可诊断的原因并停止脚本。"""
         self.stop_reason = reason
         self.logger.warning(f"结界突破停止: {reason.value}")
+        if reason in {RealmRaidStopReason.RETRY_FAILED, RealmRaidStopReason.BATTLE_NOT_READY}:
+            try:
+                frame = self.image_finder.screenshot_cache
+                if frame is not None:
+                    path = Path(tempfile.gettempdir()) / "yys" / "realm_raid" / "last_failure.png"
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    if cv2.imwrite(str(path), frame):
+                        self.logger.warning(f"失败画面已保存: {path}")
+                    else:
+                        self.logger.warning(f"失败画面保存失败: {path}")
+                else:
+                    self.logger.warning("失败画面不可用：截图缓存为空")
+            except Exception:
+                self.logger.exception("保存结界突破失败画面时出错")
         self.stop()
 
     def get_state_snapshot(self) -> dict[str, object]:

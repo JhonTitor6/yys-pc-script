@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import Mock
 
+import numpy as np
 import pytest
 
 import yys.realm_raid.realm_raid_script as realm_module
@@ -319,6 +321,8 @@ def test_missing_retry_button_stops_quit_sequence(
     find_and_click = Mock(return_value=False)
     monkeypatch.setattr(script, "stop", stop)
     monkeypatch.setattr(script.win_controller, "find_and_click", find_and_click)
+    monkeypatch.setattr(script.image_finder, "bg_find_pic_with_timeout", Mock(return_value=(48, 593)))
+    script.image_finder.screenshot_cache = None
 
     result = script.quit_3_times()
 
@@ -326,6 +330,79 @@ def test_missing_retry_button_stops_quit_sequence(
     stop.assert_called_once_with()
     assert script.stop_reason is RealmRaidStopReason.RETRY_FAILED
     assert find_and_click.call_count == 1
+
+
+def test_quit_waits_for_battle_before_each_exit(
+    script: RealmRaidScript,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """产品契约：再次挑战加载未完成时不能提前发送下一次退出按键。"""
+    actions: list[str] = []
+    battle_searches: list[dict[str, object]] = []
+
+    def find_with_timeout(image_path: str, **kwargs: object) -> tuple[int, int]:
+        if image_path.endswith("realm_raid_battling.bmp"):
+            battle_searches.append(kwargs)
+            actions.append("战斗就绪")
+            return 48, 593
+        return -1, -1
+
+    def click_retry(*_args: object, **_kwargs: object) -> bool:
+        actions.append("再次挑战")
+        return True
+
+    monkeypatch.setattr(script.image_finder, "bg_find_pic_with_timeout", find_with_timeout)
+    monkeypatch.setattr(script.keyboard, "bg_press_key", lambda key: actions.append(key))
+    monkeypatch.setattr(script.win_controller, "find_and_click", click_retry)
+
+    assert script.quit_3_times() is True
+    assert actions == ["战斗就绪", "ESC", "ENTER", "再次挑战"] * 3
+    assert battle_searches == [{
+        "timeout": script.BATTLE_TRANSITION_GRACE_SECONDS,
+        "x0": 0, "y0": 520, "x1": 130, "y1": 640,
+    }] * 3
+
+
+def test_battle_not_ready_stops_without_input(
+    script: RealmRaidScript,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """产品契约：未确认进入战斗时不得盲发退出按键或点击再次挑战。"""
+    press_key = Mock()
+    find_and_click = Mock()
+    stop = Mock()
+    monkeypatch.setattr(script.image_finder, "bg_find_pic_with_timeout", Mock(return_value=(-1, -1)))
+    monkeypatch.setattr(script.keyboard, "bg_press_key", press_key)
+    monkeypatch.setattr(script.win_controller, "find_and_click", find_and_click)
+    monkeypatch.setattr(script, "stop", stop)
+    script.image_finder.screenshot_cache = None
+
+    assert script.quit_3_times() is False
+    assert script.stop_reason is RealmRaidStopReason.BATTLE_NOT_READY
+    press_key.assert_not_called()
+    find_and_click.assert_not_called()
+    stop.assert_called_once_with()
+
+
+def test_retry_failure_preserves_last_frame(
+    script: RealmRaidScript,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """产品契约：再次挑战失败后留下当时画面，便于区分战斗、弹窗和识别失配。"""
+    write_image = Mock(return_value=True)
+    monkeypatch.setattr(realm_module.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(realm_module.cv2, "imwrite", write_image)
+    monkeypatch.setattr(script, "stop", Mock())
+    frame = np.zeros((2, 2, 3), dtype=np.uint8)
+    script.image_finder.screenshot_cache = frame
+
+    script._stop_with_reason(RealmRaidStopReason.RETRY_FAILED)
+
+    write_image.assert_called_once_with(
+        str(tmp_path / "yys" / "realm_raid" / "last_failure.png"),
+        frame,
+    )
 
 
 def test_refresh_starts_new_round_only_after_targets_are_confirmed(

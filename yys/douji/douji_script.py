@@ -184,7 +184,7 @@ class DouJi(YYSBaseScript):
         display_name="斗技",
         category="日常",
         config_schema=DouJiConfig,
-        default_config={"max_battle_count": 30, "target_slot": 2},
+        default_config={"max_battle_count": 169, "target_slot": 4},
     )
 
     @classmethod

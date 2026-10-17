@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import time
 from ctypes import windll
 from typing import Literal, Optional, Tuple
 
@@ -160,6 +161,22 @@ class WindowsEnvironment(GameEnvironment):
             self._hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, position
         )
         win32api.SendMessage(self._hwnd, win32con.WM_LBUTTONUP, 0, position)
+
+    def long_press(self, x: int, y: int, duration: float) -> None:
+        """在有效客户区内长按左键，并始终释放按键。"""
+        left, top, right, bottom = self.get_window_client_rect()
+        if not (left <= x < right and top <= y < bottom):
+            raise ValueError("长按位置超出客户区")
+        if not 0 < duration <= 5:
+            raise ValueError("长按时长必须在 0 到 5 秒之间")
+        position = win32api.MAKELONG(x, y)
+        win32api.SendMessage(
+            self._hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, position
+        )
+        try:
+            time.sleep(duration)
+        finally:
+            win32api.SendMessage(self._hwnd, win32con.WM_LBUTTONUP, 0, position)
 
     def right_click(self, x: int, y: int) -> None:
         """发送客户区右键点击。"""

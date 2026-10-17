@@ -1,0 +1,254 @@
+{
+  "recording": "regional_demon_boss/20260907T130329Z-9e74a0d8",
+  "size": [
+    1136,
+    640
+  ],
+  "frames": {
+    "home": {
+      "source": "timeline-000.png",
+      "redactions": [
+        [
+          0,
+          0,
+          275,
+          90
+        ],
+        [
+          285,
+          0,
+          1136,
+          65
+        ],
+        [
+          285,
+          60,
+          1136,
+          96
+        ]
+      ]
+    },
+    "lineup_preset": {
+      "source": "frames/000005-before.png",
+      "redactions": [
+        [
+          650,
+          0,
+          1136,
+          53
+        ],
+        [
+          50,
+          65,
+          235,
+          110
+        ]
+      ]
+    },
+    "lineup_direct_success": {
+      "source": "frames/000005-after.png",
+      "redactions": [
+        [
+          650,
+          0,
+          1136,
+          53
+        ],
+        [
+          50,
+          65,
+          235,
+          110
+        ]
+      ]
+    },
+    "exploration": {
+      "source": "timeline-012.png",
+      "redactions": [
+        [
+          270,
+          0,
+          1040,
+          60
+        ],
+        [
+          230,
+          160,
+          600,
+          270
+        ]
+      ]
+    },
+    "map_initial": {
+      "source": "timeline-014.png",
+      "redactions": [
+        [
+          398,
+          58,
+          973,
+          98
+        ],
+        [
+          1050,
+          45,
+          1136,
+          85
+        ]
+      ]
+    },
+    "map_target": {
+      "source": "timeline-018.png",
+      "redactions": [
+        [
+          398,
+          58,
+          973,
+          98
+        ],
+        [
+          1050,
+          45,
+          1136,
+          85
+        ]
+      ]
+    },
+    "detail": {
+      "source": "frames/000012-before.png",
+      "redactions": [
+        [
+          884,
+          60,
+          1003,
+          96
+        ],
+        [
+          555,
+          377,
+          1005,
+          545
+        ],
+        [
+          99,
+          536,
+          967,
+          619
+        ]
+      ]
+    },
+    "preparation": {
+      "source": "timeline-025.png",
+      "redactions": [
+        [
+          650,
+          0,
+          1136,
+          55
+        ]
+      ]
+    },
+    "battling_early": {
+      "source": "timeline-035.png",
+      "redactions": [
+        [
+          180,
+          0,
+          1136,
+          40
+        ]
+      ]
+    },
+    "battling_middle": {
+      "source": "timeline-060.png",
+      "redactions": [
+        [
+          180,
+          0,
+          1136,
+          40
+        ]
+      ]
+    },
+    "battling_late": {
+      "source": "timeline-095.png",
+      "redactions": [
+        [
+          180,
+          0,
+          1136,
+          40
+        ]
+      ]
+    },
+    "result": {
+      "source": "timeline-101.png",
+      "redactions": [
+        [
+          140,
+          0,
+          1136,
+          62
+        ]
+      ]
+    },
+    "reward": {
+      "source": "frames/000014-after.png",
+      "redactions": [
+        [
+          140,
+          0,
+          1136,
+          62
+        ]
+      ]
+    },
+    "detail_return": {
+      "source": "frames/000016-before.png",
+      "redactions": [
+        [
+          884,
+          60,
+          1003,
+          96
+        ],
+        [
+          555,
+          377,
+          1005,
+          545
+        ],
+        [
+          99,
+          536,
+          967,
+          619
+        ]
+      ]
+    },
+    "detail_transition": {
+      "source": "frames/000012-after.png",
+      "redactions": [
+        [884, 60, 1003, 96],
+        [555, 377, 1005, 545],
+        [99, 536, 967, 619]
+      ]
+    },
+    "home_entry": {
+      "source": "frames/000007-before.png",
+      "redactions": [[0, 0, 350, 75], [480, 0, 1136, 75]]
+    },
+    "exploration_entry": {
+      "source": "frames/000008-before.png",
+      "redactions": [[400, 0, 950, 75], [230, 190, 480, 310]]
+    },
+    "home_pan_night": {
+      "source": "diagnostics/2026-09-12-2225/current_home.png",
+      "redactions": [
+        [0, 0, 1136, 94],
+        [0, 197, 1136, 640],
+        [0, 94, 507, 197],
+        [607, 94, 1136, 197]
+      ]
+    }
+  }
+}

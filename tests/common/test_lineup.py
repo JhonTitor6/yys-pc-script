@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Callable
 
 import cv2
+import numpy as np
 import pytest
 from PIL import Image
 
@@ -18,6 +19,8 @@ from win_util.ocr import CommonOcr
 from yys.common.lineup import LineupSwitcher
 
 _FIXTURES = Path(__file__).resolve().parents[1] / "fixtures/lineup_switch"
+_REGIONAL_FIXTURES = Path(__file__).resolve().parents[1] / "fixtures/regional_demon_boss"
+_SKIN_FIXTURES = _FIXTURES / "skins"
 
 
 def _replay(initial: str = "home") -> SceneReplayEnvironment:
@@ -31,6 +34,75 @@ def test_recorded_switch_uses_real_ocr_and_same_five_actions() -> None:
     LineupSwitcher(guarded).switch("寮活动", "通用")
     assert [record.action_type for record in guarded.action_records] == ["left_click"] * 5
     assert env._current_scene == "success"
+
+
+def test_skin_entry_matching_and_collapsed_menu_recovery(monkeypatch: pytest.MonkeyPatch) -> None:
+    """生产匹配器识别夜间入口，收起菜单先展开一次再点击入口。"""
+    collapsed = cv2.imread(str(_SKIN_FIXTURES / "collapsed.png"))
+    expanded = cv2.imread(str(_SKIN_FIXTURES / "expanded.png"))
+    shikigami_night = cv2.imread(str(_SKIN_FIXTURES / "shikigami_night.png"))
+    assert collapsed is not None
+    assert expanded is not None
+    assert shikigami_night is not None
+    switcher = LineupSwitcher(MockEnvironment())
+
+    assert switcher._match(expanded, "home_entry") is None
+    assert switcher._match(expanded, "home_entry_night") is not None
+    assert switcher._match(collapsed, "home_entry") is None
+    assert switcher._match(collapsed, "home_entry_night") is None
+    assert switcher._match(collapsed, "home_menu_collapsed_night") is not None
+    assert switcher._match(expanded, "home_menu_collapsed_night") is None
+    assert switcher._text_point(shikigami_night, "preset", "预设") == (337, 88)
+
+    current = [Image.open(_SKIN_FIXTURES / "collapsed.png")]
+    heading_ready = [False]
+    panel_ready = [False]
+    env = MockEnvironment()
+    monkeypatch.setattr(env, "capture_screen", lambda: current[0])
+    switcher = LineupSwitcher(env)
+    switcher._guard = RunGuard(max_actions=5)
+    monkeypatch.setattr(switcher, "_panel", lambda _: panel_ready[0])
+    monkeypatch.setattr(switcher, "_heading", lambda _: heading_ready[0])
+    monkeypatch.setattr(
+        switcher,
+        "_text_point",
+        lambda _image, region, text: (335, 85)
+        if (region, text) == ("preset", "预设")
+        else None,
+    )
+    original_click = env.left_click
+    click_points: list[tuple[int, int]] = []
+
+    def click(point_x: int, point_y: int) -> None:
+        click_points.append((point_x, point_y))
+        original_click(point_x, point_y)
+        if len(click_points) == 1:
+            current[0] = Image.open(_SKIN_FIXTURES / "expanded.png")
+        elif len(click_points) == 2:
+            heading_ready[0] = True
+        else:
+            panel_ready[0] = True
+
+    monkeypatch.setattr(env, "left_click", click)
+    switcher._open_presets()
+
+    assert len(click_points) == 3
+    assert click_points[0] == (1073, 482)
+    assert 978 <= click_points[1][0] <= 1056
+    assert 529 <= click_points[1][1] <= 608
+    assert click_points[2] == (335, 85)
+
+
+def test_verified_home_allows_fixed_menu_button_without_dynamic_background() -> None:
+    """产品契约：参数只放宽已确认庭院的固定菜单按钮，不放宽未知页面。"""
+    menu = Image.open("yys/common/images/lineup/home_menu_expand.png").convert("RGB")
+    frame = Image.new("RGB", (1136, 640))
+    frame.paste(menu, (1047, 451))
+    image = cv2.cvtColor(np.asarray(frame), cv2.COLOR_RGB2BGR)
+    switcher = LineupSwitcher(MockEnvironment())
+
+    assert switcher._home_menu_expand_point(image, home_verified=False) is None
+    assert switcher._home_menu_expand_point(image, home_verified=True) == (1073, 482)
 
 
 @pytest.mark.parametrize("reward_visible", [True, False])
@@ -68,6 +140,85 @@ def test_open_presets_dismisses_gained_reward_once(
         env.action_log.assert_click_at(960, 535, tolerance=0)
         assert captures[-1] is clear_frame
         assert len(captures) >= 2
+
+
+def test_direct_success_accepts_both_fresh_real_frame_prompts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """应用后同一张真实帧同时出现两条提示时直接成功，不点击确认。"""
+    preset = Image.open(_REGIONAL_FIXTURES / "lineup_preset.png")
+    direct_success = Image.open(_REGIONAL_FIXTURES / "lineup_direct_success.png")
+    current = [preset]
+    env = MockEnvironment()
+    monkeypatch.setattr(env, "capture_screen", lambda: current[0])
+    original_click = env.left_click
+
+    def click_and_show_success(x: int, y: int) -> None:
+        original_click(x, y)
+        current[0] = direct_success
+
+    monkeypatch.setattr(env, "left_click", click_and_show_success)
+    LineupSwitcher(env).switch("地域鬼王", "悬赏")
+    env.action_log.assert_click_count(1)
+
+
+def test_direct_success_rejects_a_single_real_frame_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """只有契灵成功提示时不能把应用结果当作成功，也不能重复点击。"""
+    preset = Image.open(_REGIONAL_FIXTURES / "lineup_preset.png")
+    incomplete = Image.open(_REGIONAL_FIXTURES / "lineup_direct_success.png").copy()
+    incomplete.paste(preset.crop((400, 160, 800, 205)), (400, 160))
+    current = [preset]
+    env = MockEnvironment()
+    monkeypatch.setattr(env, "capture_screen", lambda: current[0])
+    original_click = env.left_click
+
+    def click_and_show_incomplete(x: int, y: int) -> None:
+        original_click(x, y)
+        current[0] = incomplete
+
+    monkeypatch.setattr(env, "left_click", click_and_show_incomplete)
+    clock = [0.0]
+
+    def monotonic() -> float:
+        clock[0] += 1.0
+        return clock[0]
+
+    monkeypatch.setattr("yys.common.lineup.time.monotonic", monotonic)
+    monkeypatch.setattr("yys.common.lineup.time.sleep", lambda _: None)
+    with pytest.raises(RuntimeError, match="结果不确定"):
+        LineupSwitcher(env).switch("地域鬼王", "悬赏")
+    env.action_log.assert_click_count(1)
+
+
+def test_stale_direct_success_frame_is_rejected_before_apply(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """应用前已存在的双提示不能冒认为本次应用成功。"""
+    stale = Image.open(_REGIONAL_FIXTURES / "lineup_direct_success.png")
+    current = [stale]
+    env = MockEnvironment()
+    monkeypatch.setattr(env, "capture_screen", lambda: current[0])
+    clock = [0.0]
+
+    def monotonic() -> float:
+        clock[0] += 1.0
+        return clock[0]
+
+    monkeypatch.setattr("yys.common.lineup.time.monotonic", monotonic)
+    monkeypatch.setattr("yys.common.lineup.time.sleep", lambda _: None)
+    with pytest.raises(RuntimeError, match="旧成功提示未消失"):
+        LineupSwitcher(env).switch("地域鬼王", "悬赏")
+    env.action_log.assert_click_count(0)
+
+
+def test_direct_success_requires_the_verified_preset_panel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """同样的双提示离开预设页后不能满足直接成功契约。"""
+    image = cv2.imread(str(_REGIONAL_FIXTURES / "lineup_direct_success.png"))
+    switcher = LineupSwitcher(MockEnvironment())
+    monkeypatch.setattr(switcher, "_panel", lambda _: False)
+    assert not switcher._direct_success(image)
 
 
 @pytest.mark.parametrize("initial", ["confirm", "unknown"])
@@ -233,7 +384,20 @@ def test_base_script_reuses_injected_environment_and_ocr(monkeypatch: pytest.Mon
     script = SimpleNamespace(_env=env, _run_guard=None, _stop_threading_event=Event(),
                              win_controller=SimpleNamespace(ocr=ocr), pause_point=lambda: calls.append("pause"))
     YYSBaseScript.switch_lineup(script, "寮活动", "通用")
-    assert calls == ["pause", (env, ocr), "pause", ("寮活动", "通用", {"timeout_seconds": 60.0, "max_scrolls": 30})]
+    assert calls == [
+        "pause",
+        (env, ocr),
+        "pause",
+        (
+            "寮活动",
+            "通用",
+            {
+                "timeout_seconds": 60.0,
+                "max_scrolls": 30,
+                "home_verified": False,
+            },
+        ),
+    ]
     script._stop_threading_event.set()
     with pytest.raises(RuntimeError, match="脚本已停止"):
         YYSBaseScript.switch_lineup(script, "寮活动", "通用")

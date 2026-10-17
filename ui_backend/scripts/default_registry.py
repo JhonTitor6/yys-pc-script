@@ -152,10 +152,19 @@ DEFAULT_SCRIPT_ENTRIES: list[dict[str, Any]] = [
             },
         ],
     },
-    # ==================== auto-registry Step 5 新增 4 个 entry ====================
-    # 4 个事件驱动脚本在 Step 5 迁移到 SCRIPT_META（详见 yys/<script>/<script>_script.py）。
-    # 注：以下 4 个脚本原不在 default_registry.py，Step 5 追加以暴露给 /api/scripts。
+    # ==================== auto-registry Step 5 新增 5 个 entry ====================
+    # 5 个事件驱动脚本在 Step 5 迁移到 SCRIPT_META（详见 yys/<script>/<script>_script.py）。
+    # 注：以下 5 个脚本原不在 default_registry.py，Step 5 追加以暴露给 /api/scripts。
     # 现有 5 个 entry 行为不变；schema 字段在反射时优先来自 SCRIPT_META。
+    {
+        "script_id": "regional_demon_boss",
+        "display_name": "地域鬼王",
+        "module_path": "yys.regional_demon_boss.regional_demon_boss_script",
+        "class_name": "RegionalDemonBossScript",
+        "category": "stable",
+        "description": "按已确认目标挑战一次，结算后停止。",
+        "config_schema": [],
+    },
     {
         "script_id": "loop_challenge",
         "display_name": "通用挑战",

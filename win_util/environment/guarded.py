@@ -170,6 +170,16 @@ class GuardedEnvironment(GameEnvironment):
             self._delegate.left_double_click,
         )
 
+    def long_press(self, x: int, y: int, duration: float) -> None:
+        """长按作为一个逻辑动作纳入预算；观察模式不发送输入。"""
+        self._perform(
+            ActionType.LONG_PRESS.value,
+            x,
+            y,
+            lambda px, py: self._delegate.long_press(px, py, duration),
+            {"duration": duration},
+        )
+
     def drag(self, x1: int, y1: int, x2: int, y2: int) -> None:
         """在预算允许时执行或记录一次逻辑拖拽。"""
         self._perform(

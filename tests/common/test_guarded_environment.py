@@ -28,6 +28,27 @@ def test_observe_mode_records_but_does_not_execute() -> None:
     assert env.action_records[0].action_type == "left_click"
 
 
+def test_long_press_respects_observe_mode_and_action_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """产品契约：长按不得绕过观察模式或动作预算。"""
+    delegate = MockEnvironment()
+    calls: list[tuple[int, int, float]] = []
+    monkeypatch.setattr(
+        delegate, "long_press", lambda x, y, duration: calls.append((x, y, duration))
+    )
+    guard = RunGuard(max_actions=1)
+    observed = GuardedEnvironment(delegate, guard, observe_only=True)
+
+    observed.long_press(100, 200, 1.5)
+    observed.long_press(101, 201, 1.5)
+
+    assert calls == []
+    assert len(observed.action_records) == 1
+    assert observed.action_records[0].action_type == "long_press"
+    assert guard.stop_reason is RunStopReason.ACTION_LIMIT
+
+
 def test_live_mode_executes_within_action_budget() -> None:
     """执行模式在预算内将动作传递给底层环境。"""
     delegate = MockEnvironment()

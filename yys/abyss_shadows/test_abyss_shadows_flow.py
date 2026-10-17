@@ -418,7 +418,7 @@ class TestAbyssShadowsFlow(unittest.TestCase):
                 script.goto_abyss_shadows.assert_not_called()
                 script.scene_manager.goto_scene.assert_not_called()
 
-        for scene_name in ("battling", None):
+        for scene_name in ("battling",):
             with self.subTest(scene_name=scene_name):
                 script = self._create_mock_script_instance()
                 script.scene_manager.detect_current_scene.return_value = (
@@ -436,6 +436,42 @@ class TestAbyssShadowsFlow(unittest.TestCase):
                 script.scene_manager.goto_scene.assert_not_called()
                 self.assertEqual(script.win_controller.mouse.mock_calls, [])
                 self.assertEqual(script.win_controller.keyboard.mock_calls, [])
+
+    def test_on_run_lets_lineup_switcher_validate_unregistered_scene(self) -> None:
+        """产品契约：式神录未注册为场景时，由严格阵容入口识别器接管。"""
+        script = self._create_mock_script_instance()
+        script.scene_manager.detect_current_scene.side_effect = [
+            None,
+            MagicMock(scene_name="home"),
+        ]
+        script.switch_lineup = MagicMock()
+        script.goto_abyss_shadows = MagicMock(return_value=True)
+        script.stop = MagicMock()
+
+        script.on_run()
+
+        script.switch_lineup.assert_called_once_with("寮活动", "通用")
+        script.goto_abyss_shadows.assert_called_once_with()
+        script.scene_manager.goto_scene.assert_called_once_with("abyss_dragon")
+        script.stop.assert_not_called()
+
+    def test_on_run_stops_when_unregistered_scene_is_not_a_lineup_page(self) -> None:
+        """产品契约：未注册画面经阵容识别拒绝后停止，不继续进入狭间。"""
+        script = self._create_mock_script_instance()
+        script.scene_manager.detect_current_scene.return_value = None
+        script.switch_lineup = MagicMock(side_effect=RuntimeError("未验证的阵容入口"))
+        script.goto_abyss_shadows = MagicMock(return_value=True)
+        script.stop = MagicMock()
+        script.win_controller.mouse.reset_mock()
+        script.win_controller.keyboard.reset_mock()
+
+        script.on_run()
+
+        script.stop.assert_called_once_with()
+        script.goto_abyss_shadows.assert_not_called()
+        script.scene_manager.goto_scene.assert_not_called()
+        self.assertEqual(script.win_controller.mouse.mock_calls, [])
+        self.assertEqual(script.win_controller.keyboard.mock_calls, [])
 
     def test_on_run_switches_default_lineup_only_from_home(self) -> None:
         """从 Home 启动时切换寮活动/通用并安全回 Home，再进入狭间。"""

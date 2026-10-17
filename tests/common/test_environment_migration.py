@@ -215,6 +215,34 @@ def test_windows_environment_rejects_unknown_capture_mode() -> None:
         WindowsEnvironment(hwnd=123, capture_mode="unknown")
 
 
+def test_windows_long_press_releases_button_on_wait_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """产品契约：长按等待异常时也必须释放鼠标左键。"""
+    messages: list[int] = []
+    monkeypatch.setattr(
+        windows_module.win32gui, "GetClientRect", lambda _hwnd: (0, 0, 320, 180)
+    )
+    monkeypatch.setattr(
+        windows_module.win32api,
+        "SendMessage",
+        lambda _hwnd, message, *_args: messages.append(message),
+    )
+    monkeypatch.setattr(
+        windows_module.time,
+        "sleep",
+        lambda _duration: (_ for _ in ()).throw(RuntimeError("中断")),
+    )
+
+    with pytest.raises(RuntimeError, match="中断"):
+        WindowsEnvironment(hwnd=123).long_press(100, 100, 1.5)
+
+    assert messages == [
+        windows_module.win32con.WM_LBUTTONDOWN,
+        windows_module.win32con.WM_LBUTTONUP,
+    ]
+
+
 def test_windows_environment_ignores_workbench_when_finding_game_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

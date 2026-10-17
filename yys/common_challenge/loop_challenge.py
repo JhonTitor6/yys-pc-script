@@ -94,6 +94,7 @@ class LoopChallenge(YYSBaseScript):
         """
         super().__init__(script_name, config=config, env=env)
         self._register_image_match_event(ImageMatchConfig("yys/common_challenge/images/challenge.bmp"), self.bg_left_click)
+        self._register_image_match_event(ImageMatchConfig("yys/common_challenge/images/challenge_1.bmp"), self.bg_left_click)
         self._register_image_match_event(ImageMatchConfig("yys/common_challenge/images/region_challenge.bmp"), self.bg_left_click)
         self._register_image_match_event(ImageMatchConfig("yys/common_challenge/images/gained_reward.bmp"), self._on_battle_end)
         self._reset_rest_state()

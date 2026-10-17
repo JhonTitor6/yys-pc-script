@@ -1001,12 +1001,12 @@ class Main(YYSBaseScript):
             self.stop()
             return
 
-        if current_scene not in {"home", "abyss_selection"}:
+        if current_scene not in {"home", "abyss_selection", None}:
             self.logger.error(f"无法从当前场景启动狭间暗域: {current_scene or 'unknown'}")
             self.stop()
             return
 
-        if current_scene == "home":
+        if current_scene in {"home", None}:
             if not self._prepare_default_lineup():
                 self.logger.error("未能切换狭间默认阵容，停止脚本")
                 self.stop()

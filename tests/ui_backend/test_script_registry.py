@@ -46,6 +46,16 @@ def test_registry_lists_stable_and_experimental_scripts() -> None:
     assert registry.get("abyss_shadows").category == ScriptCategory.EXPERIMENTAL
 
 
+def test_regional_demon_boss_is_fixed_single_run_definition() -> None:
+    """地域鬼王不向 GUI 暴露结界突破的次数或重试配置。"""
+    definition = ScriptRegistry().get("regional_demon_boss")
+
+    assert definition.display_name == "地域鬼王"
+    assert definition.category == ScriptCategory.STABLE
+    assert definition.config_schema == []
+    assert definition.default_config == {}
+
+
 def test_default_registry_does_not_import_script_modules(
     monkeypatch: MonkeyPatch,
 ) -> None:
@@ -69,14 +79,14 @@ def test_default_registry_does_not_import_script_modules(
     scripts = ScriptRegistry().list_scripts()
 
     script_ids = {item.script_id for item in scripts}
-    # 5 个 entries 都被尝试 import_module（owner 决策"总尝试反射"）
+    # 所有 10 个 entries 都被尝试 import_module（owner 决策"总尝试反射"）
     assert "yys.soul_raid" in imported_modules
     assert "yys.realm_raid" in imported_modules
     # 即便全部反射失败，registry 仍能 list 全部脚本（走 entries fallback）
-    # Step 5 在 default_registry.py 新增 4 个 entry
+    # Step 5 在 default_registry.py 新增 5 个 entry，默认注册表共 10 个脚本
     assert script_ids == {
         "soul_raid", "realm_raid", "exploration_28", "yuling", "abyss_shadows",
-        "loop_challenge", "douji", "fujiwara", "omoikane",
+        "loop_challenge", "douji", "fujiwara", "omoikane", "regional_demon_boss",
     }
     # fallback 时，soul_raid 仍使用 entry 手写的 max_battle_count=103（无 accept_wq_type）
     soul_raid = next(item for item in scripts if item.script_id == "soul_raid")
@@ -332,13 +342,13 @@ def test_default_registry_reflection_failure_falls_back_to_entries(
         raise_on_import,
     )
 
-    # 即便所有反射都失败，仍能 list 全部 9 个脚本（entries fallback）
-    # Step 5 在 default_registry.py 新增 4 个 entry：loop_challenge/douji/fujiwara/omoikane
+    # 即便所有反射都失败，仍能 list 全部 10 个脚本（entries fallback）
+    # Step 5 在 default_registry.py 新增 5 个 entry，包含 regional_demon_boss
     scripts = ScriptRegistry().list_scripts()
     script_ids = {item.script_id for item in scripts}
     assert script_ids == {
         "soul_raid", "realm_raid", "exploration_28", "yuling", "abyss_shadows",
-        "loop_challenge", "douji", "fujiwara", "omoikane",
+        "loop_challenge", "douji", "fujiwara", "omoikane", "regional_demon_boss",
     }
 
     # soul_raid 走 fallback（无 accept_wq_type）

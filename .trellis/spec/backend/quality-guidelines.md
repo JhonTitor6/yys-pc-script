@@ -46,6 +46,13 @@ mock replay, observe-only mode, action limits, or emergency stop.
   不从预先存在的确认弹窗恢复，不把发送确认或回到列表当作成功，不自动重试结果不明的应用。
   只有显式调用才执行，完成后留在预设页，不改变原有业务计数和入口导航。
   验证约定及已知实机边界见 `docs/lineup-switch.md` 和 `tests/common/test_lineup.py`。
+- 队伍预设点击应用后可能不出现确认框；只有同一张新鲜预设页面同时包含
+  “全队正在使用预设御魂和阴阳术”与“替换阴阳师契灵成功”时才可直接成功。
+  OCR 搜索区域必须包含完整首字；单条提示、旧提示或离开预设页的提示均不成立。
+- 地域鬼王单次脚本只能在真实模板依次确认地图、固定目标详情和挑战按钮后发送一次挑战；
+  准备与战斗阶段零输入，首次已布防结算最多计数一次，奖励只清理不计数，返回已核验详情页后
+  才能正常结束。入口、目标、未知画面、超时或保险丝失败必须抛业务错误，避免运行管理器把正常
+  返回误记为成功。地图最多执行录制证明的一次拖拽；没有真实失败结算样本时不启用推测模板。
 - A replay transition with `action: "drag"` must preserve both the recorded start region
   and `end_region`; matching only the first point can advance a scene after an unrelated
   mouse movement.

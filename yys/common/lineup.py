@@ -17,6 +17,9 @@ from win_util.ocr import CommonOcr
 _SIZE = (1136, 640)
 _REGIONS = {
     "home_entry": (920, 525, 1090, 625),
+    "home_entry_night": (920, 525, 1090, 625),
+    "home_menu_expand": (1047, 451, 1099, 514),
+    "home_menu_collapsed_night": (1047, 451, 1099, 540),
     "shikigami": (70, 0, 205, 53),
     "preset": (293, 59, 377, 112),
     "preset_panel": (635, 65, 795, 119),
@@ -25,10 +28,15 @@ _REGIONS = {
     "dialog": (375, 255, 765, 315),
     "confirm": (593, 355, 752, 414),
     "gained_reward": (300, 130, 850, 300),
-    "toast": (430, 151, 722, 245),
+    # 直接成功提示的首字位于 x=430 左侧，ROI 必须完整包含文字。
+    "toast": (400, 151, 722, 245),
 }
 _CONFIRM_TEXT = "即将为全队式神更换预设御魂"
 _SUCCESS_TEXT = "装备御魂成功"
+_DIRECT_PRESET_TEXT = "全队正在使用预设御魂和阴阳术"
+_DIRECT_CONTRACT_TEXT = "替换阴阳师契灵成功"
+_HOME_ENTRY_TEMPLATES = ("home_entry", "home_entry_night")
+_HOME_MENU_EXPAND_POINT = (1073, 482)
 
 
 def _name(text: str) -> str:
@@ -53,7 +61,16 @@ class LineupSwitcher:
         self.ocr = ocr if ocr is not None else CommonOcr()
         self.checkpoint = checkpoint
         self._templates: dict[str, np.ndarray] = {}
-        for name in ("home_entry", "shikigami", "shikigami_preset", "preset_panel", "apply"):
+        for name in (
+            "home_entry",
+            "home_entry_night",
+            "home_menu_expand",
+            "home_menu_collapsed_night",
+            "shikigami",
+            "shikigami_preset",
+            "preset_panel",
+            "apply",
+        ):
             path = to_project_path(f"yys/common/images/lineup/{name}.png")
             template = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
             if template is None or float(template.std()) < 1:
@@ -72,8 +89,9 @@ class LineupSwitcher:
     def switch(
         self, group_name: str, lineup_name: str, *,
         timeout_seconds: float = 60.0, max_scrolls: int = 30,
+        home_verified: bool = False,
     ) -> None:
-        """分别按分组全名、阵容全名查找并应用预设，只有见到成功提示才返回。"""
+        """按分组和阵容全名应用预设；已确认庭院时允许展开固定菜单。"""
         if not isinstance(group_name, str) or not _name(group_name):
             raise ValueError("分组名不能为空")
         if not isinstance(lineup_name, str) or not _name(lineup_name):
@@ -82,8 +100,10 @@ class LineupSwitcher:
             raise ValueError("max_scrolls 必须是正整数")
         if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
             raise ValueError("timeout_seconds 必须是有限正数")
+        if type(home_verified) is not bool:
+            raise ValueError("home_verified 必须是布尔值")
         self._guard = RunGuard(timeout_seconds=timeout_seconds, max_actions=4 * max_scrolls + 10)
-        self._open_presets()
+        self._open_presets(home_verified=home_verified)
         self._find_name("groups", group_name, max_scrolls)
         image = self._read()
         group = self._text_point(image, "groups", group_name)
@@ -93,8 +113,14 @@ class LineupSwitcher:
             self._click(group)
         self._wait_for(lambda image: self._selected_group(image, group_name), "分组未选中")
         self._find_name("lineups", lineup_name, max_scrolls, group_name)
-        # 先等旧提示消失，避免上一次操作的成功提示被当成本次结果。
-        self._wait_for(lambda image: self._text_point(image, "toast", _SUCCESS_TEXT) is None, "旧成功提示未消失")
+        # 先等旧结果提示消失，避免上一次操作的成功提示被当成本次结果。
+        self._wait_for(
+            lambda image: (
+                self._text_point(image, "toast", _SUCCESS_TEXT) is None
+                and not self._direct_success(image)
+            ),
+            "旧成功提示未消失",
+        )
         image = self._read()
         if not self._selected_group(image, group_name):
             raise RuntimeError("应用前目标分组已改变")
@@ -104,9 +130,14 @@ class LineupSwitcher:
             raise RuntimeError("应用前目标阵容或同行应用按钮已不可见")
         self._click(action)
         image = self._wait_for(
-            lambda frame: self._text_point(frame, "dialog", _CONFIRM_TEXT) is not None,
-            "未出现预设御魂确认弹窗",
+            lambda frame: (
+                self._direct_success(frame)
+                or self._text_point(frame, "dialog", _CONFIRM_TEXT) is not None
+            ),
+            "未出现预设御魂确认弹窗或完整的直接成功提示，结果不确定，请勿自动重试",
         )
+        if self._direct_success(image):
+            return
         confirm = self._text_point(image, "confirm", "确定")
         if confirm is None:
             raise RuntimeError("确认弹窗缺少明确的确定按钮")
@@ -196,6 +227,24 @@ class LineupSwitcher:
     def _text_point(self, image: np.ndarray, region: str, text: str) -> tuple[int, int] | None:
         return self._unique(self._labels(image, region), text)
 
+    def _match_any(self, image: np.ndarray, names: tuple[str, ...]) -> tuple[int, int] | None:
+        """按顺序查找多个模板，返回首个明确命中的位置。"""
+        for name in names:
+            point = self._match(image, name)
+            if point is not None:
+                return point
+        return None
+
+    def _direct_success(self, image: np.ndarray) -> bool:
+        """要求预设页同一张应用后截图同时包含两条直接成功提示。"""
+        if not self._panel(image):
+            return False
+        texts = {_name(text) for _, _, text, _ in self._labels(image, "toast")}
+        return {
+            _name(_DIRECT_PRESET_TEXT),
+            _name(_DIRECT_CONTRACT_TEXT),
+        } <= texts
+
     def _apply_point(self, image: np.ndarray, name_point: tuple[int, int]) -> tuple[int, int] | None:
         y = name_point[1]
         if not 139 <= y <= 539:
@@ -227,7 +276,17 @@ class LineupSwitcher:
             time.sleep(0.10)
         raise RuntimeError(failure)
 
-    def _open_presets(self) -> None:
+    def _home_menu_expand_point(
+        self, image: np.ndarray, *, home_verified: bool,
+    ) -> tuple[int, int] | None:
+        """严格收起态可展开；调用方已确认庭院时接受固定菜单按钮。"""
+        if self._match(image, "home_menu_collapsed_night") is not None:
+            return _HOME_MENU_EXPAND_POINT
+        if home_verified:
+            return self._match(image, "home_menu_expand")
+        return None
+
+    def _open_presets(self, *, home_verified: bool = False) -> None:
         image = self._read()
         if self._match(image, "gained_reward") is not None:
             self._click((960, 535))
@@ -238,9 +297,22 @@ class LineupSwitcher:
         if self._panel(image):
             return
         if not self._heading(image):
-            entry = self._match(image, "home_entry")
+            entry = self._match_any(image, _HOME_ENTRY_TEMPLATES)
             if entry is None:
-                raise RuntimeError("当前不是已验证的庭院、式神录或预设页，未发送输入")
+                expand = self._home_menu_expand_point(
+                    image,
+                    home_verified=home_verified,
+                )
+                if expand is None:
+                    raise RuntimeError("当前不是已验证的庭院、式神录或预设页，未发送输入")
+                self._click(expand)
+                image = self._wait_for(
+                    lambda frame: self._match_any(frame, _HOME_ENTRY_TEMPLATES) is not None,
+                    "展开菜单后未识别到式神录入口，未重复点击",
+                )
+                entry = self._match_any(image, _HOME_ENTRY_TEMPLATES)
+                if entry is None:
+                    raise RuntimeError("展开菜单后未识别到式神录入口，未重复点击")
             self._click(entry)
             image = self._wait_for(self._heading, "未到达式神录")
         preset = self._text_point(image, "preset", "预设")

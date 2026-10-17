@@ -31,9 +31,10 @@ class _NonInteractiveInput:
         return False
 
 
-def test_default_mode_is_observe_only() -> None:
+@pytest.mark.parametrize("script_id", ["realm_raid", "regional_demon_boss"])
+def test_default_mode_is_observe_only(script_id: str) -> None:
     """未显式传入 --execute 时只能进入观察模式。"""
-    args = run_guarded_script.build_parser().parse_args(["realm_raid"])
+    args = run_guarded_script.build_parser().parse_args([script_id])
 
     assert args.execute is False
     assert args.timeout_seconds == 180.0
@@ -81,6 +82,7 @@ def test_non_interactive_confirmation_mismatch_is_rejected(
     assert run_guarded_script.run_command(args) == 1
 
 
+@pytest.mark.parametrize("script_id", ["realm_raid", "regional_demon_boss"])
 @pytest.mark.parametrize(
     (
         "execute",
@@ -97,13 +99,15 @@ def test_non_interactive_confirmation_mismatch_is_rejected(
 )
 def test_capture_mode_matches_guarded_run_mode(
     monkeypatch: pytest.MonkeyPatch,
+    script_id: str,
     execute: bool,
     confirmation: str,
     capture_mode: str,
     activate_count: int,
     non_interactive: bool,
 ) -> None:
-    """执行模式必须读取前台真实帧，观察模式不得主动抢占窗口。"""
+    """产品契约：两脚本沿用相同确认与截图边界，地域鬼王固定单次。"""
+    confirmation = confirmation.replace("realm_raid", script_id)
     input_mock = Mock(return_value=confirmation)
     stdin = _NonInteractiveInput() if non_interactive else _InteractiveInput()
     monkeypatch.setattr(run_guarded_script.sys, "stdin", stdin)
@@ -116,6 +120,7 @@ def test_capture_mode_matches_guarded_run_mode(
     guard.snapshot.return_value = {}
     guarded_env = SimpleNamespace(action_records=[])
     script = Mock()
+    script.entry_scene = "regional_demon_boss"
     script.get_state_snapshot.return_value = {}
     monitor = Mock()
 
@@ -125,23 +130,27 @@ def test_capture_mode_matches_guarded_run_mode(
         environment_factory,
     )
     monkeypatch.setattr(guarded_module, "RunGuard", Mock(return_value=guard))
+    guarded_factory = Mock(return_value=guarded_env)
     monkeypatch.setattr(
         guarded_module,
         "GuardedEnvironment",
-        Mock(return_value=guarded_env),
+        guarded_factory,
     )
-    monkeypatch.setattr(
-        realm_module,
-        "RealmRaidScript",
-        Mock(return_value=script),
-    )
+    script_factory = Mock(return_value=script)
+    if script_id == "realm_raid":
+        monkeypatch.setattr(realm_module, "RealmRaidScript", script_factory)
+    else:
+        import yys.regional_demon_boss.regional_demon_boss_script as regional_module
+
+        monkeypatch.setattr(regional_module, "RegionalDemonBossScript", script_factory)
     monkeypatch.setattr(
         input_module,
         "WindowsInputMonitor",
         Mock(return_value=monitor),
     )
 
-    argv = ["realm_raid", "--execute"] if execute else ["realm_raid"]
+    argv = [script_id, "--execute"] if execute else [script_id]
+    argv.extend(["--max-battles", "7", "--skip-quit-three"])
     if non_interactive:
         argv.extend(["--confirmation-phrase", confirmation])
     args = run_guarded_script.build_parser().parse_args(argv)
@@ -153,5 +162,80 @@ def test_capture_mode_matches_guarded_run_mode(
     )
     assert real_env.activate_window.call_count == activate_count
     assert input_mock.call_count == (0 if non_interactive else 1)
+    guarded_factory.assert_called_once_with(
+        real_env, guard, observe_only=not execute,
+    )
+    expected_config = (
+        {"max_battle_count": 7, "quit_3_times_config": False}
+        if script_id == "realm_raid" else {}
+    )
+    script_factory.assert_called_once_with(script_id, env=guarded_env, config=expected_config)
+    script.run.assert_called_once_with()
+    if script_id == "regional_demon_boss":
+        assert script.entry_scene == "regional_demon_boss"
     monitor.start.assert_called_once_with()
+    monitor.stop.assert_called_once_with()
+
+
+def test_script_exception_returns_failure_and_stops_monitor(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """脚本异常不得输出成功摘要，输入监听器仍必须停止。"""
+    monkeypatch.setattr(run_guarded_script.sys, "stdin", _NonInteractiveInput())
+    real_env = SimpleNamespace(hwnd=123, activate_window=Mock())
+    guard = Mock()
+    guarded_env = SimpleNamespace(action_records=[])
+    script = Mock()
+    script.run.side_effect = RuntimeError("回放失败")
+    script_factory = Mock(return_value=script)
+    monitor = Mock()
+
+    monkeypatch.setattr(windows_module, "WindowsEnvironment", Mock(return_value=real_env))
+    monkeypatch.setattr(guarded_module, "RunGuard", Mock(return_value=guard))
+    monkeypatch.setattr(guarded_module, "GuardedEnvironment", Mock(return_value=guarded_env))
+    import yys.regional_demon_boss.regional_demon_boss_script as regional_module
+
+    monkeypatch.setattr(regional_module, "RegionalDemonBossScript", script_factory)
+    monkeypatch.setattr(input_module, "WindowsInputMonitor", Mock(return_value=monitor))
+
+    args = run_guarded_script.build_parser().parse_args(
+        ["regional_demon_boss", "--confirmation-phrase", "OBSERVE regional_demon_boss"]
+    )
+
+    assert run_guarded_script.run_command(args) == 1
+    captured = capsys.readouterr()
+    assert "脚本运行失败: 回放失败" in captured.err
+    assert "auto_restart" not in captured.out
+    monitor.start.assert_called_once_with()
+    monitor.stop.assert_called_once_with()
+
+
+def test_script_construction_exception_stops_monitor_without_starting_it(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """脚本构造失败不得启动脚本或监听线程，但仍清理监听器对象。"""
+    monkeypatch.setattr(run_guarded_script.sys, "stdin", _NonInteractiveInput())
+    real_env = SimpleNamespace(hwnd=123, activate_window=Mock())
+    guard = Mock()
+    guarded_env = SimpleNamespace(action_records=[])
+    script_factory = Mock(side_effect=RuntimeError("构造失败"))
+    monitor = Mock()
+
+    monkeypatch.setattr(windows_module, "WindowsEnvironment", Mock(return_value=real_env))
+    monkeypatch.setattr(guarded_module, "RunGuard", Mock(return_value=guard))
+    monkeypatch.setattr(guarded_module, "GuardedEnvironment", Mock(return_value=guarded_env))
+    import yys.regional_demon_boss.regional_demon_boss_script as regional_module
+
+    monkeypatch.setattr(regional_module, "RegionalDemonBossScript", script_factory)
+    monkeypatch.setattr(input_module, "WindowsInputMonitor", Mock(return_value=monitor))
+
+    args = run_guarded_script.build_parser().parse_args(
+        ["regional_demon_boss", "--confirmation-phrase", "OBSERVE regional_demon_boss"]
+    )
+
+    assert run_guarded_script.run_command(args) == 1
+    assert "脚本运行失败: 构造失败" in capsys.readouterr().err
+    monitor.start.assert_not_called()
     monitor.stop.assert_called_once_with()

@@ -7,7 +7,7 @@ import json
 import sys
 import time
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -18,17 +18,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="单次运行游戏脚本；默认观察模式，不向游戏发送输入",
     )
-    parser.add_argument("script_id", choices=["realm_raid"], help="要运行的脚本")
+    parser.add_argument("script_id", choices=["realm_raid", "regional_demon_boss"], help="要运行的脚本")
     parser.add_argument("--execute", action="store_true", help="实际发送输入")
     parser.add_argument("--window-title", default="阴阳师", help="目标窗口标题片段")
     parser.add_argument("--timeout-seconds", type=float, default=180.0)
     parser.add_argument("--max-actions", type=int, default=30)
     parser.add_argument("--unknown-limit", type=int, default=3)
-    parser.add_argument("--max-battles", type=int, default=9)
+    parser.add_argument(
+        "--max-battles",
+        type=int,
+        default=9,
+        help="结界突破最大战斗次数；地域鬼王固定挑战一次并忽略此参数",
+    )
     parser.add_argument(
         "--skip-quit-three",
         action="store_true",
-        help="本次运行不执行首次退三次",
+        help="结界突破本次运行不执行首次退三次；地域鬼王忽略此参数",
     )
     parser.add_argument(
         "--confirmation-phrase",
@@ -68,7 +73,6 @@ def run_command(args: argparse.Namespace) -> int:
     from win_util.environment.guarded import GuardedEnvironment, RunGuard
     from win_util.environment.windows import WindowsEnvironment
     from yys.common.recording.win32_input import WindowsInputMonitor
-    from yys.realm_raid.realm_raid_script import RealmRaidScript
 
     capture_mode = "foreground" if args.execute else "print_window"
     real_env = WindowsEnvironment(
@@ -89,18 +93,7 @@ def run_command(args: argparse.Namespace) -> int:
         guard,
         observe_only=not args.execute,
     )
-    script = RealmRaidScript(
-        args.script_id,
-        env=guarded_env,
-        config={
-            "max_battle_count": args.max_battles,
-            "quit_3_times_config": not args.skip_quit_three,
-        },
-    )
-    script.set_run_guard(guard)
-    if not args.execute:
-        # 观察模式不做入口导航，用户应先把游戏停在待验证画面。
-        script.entry_scene = None
+    script: Any | None = None
 
     def ignore_mouse(
         _action: str,
@@ -117,7 +110,8 @@ def run_command(args: argparse.Namespace) -> int:
 
     def emergency_stop(_reason: str) -> None:
         guard.request_emergency_stop()
-        script.stop()
+        if script is not None:
+            script.stop()
 
     monitor = WindowsInputMonitor(
         hwnd=real_env.hwnd,
@@ -125,21 +119,54 @@ def run_command(args: argparse.Namespace) -> int:
         on_keyboard=ignore_keyboard,
         on_stop=emergency_stop,
     )
-    monitor.start()
+    exit_code = 0
+    summary: dict[str, object] | None = None
     try:
+        if args.script_id == "realm_raid":
+            from yys.realm_raid.realm_raid_script import RealmRaidScript
+
+            script = RealmRaidScript(
+                args.script_id,
+                env=guarded_env,
+                config={
+                    "max_battle_count": args.max_battles,
+                    "quit_3_times_config": not args.skip_quit_three,
+                },
+            )
+        else:
+            from yys.regional_demon_boss.regional_demon_boss_script import RegionalDemonBossScript
+
+            # 地域鬼王固定挑战一次，结界突破专属参数不改变此分支。
+            script = RegionalDemonBossScript(args.script_id, env=guarded_env, config={})
+        script.set_run_guard(guard)
+        if not args.execute and args.script_id == "realm_raid":
+            # 旧结界突破观察模式不做入口导航；地域鬼王由自身环境状态决定。
+            script.entry_scene = None
+        monitor.start()
         script.run()
+        summary = {
+            "mode": "execute" if args.execute else "observe",
+            "guard": guard.snapshot(),
+            "planned_actions": len(guarded_env.action_records),
+            "script": script.get_state_snapshot(),
+            "auto_restart": False,
+        }
     except KeyboardInterrupt:
         emergency_stop("keyboard_interrupt")
+        print("脚本已被键盘中断。", file=sys.stderr)
+        exit_code = 130
+    except Exception as exc:
+        print(f"脚本运行失败: {exc}", file=sys.stderr)
+        exit_code = 1
     finally:
-        monitor.stop()
+        try:
+            monitor.stop()
+        except Exception as exc:
+            print(f"输入监听器停止失败: {exc}", file=sys.stderr)
+            exit_code = exit_code or 1
 
-    summary = {
-        "mode": "execute" if args.execute else "observe",
-        "guard": guard.snapshot(),
-        "planned_actions": len(guarded_env.action_records),
-        "script": script.get_state_snapshot(),
-        "auto_restart": False,
-    }
+    if exit_code != 0 or summary is None:
+        return exit_code or 1
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0
 

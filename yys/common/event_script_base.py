@@ -472,6 +472,7 @@ class YYSBaseScript(EventBaseScript, metaclass=_ABCMetaRelaxDel):
     def switch_lineup(
         self, group_name: str, lineup_name: str, *,
         timeout_seconds: float = 60.0, max_scrolls: int = 30,
+        home_verified: bool = False,
     ) -> None:
         """按分组和名称应用式神录队伍预设；成功后停留在预设页。
 
@@ -495,7 +496,11 @@ class YYSBaseScript(EventBaseScript, metaclass=_ABCMetaRelaxDel):
         ):
             env = GuardedEnvironment(env, self._run_guard, observe_only=False)
         LineupSwitcher(env, ocr=self.win_controller.ocr, checkpoint=checkpoint).switch(
-            group_name, lineup_name, timeout_seconds=timeout_seconds, max_scrolls=max_scrolls,
+            group_name,
+            lineup_name,
+            timeout_seconds=timeout_seconds,
+            max_scrolls=max_scrolls,
+            home_verified=home_verified,
         )
 
     def prepare_entry(self, reporter: Optional[EntryReporter] = None) -> EntryPreparationResult:

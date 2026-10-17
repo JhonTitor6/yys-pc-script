@@ -16,6 +16,7 @@ class ActionType(Enum):
     LEFT_CLICK = "left_click"
     RIGHT_CLICK = "right_click"
     LEFT_DOUBLE_CLICK = "left_double_click"
+    LONG_PRESS = "long_press"
     DRAG = "drag"
     WHEEL = "wheel"
     KEY_PRESS = "key_press"
@@ -56,6 +57,10 @@ class GameEnvironment(ABC):
     @abstractmethod
     def drag(self, x1: int, y1: int, x2: int, y2: int) -> None:
         """在客户区坐标执行拖拽。"""
+
+    def long_press(self, x: int, y: int, duration: float) -> None:
+        """在客户区坐标长按左键；旧环境默认不支持。"""
+        raise NotImplementedError("当前游戏环境不支持鼠标长按")
 
     def wheel(self, x: int, y: int, delta: int) -> None:
         """在客户区位置滚动；delta 为 Windows 原始增量，正数向上。"""

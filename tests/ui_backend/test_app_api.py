@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -291,6 +292,42 @@ def test_workflow_create_and_list(tmp_path: Path) -> None:
     workflow = client.get("/api/workflows").json()[0]
     assert workflow["name"] == "日常探索"
     assert workflow["steps"][0]["script_id"] == "exploration_28"
+
+
+def test_daily_workflow_schedule_is_saved_on_create_edit_and_enable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """产品契约：PRD AC6，创建、编辑、重新启用时保存下一次执行时间。"""
+    class FixedDateTime(datetime):
+        current = datetime(2026, 9, 26, 20, 0)
+
+        @classmethod
+        def now(cls, tz: Any = None) -> datetime:
+            return cls.current
+
+    monkeypatch.setattr("ui_backend.scheduler.service.datetime", FixedDateTime)
+    app = create_app(db_path=tmp_path / "ui.db")
+    client = TestClient(app)
+    payload = {
+        "name": "狭间暗域", "group_name": "日常", "enabled": True,
+        "trigger_type": "scheduled_time", "trigger_config": {"time": "21:03"},
+        "failure_policy": "stop_workflow", "steps": [],
+    }
+    workflow_id = client.post("/api/workflows", json=payload).json()["id"]
+    assert app.state.storage.workflows.get(workflow_id)["next_run_at"] == "2026-09-26T21:03:00"
+
+    payload["trigger_config"] = {"time": "21:04"}
+    assert client.put(f"/api/workflows/{workflow_id}", json=payload).status_code == 200
+    assert app.state.storage.workflows.get(workflow_id)["next_run_at"] == "2026-09-26T21:04:00"
+
+    payload["trigger_config"] = {"time": "25:00"}
+    assert client.put(f"/api/workflows/{workflow_id}", json=payload).status_code == 422
+    assert app.state.storage.workflows.get(workflow_id)["next_run_at"] == "2026-09-26T21:04:00"
+
+    assert client.post(f"/api/workflows/{workflow_id}/disable").status_code == 200
+    FixedDateTime.current = datetime(2026, 9, 26, 21, 5)
+    assert client.post(f"/api/workflows/{workflow_id}/enable").status_code == 200
+    assert app.state.storage.workflows.get(workflow_id)["next_run_at"] == "2026-09-27T21:04:00"
 
 
 def test_run_workflow_now_submits_scheduler_without_blocking(tmp_path: Path) -> None:

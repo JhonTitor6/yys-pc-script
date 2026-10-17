@@ -236,3 +236,73 @@ def test_scheduler_pending_loads_steps_and_orders_by_priority(tmp_path: Path) ->
 
     assert triggered == 2
     assert manager.started == ["soul_raid", "realm_raid"]
+
+
+def test_scheduler_persists_missing_daily_schedule_before_it_is_due(tmp_path: Path) -> None:
+    """产品契约：PRD AC6，缺失的计划时间只初始化一次，到点后仍能触发。"""
+    database = Database(tmp_path / "scheduler.db")
+    database.initialize()
+    storage = Storage(database)
+    workflow_id = storage.workflows.create(
+        name="狭间暗域",
+        group_name="日常",
+        enabled=True,
+        trigger_type="scheduled_time",
+        trigger_config={"time": "21:03"},
+        failure_policy=WorkflowFailurePolicy.STOP.value,
+    )
+    storage.workflow_steps.create(
+        workflow_id=workflow_id,
+        sort_order=1,
+        step_type="run_script",
+        script_id="abyss_shadows",
+        config={},
+        condition={},
+        retry_count=0,
+    )
+
+    class FakeRunManager:
+        def __init__(self) -> None:
+            self.started = 0
+
+        def current_run_id(self) -> None:
+            return None
+
+        def start(self, request: Any) -> int:
+            self.started += 1
+            return self.started
+
+        def wait(self, run_id: int, timeout: float | None = None) -> bool:
+            return True
+
+        def run_status(self, run_id: int) -> str:
+            return RunStatus.SUCCESS.value
+
+    manager = FakeRunManager()
+    scheduler = SchedulerService(run_manager=manager, storage=storage)
+    assert scheduler.run_pending(datetime(2026, 9, 26, 21, 2, 59)) == 0
+    assert storage.workflows.get(workflow_id)["next_run_at"] == "2026-09-26T21:03:00"
+    assert scheduler.run_pending(datetime(2026, 9, 26, 21, 3, 1)) == 1
+    assert manager.started == 1
+
+
+def test_scheduler_missing_interval_schedule_starts_from_future(tmp_path: Path) -> None:
+    """产品契约：PRD AC9a，缺失计划时间时不补跑过去的间隔轮次。"""
+    database = Database(tmp_path / "scheduler.db")
+    database.initialize()
+    storage = Storage(database)
+    workflow_id = storage.workflows.create(
+        name="间隔任务",
+        group_name="日常",
+        enabled=True,
+        trigger_type="interval",
+        trigger_config={"interval_seconds": 600},
+        failure_policy=WorkflowFailurePolicy.STOP.value,
+    )
+    storage.workflows.update_schedule_state(
+        workflow_id, None, last_run_at="2026-09-25T20:00:00"
+    )
+
+    scheduler = SchedulerService(run_manager=object(), storage=storage)
+    assert scheduler.run_pending(datetime(2026, 9, 26, 21, 0)) == 0
+    assert storage.workflows.get(workflow_id)["next_run_at"] == "2026-09-26T21:10:00"

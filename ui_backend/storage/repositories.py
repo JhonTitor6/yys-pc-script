@@ -113,6 +113,7 @@ class WorkflowRepository:
         priority: int = 0,
         success_interval_seconds: float = 0,
         failure_interval_seconds: float = 0,
+        next_run_at: str | None = None,
     ) -> bool:
         """更新编排任务，返回是否找到并更新。"""
         with self.db.connect() as conn:
@@ -121,7 +122,7 @@ class WorkflowRepository:
                 UPDATE workflows
                 SET name=?, group_name=?, enabled=?, trigger_type=?, trigger_config_json=?,
                     failure_policy=?, priority=?, success_interval_seconds=?,
-                    failure_interval_seconds=?, updated_at=CURRENT_TIMESTAMP
+                    failure_interval_seconds=?, next_run_at=?, updated_at=CURRENT_TIMESTAMP
                 WHERE id=?
                 """,
                 (
@@ -134,6 +135,7 @@ class WorkflowRepository:
                     int(priority),
                     float(success_interval_seconds),
                     float(failure_interval_seconds),
+                    next_run_at,
                     workflow_id,
                 ),
             )
@@ -152,6 +154,7 @@ class WorkflowRepository:
         priority: int = 0,
         success_interval_seconds: float = 0,
         failure_interval_seconds: float = 0,
+        next_run_at: str | None = None,
     ) -> bool:
         """单事务内全量覆盖编排任务及其步骤，返回是否找到并更新。
 
@@ -163,7 +166,7 @@ class WorkflowRepository:
                 UPDATE workflows
                 SET name=?, group_name=?, enabled=?, trigger_type=?, trigger_config_json=?,
                     failure_policy=?, priority=?, success_interval_seconds=?,
-                    failure_interval_seconds=?, updated_at=CURRENT_TIMESTAMP
+                    failure_interval_seconds=?, next_run_at=?, updated_at=CURRENT_TIMESTAMP
                 WHERE id=?
                 """,
                 (
@@ -176,6 +179,7 @@ class WorkflowRepository:
                     int(priority),
                     float(success_interval_seconds),
                     float(failure_interval_seconds),
+                    next_run_at,
                     workflow_id,
                 ),
             )

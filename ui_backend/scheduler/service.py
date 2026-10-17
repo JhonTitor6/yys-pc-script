@@ -147,6 +147,15 @@ class SchedulerService:
                 continue
             workflow = dict(item)
             workflow["steps"] = self._storage.workflow_steps.list_by_workflow(int(item["id"]))
+            if workflow.get("next_run_at") is None and workflow.get("trigger_type") in {
+                "interval", "scheduled_time"
+            }:
+                initial = dict(workflow)
+                initial["last_run_at"] = None
+                next_run_at = self.calculate_next_run_at(initial, base_time=current_time)
+                if next_run_at is not None:
+                    self._storage.workflows.update_schedule_state(int(item["id"]), next_run_at)
+                continue
             workflows.append(self.preview_workflow(workflow))
         due = [
             item

@@ -403,7 +403,8 @@ def create_app(
             priority=int(payload.get("priority", 0)),
             success_interval_seconds=float(payload.get("success_interval_seconds", 0)),
             failure_interval_seconds=float(payload.get("failure_interval_seconds", 0)),
-            next_run_at=_optional_str(payload.get("next_run_at")),
+            next_run_at=_optional_str(payload.get("next_run_at"))
+            or _next_workflow_run_at(app.state.scheduler, payload, bool(payload["enabled"])),
         )
         for step in payload.get("steps", []):
             current_storage.workflow_steps.create(
@@ -434,6 +435,7 @@ def create_app(
             priority=int(payload.get("priority", 0)),
             success_interval_seconds=float(payload.get("success_interval_seconds", 0)),
             failure_interval_seconds=float(payload.get("failure_interval_seconds", 0)),
+            next_run_at=_next_workflow_run_at(app.state.scheduler, payload, bool(payload["enabled"])),
         )
         if not found:
             return JSONResponse({"detail": "编排任务不存在"}, status_code=404)
@@ -471,12 +473,12 @@ def create_app(
     @app.post("/api/workflows/{workflow_id}/enable", response_model=None)
     def enable_workflow(workflow_id: int) -> dict[str, str] | JSONResponse:
         """启用周期工作流。"""
-        return _set_workflow_enabled(app.state.storage, workflow_id, True)
+        return _set_workflow_enabled(app.state.storage, app.state.scheduler, workflow_id, True)
 
     @app.post("/api/workflows/{workflow_id}/disable", response_model=None)
     def disable_workflow(workflow_id: int) -> dict[str, str] | JSONResponse:
         """停用周期工作流。"""
-        return _set_workflow_enabled(app.state.storage, workflow_id, False)
+        return _set_workflow_enabled(app.state.storage, app.state.scheduler, workflow_id, False)
 
     @app.get("/api/workflows/{workflow_id}/schedule-preview", response_model=None)
     def workflow_schedule_preview(workflow_id: int) -> dict[str, Any] | JSONResponse:
@@ -606,6 +608,7 @@ def _find_workflow(storage: Storage, workflow_id: int) -> dict[str, Any] | None:
 
 def _set_workflow_enabled(
     storage: Storage,
+    scheduler: SchedulerService,
     workflow_id: int,
     enabled: bool,
 ) -> dict[str, str] | JSONResponse:
@@ -624,5 +627,21 @@ def _set_workflow_enabled(
         priority=int(workflow.get("priority", 0)),
         success_interval_seconds=float(workflow.get("success_interval_seconds", 0)),
         failure_interval_seconds=float(workflow.get("failure_interval_seconds", 0)),
+        next_run_at=_next_workflow_run_at(scheduler, workflow, enabled),
     )
     return {"status": "ok"} if found else JSONResponse({"detail": "编排任务不存在"}, status_code=404)
+
+
+def _next_workflow_run_at(
+    scheduler: SchedulerService, workflow: dict[str, Any], enabled: bool,
+) -> str | None:
+    """校验并计算启用工作流的下一次计划时间。"""
+    if not enabled or workflow["trigger_type"] == "manual":
+        return None
+    try:
+        next_run_at = scheduler.calculate_next_run_at(workflow)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if next_run_at is None:
+        raise HTTPException(status_code=422, detail="定时触发配置无效")
+    return next_run_at

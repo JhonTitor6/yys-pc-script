@@ -138,9 +138,21 @@
     "stage4_artifacts": {
       "nsis": "gui/src-tauri/target/release/bundle/nsis/阴阳师脚本工作台_1.0.0_x64-setup.exe",
       "portable": "dist-electron/阴阳师脚本工作台-1.0.0-portable.exe",
-      "nsis_bytes": 80333964,
-      "portable_bytes": 80247980,
+      "nsis_bytes": 80335700,
+      "portable_bytes": 80264275,
       "limit_bytes": 100000000
+    },
+    "stage4_verification": {
+      "install_dir": "D:\\阴阳师脚本工作台",
+      "shortcuts": [
+        "开始菜单",
+        "桌面"
+      ],
+      "uninstall": "移除安装目录与快捷方式，保留业务库",
+      "runtime_missing": "提示后取消，退出码 1，无窗口无后端",
+      "evidence": [
+        "build/e2e-runtime-missing.png"
+      ]
     }
   }
 }

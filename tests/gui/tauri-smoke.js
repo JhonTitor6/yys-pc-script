@@ -10,6 +10,14 @@
     const bridge = window.desktopBridge;
     const bootstrap = await bridge.bootstrap();
     check(bootstrap.ready && bootstrap.apiBase === smokeEndpoint && bootstrap.token === smokeToken, '受限握手');
+    // 产品契约：AC21，CSP 的 img-src 必须放行后端图片（含 query token）。
+    const probeImage = new Image();
+    const imageLoaded = new Promise((resolve) => {
+      probeImage.onload = () => resolve(probeImage.naturalWidth > 0);
+      probeImage.onerror = () => resolve(false);
+    });
+    probeImage.src = smokeEndpoint + '/smoke/image?token=' + encodeURIComponent(smokeToken);
+    check(await imageLoaded, 'CSP 允许后端图片');
     const messages = new Set();
     for (let i = 0; i < 100 && !document.getElementById('historyList').textContent.includes('暂无'); i++) {
       messages.add(document.getElementById('toastRegion').textContent);

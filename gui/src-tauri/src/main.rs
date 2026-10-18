@@ -388,6 +388,11 @@ fn startup(app: &tauri::AppHandle) -> Result<(), String> {
 }
 
 fn report_failure(app: &tauri::AppHandle, message: &str) {
+    if message.is_empty() {
+        // 用户已在缺失提示里取消，不再叠加第二个对话框。
+        app.exit(1);
+        return;
+    }
     eprintln!("桌面宿主启动失败：{message}");
     #[cfg(feature = "smoke-test")]
     {

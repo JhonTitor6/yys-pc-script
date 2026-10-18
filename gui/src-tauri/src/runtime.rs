@@ -16,6 +16,10 @@ const IDRETRY: i32 = 4;
 
 /// 已安装的 Runtime 版本；未安装或读取失败返回 None。
 pub fn installed_version() -> Option<String> {
+    // 仅调试构建可用：模拟 Runtime 缺失，便于验证提示与重试流程。
+    if cfg!(debug_assertions) && std::env::var_os("YYS_FORCE_NO_RUNTIME").is_some() {
+        return None;
+    }
     RUNTIME_KEYS.iter().find_map(|key| query_version(key))
 }
 
@@ -68,7 +72,8 @@ pub fn ensure_available() -> Result<(), String> {
                 }
                 continue;
             }
-            return Err("缺少 Microsoft Edge WebView2 Runtime，已取消安装".into());
+            // 用户已在缺失提示里选择取消，调用方不要再弹第二个错误框。
+            return Err(String::new());
         }
     }
 }

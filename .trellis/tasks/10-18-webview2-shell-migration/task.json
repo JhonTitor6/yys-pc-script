@@ -86,6 +86,24 @@
         "build/tauri-stage1-smoke/20261018-213405-296440",
         "build/tauri-stage1-smoke/20261018-213416-330702"
       ]
-    }
+    },
+    "stage2_status": "verified",
+    "stage2_report": "stage2-report.md",
+    "stage2_e2e": {
+      "verified_at": "2026-10-18T21:53:00+08:00",
+      "real_backend": "python.exe -m ui_backend.main",
+      "data_isolation": "副本库停用定时工作流，原库只读并按 SHA-256 校验恢复",
+      "open_items": [
+        "打包映射未构建验证（阶段4）",
+        "异常退出遗留后端需阶段3 Job Object",
+        "下载拒绝仅代码审查",
+        "真实消息框未实机确认"
+      ]
+    },
+    "stage2_evidence": [
+      "build/tauri-smoke/20261018-214733-385214",
+      "build/tauri-smoke/20261018-214745-943576",
+      "build/tauri-smoke/20261018-214754-931291"
+    ]
   }
 }

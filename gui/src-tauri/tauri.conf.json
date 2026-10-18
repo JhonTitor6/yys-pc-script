@@ -20,6 +20,7 @@
     "windows": {
       "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true },
       "nsis": {
+        "template": "./installer.nsi.template",
         "installMode": "currentUser",
         "compression": "lzma",
         "languages": ["SimpChinese"],

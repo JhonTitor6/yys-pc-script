@@ -12,5 +12,9 @@
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://127.0.0.1:8000; connect-src ipc: http://ipc.localhost http://127.0.0.1:8000 ws://127.0.0.1:8000; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
     }
   },
-  "bundle": { "active": false, "icon": ["../icon.ico"] }
+  "bundle": {
+    "active": false,
+    "icon": ["../icon.ico"],
+    "resources": { "../build/backend": "backend" }
+  }
 }

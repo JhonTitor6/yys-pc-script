@@ -7,14 +7,26 @@ use std::time::Duration;
 #[serde(rename_all = "camelCase")]
 struct Config {
     api_base: String,
+    #[serde(default)]
     token: String,
+    /// 提供时由宿主按真实启动路径拉起的假后端；缺省则沿用预启动的假后端。
+    #[serde(default)]
+    launch: Option<LaunchConfig>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LaunchConfig {
+    program: String,
+    args: Vec<String>,
+    cwd: String,
 }
 
 /// 校验独立测试目录和端口，仅替换烟测构建的启动信息。
 pub fn prepare(
     context: &mut tauri::Context<tauri::Wry>,
 ) -> Result<Desktop, Box<dyn std::error::Error>> {
-    eprintln!("YYS_TAURI_STAGE1_SMOKE_ONLY");
+    eprintln!("YYS_TAURI_SMOKE_ONLY");
     let base = dunce::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../build"))?;
     let root =
         PathBuf::from(std::env::var_os("YYS_TAURI_SMOKE_ROOT").ok_or("必须指定隔离烟测目录")?);
@@ -24,13 +36,14 @@ pub fn prepare(
     }
     let config: Config = serde_json::from_slice(&fs::read(root.join("config.json"))?)?;
     let url = tauri::Url::parse(&config.api_base)?;
+    let launched = config.launch.is_some();
     if url.scheme() != "http"
         || url.host_str() != Some("127.0.0.1")
         || url.port().is_none_or(|p| p == 8000 || p == 0)
         || url.path() != "/"
         || url.query().is_some()
         || !url.username().is_empty()
-        || config.token.len() < 32
+        || (!launched && config.token.len() < 32)
     {
         return Err("隔离后端只能使用独立 loopback 端口".into());
     }
@@ -49,20 +62,35 @@ pub fn prepare(
                 &config.api_base.replace("http:", "ws:"),
             ),
     ));
+    let port = url.port().unwrap_or(backend::PORT);
+    let launch = config.launch.map(|launch| backend::Launch {
+        program: PathBuf::from(launch.program),
+        args: launch.args,
+        cwd: PathBuf::from(launch.cwd),
+    });
     Ok(Desktop {
         user_data: root,
-        bootstrap: Bootstrap {
-            ready: true,
+        bootstrap: Mutex::new(Bootstrap {
+            ready: !launched,
             api_base: config.api_base,
             token: config.token,
             reason: String::new(),
+        }),
+        backend: Mutex::new(None),
+        plan: StartupPlan {
+            port,
+            launch,
+            timeout: backend::READY_TIMEOUT,
         },
     })
 }
 
 /// 在真实页面完成加载后执行受编译特性约束的验收脚本。
 pub fn page_loaded(window: &WebviewWindow) {
-    let bootstrap = &window.state::<Desktop>().bootstrap;
+    let bootstrap = match window.state::<Desktop>().bootstrap.lock() {
+        Ok(bootstrap) => bootstrap.clone(),
+        Err(_) => return,
+    };
     let prefix = format!(
         "window.smokeEndpoint = {}; window.smokeToken = {};",
         serde_json::to_string(&bootstrap.api_base).unwrap(),
@@ -83,7 +111,7 @@ pub fn page_loaded(window: &WebviewWindow) {
 }
 
 /// 创建无权限对照窗口，收到报告后退出本次宿主。
-pub fn run(app: &tauri::App, window: &WebviewWindow) -> tauri::Result<()> {
+pub fn after_window(app: &tauri::AppHandle, window: &WebviewWindow) -> tauri::Result<()> {
     let root = app.state::<Desktop>().user_data.clone();
     let size = window
         .inner_size()?
@@ -108,7 +136,7 @@ pub fn run(app: &tauri::App, window: &WebviewWindow) -> tauri::Result<()> {
             }
         })
         .build()?;
-    let handle = app.handle().clone();
+    let handle = app.clone();
     std::thread::spawn(move || {
         for _ in 0..300 {
             std::thread::sleep(Duration::from_millis(200));

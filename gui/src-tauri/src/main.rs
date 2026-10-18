@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod backend;
 mod policy;
 #[cfg(feature = "smoke-test")]
 mod smoke;
@@ -9,6 +10,9 @@ use serde::Serialize;
 use std::{
     fs,
     path::{Path, PathBuf},
+    process::Child,
+    sync::Mutex,
+    time::Duration,
 };
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
@@ -23,9 +27,19 @@ struct Bootstrap {
     reason: String,
 }
 
+/// 启动计划：生产固定 8000；烟测可用独立端口和显式启动命令。
+#[derive(Clone)]
+struct StartupPlan {
+    port: u16,
+    launch: Option<backend::Launch>,
+    timeout: Duration,
+}
+
 struct Desktop {
     user_data: PathBuf,
-    bootstrap: Bootstrap,
+    bootstrap: Mutex<Bootstrap>,
+    backend: Mutex<Option<Child>>,
+    plan: StartupPlan,
 }
 
 fn authorize(window: &WebviewWindow) -> Result<(), String> {
@@ -35,7 +49,8 @@ fn authorize(window: &WebviewWindow) -> Result<(), String> {
 #[tauri::command]
 fn desktop_bootstrap(window: WebviewWindow, state: State<Desktop>) -> Result<Bootstrap, String> {
     authorize(&window)?;
-    Ok(state.bootstrap.clone())
+    let bootstrap = state.bootstrap.lock().map_err(|_| "启动状态不可用")?;
+    Ok(bootstrap.clone())
 }
 
 #[derive(Clone, Serialize)]
@@ -157,8 +172,16 @@ fn open_image_resource_directory(
     ))
 }
 
+fn backend_ready(app: &tauri::AppHandle) -> bool {
+    app.state::<Desktop>()
+        .bootstrap
+        .lock()
+        .map(|bootstrap| bootstrap.ready)
+        .unwrap_or(false)
+}
+
 fn tray_command(app: &tauri::AppHandle, command: &str) {
-    if app.state::<Desktop>().bootstrap.ready && matches!(command, "pause" | "stop") {
+    if backend_ready(app) && matches!(command, "pause" | "stop") {
         let _ = app.emit_to(
             tauri::EventTarget::webview_window("main"),
             "tray-command",
@@ -167,8 +190,8 @@ fn tray_command(app: &tauri::AppHandle, command: &str) {
     }
 }
 
-fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
-    let ready = app.state::<Desktop>().bootstrap.ready;
+fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
+    let ready = backend_ready(app);
     let show = MenuItem::with_id(app, "show", "显示工作台", true, None::<&str>)?;
     let pause = MenuItem::with_id(app, "pause", "暂停当前脚本", ready, None::<&str>)?;
     let stop = MenuItem::with_id(app, "stop", "停止当前脚本", ready, None::<&str>)?;
@@ -201,7 +224,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
-fn setup_window(app: &tauri::App, user_data: &Path) -> tauri::Result<WebviewWindow> {
+fn setup_window(app: &tauri::AppHandle, user_data: &Path) -> tauri::Result<WebviewWindow> {
     let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
         .title("阴阳师脚本工作台")
         .inner_size(900.0, 650.0)
@@ -252,6 +275,137 @@ fn setup_window(app: &tauri::App, user_data: &Path) -> tauri::Result<WebviewWind
     Ok(window)
 }
 
+/// 后端就绪后才创建业务主窗口；烟测在窗口创建后接管。
+fn open_main(app: &tauri::AppHandle) -> Result<(), String> {
+    let root = app.state::<Desktop>().user_data.clone();
+    let window = setup_window(app, &root).map_err(|error| error.to_string())?;
+    setup_tray(app).map_err(|error| error.to_string())?;
+    #[cfg(feature = "smoke-test")]
+    smoke::after_window(app, &window).map_err(|error| error.to_string())?;
+    #[cfg(not(feature = "smoke-test"))]
+    let _ = window;
+    Ok(())
+}
+
+fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+fn resolve_launch(app: &tauri::AppHandle) -> Result<backend::Launch, String> {
+    if cfg!(debug_assertions) {
+        Ok(backend::dev_launch(&repo_root()))
+    } else {
+        let resources = app.path().resource_dir().map_err(|e| e.to_string())?;
+        Ok(backend::packaged_launch(&resources))
+    }
+}
+
+/// 探测端口、启动受管后端、等待鉴权就绪，全部在后台线程完成。
+fn startup(app: &tauri::AppHandle) -> Result<(), String> {
+    let desktop = app.state::<Desktop>();
+    let plan = desktop.plan.clone();
+    // 烟测旧模式：假后端由测试器预先启动，直接开窗。
+    if backend_ready(app) {
+        let handle = app.clone();
+        app.run_on_main_thread(move || {
+            if let Err(error) = open_main(&handle) {
+                report_failure(&handle, &format!("创建窗口失败：{error}"));
+            }
+        })
+        .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    match backend::probe(&backend::generate_token(), plan.port) {
+        backend::Probe::Free => {}
+        backend::Probe::Protected => {
+            return Err(format!(
+                "端口 {} 已有受保护的桌面后端在运行，请先退出旧进程",
+                plan.port
+            ))
+        }
+        backend::Probe::Healthy => {
+            return Err(format!(
+                "端口 {} 已有可用的桌面后端在运行，请先退出旧进程",
+                plan.port
+            ))
+        }
+        backend::Probe::Occupied => {
+            return Err(format!(
+                "端口 {} 已被其他进程占用，无法启动桌面后端",
+                plan.port
+            ))
+        }
+    }
+
+    let token = backend::generate_token();
+    let launch = match plan.launch.clone() {
+        Some(launch) => launch,
+        None => resolve_launch(app)?,
+    };
+    let mut child = backend::spawn(&launch, &token, &desktop.user_data)?;
+    if let Err(error) = backend::wait_ready(&mut child, &token, plan.port, plan.timeout) {
+        backend::stop(&mut child);
+        return Err(error);
+    }
+    {
+        let mut bootstrap = desktop.bootstrap.lock().map_err(|_| "启动状态不可用")?;
+        *bootstrap = Bootstrap {
+            ready: true,
+            api_base: format!("http://127.0.0.1:{}", plan.port),
+            token,
+            reason: String::new(),
+        };
+    }
+    *desktop.backend.lock().map_err(|_| "后端句柄不可用")? = Some(child);
+
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        if let Err(error) = open_main(&handle) {
+            report_failure(&handle, &format!("创建窗口失败：{error}"));
+        }
+    })
+    .map_err(|e| e.to_string())
+}
+
+fn report_failure(app: &tauri::AppHandle, message: &str) {
+    eprintln!("桌面宿主启动失败：{message}");
+    #[cfg(feature = "smoke-test")]
+    {
+        // 烟测用文件记录失败，避免自动化被模态框卡住。
+        let root = app.state::<Desktop>().user_data.clone();
+        let _ = fs::write(root.join("startup-error.txt"), message);
+    }
+    #[cfg(not(feature = "smoke-test"))]
+    show_message_box("阴阳师脚本工作台", message);
+    app.exit(1);
+}
+
+#[cfg(not(feature = "smoke-test"))]
+fn show_message_box(title: &str, message: &str) {
+    use std::os::windows::ffi::OsStrExt;
+    fn wide(value: &str) -> Vec<u16> {
+        std::ffi::OsStr::new(value)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect()
+    }
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn MessageBoxW(hwnd: isize, text: *const u16, caption: *const u16, flags: u32) -> i32;
+    }
+    let text = wide(message);
+    let caption = wide(title);
+    // MB_OK | MB_ICONERROR | MB_SETFOREGROUND，缺少失败原因也可见。
+    unsafe {
+        MessageBoxW(0, text.as_ptr(), caption.as_ptr(), 0x0001_0010);
+    }
+}
+
 fn main() {
     let mut context = tauri::generate_context!();
     #[cfg(feature = "smoke-test")]
@@ -262,12 +416,17 @@ fn main() {
         Desktop {
             user_data: PathBuf::from(std::env::var_os("APPDATA").expect("缺少 APPDATA"))
                 .join("yys-script-manager"),
-            bootstrap: Bootstrap {
+            bootstrap: Mutex::new(Bootstrap {
                 ready: false,
-                api_base: "http://127.0.0.1:8000".into(),
+                api_base: format!("http://127.0.0.1:{}", backend::PORT),
                 token: String::new(),
-                reason: "后端尚未接入；当前为桌面宿主阶段。请使用现有 Electron 工作台处理业务。"
-                    .into(),
+                reason: String::new(),
+            }),
+            backend: Mutex::new(None),
+            plan: StartupPlan {
+                port: backend::PORT,
+                launch: None,
+                timeout: backend::READY_TIMEOUT,
             },
         }
     };
@@ -284,18 +443,23 @@ fn main() {
         .setup(|app| {
             let root = app.state::<Desktop>().user_data.clone();
             fs::create_dir_all(&root)?;
-            let window = setup_window(app, &root)?;
-            setup_tray(app)?;
-            #[cfg(feature = "smoke-test")]
-            smoke::run(app, &window)?;
-            #[cfg(not(feature = "smoke-test"))]
-            let _ = window;
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                if let Err(error) = startup(&handle) {
+                    report_failure(&handle, &error);
+                }
+            });
             Ok(())
         })
         .build(context)
         .expect("桌面宿主初始化失败")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
+                if let Ok(mut guard) = app.state::<Desktop>().backend.lock() {
+                    if let Some(mut child) = guard.take() {
+                        backend::stop(&mut child);
+                    }
+                }
                 if let Some(window) = app.get_webview_window("main") {
                     window_state::save(&window, &app.state::<Desktop>().user_data, false);
                 }

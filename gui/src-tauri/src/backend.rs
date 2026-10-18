@@ -1,0 +1,250 @@
+//! 后端进程的端口探测、启动与鉴权就绪等待。
+
+use std::io::{Read, Write};
+use std::net::{SocketAddr, TcpStream};
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
+
+/// 生产固定端口，不随配置漂移。
+pub const PORT: u16 = 8000;
+const HOST: &str = "127.0.0.1";
+/// 等待后端鉴权健康的最长时间。
+pub const READY_TIMEOUT: Duration = Duration::from_secs(30);
+const POLL_INTERVAL: Duration = Duration::from_millis(500);
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Probe {
+    /// 端口空闲，可以启动本宿主管理的后端。
+    Free,
+    /// 已有本产品后端且使用当前 token 应答。
+    Healthy,
+    /// 已有受保护的桌面后端（token 不匹配）。
+    Protected,
+    /// 其他进程占用端口。
+    Occupied,
+}
+
+#[derive(Clone)]
+pub struct Launch {
+    pub program: PathBuf,
+    pub args: Vec<String>,
+    pub cwd: PathBuf,
+}
+
+/// 生成每次启动唯一的 32 字节十六进制 token。
+pub fn generate_token() -> String {
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes).expect("系统随机源不可用");
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn address(port: u16) -> SocketAddr {
+    SocketAddr::from(([127, 0, 0, 1], port))
+}
+
+/// 探测端口状态；只有能读到本产品 /api/scripts 才算健康。
+pub fn probe(token: &str, port: u16) -> Probe {
+    if TcpStream::connect_timeout(&address(port), Duration::from_millis(600)).is_err() {
+        return Probe::Free;
+    }
+    match request_scripts(token, port) {
+        Some((200, body)) if looks_like_scripts(&body) => Probe::Healthy,
+        Some((403, _)) => Probe::Protected,
+        _ => Probe::Occupied,
+    }
+}
+
+fn request_scripts(token: &str, port: u16) -> Option<(u16, String)> {
+    let mut stream = TcpStream::connect_timeout(&address(port), Duration::from_millis(800)).ok()?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(2)))
+        .ok()?;
+    stream.set_read_timeout(Some(Duration::from_secs(3))).ok()?;
+    let request = format!(
+        "GET /api/scripts HTTP/1.1\r\nHost: {HOST}:{port}\r\nX-YYS-UI-Token: {token}\r\nConnection: close\r\n\r\n"
+    );
+    stream.write_all(request.as_bytes()).ok()?;
+    let mut raw = String::new();
+    stream.read_to_string(&mut raw).ok()?;
+    let (head, body) = raw.split_once("\r\n\r\n")?;
+    let status = head
+        .lines()
+        .next()?
+        .split_whitespace()
+        .nth(1)?
+        .parse()
+        .ok()?;
+    Some((status, body.to_owned()))
+}
+
+fn looks_like_scripts(body: &str) -> bool {
+    let Ok(items) = serde_json::from_str::<serde_json::Value>(body) else {
+        return false;
+    };
+    let Some(array) = items.as_array() else {
+        return false;
+    };
+    // 与旧宿主一致：只有真的是工作台脚本列表才认作健康，避免误判同端口其他服务。
+    array.iter().any(|item| {
+        item.as_str() == Some("soul_raid")
+            || item.get("script_id").and_then(|id| id.as_str()) == Some("soul_raid")
+            || item.get("id").and_then(|id| id.as_str()) == Some("soul_raid")
+    })
+}
+
+/// 启动受管后端；页面永远拿不到这条启动路径。
+pub fn spawn(launch: &Launch, token: &str, user_data: &Path) -> Result<Child, String> {
+    Command::new(&launch.program)
+        .args(&launch.args)
+        .current_dir(&launch.cwd)
+        .env("YYS_UI_TOKEN", token)
+        .env("YYS_USER_DATA_DIR", user_data)
+        .env("PYTHONIOENCODING", "utf-8")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("启动后端失败：{error}"))
+}
+
+/// 轮询鉴权健康接口，30 秒上限；后端提前退出立即失败。
+pub fn wait_ready(
+    child: &mut Child,
+    token: &str,
+    port: u16,
+    timeout: Duration,
+) -> Result<(), String> {
+    let started = Instant::now();
+    loop {
+        match probe(token, port) {
+            Probe::Healthy => return Ok(()),
+            Probe::Protected => {
+                return Err(format!(
+                    "端口 {port} 已有受保护的桌面后端在运行，请先退出旧进程"
+                ))
+            }
+            Probe::Free | Probe::Occupied => {}
+        }
+        if let Ok(Some(status)) = child.try_wait() {
+            return Err(format!("后端在就绪前退出（{status}）"));
+        }
+        if started.elapsed() > timeout {
+            return Err(format!("等待后端就绪超时（{} 秒）", timeout.as_secs()));
+        }
+        std::thread::sleep(POLL_INTERVAL);
+    }
+}
+
+/// 终止本宿主启动的后端；不触碰其他进程。
+pub fn stop(child: &mut Child) {
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+/// 开发模式：沿用旧宿主的 Python 解析顺序，cwd 为项目根。
+pub fn dev_launch(repo_root: &Path) -> Launch {
+    let program = std::env::var_os("YYS_PYTHON")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("D:/ProgramData/anaconda3/envs/win_macro/python.exe"));
+    Launch {
+        program,
+        args: vec!["-m".into(), "ui_backend.main".into()],
+        cwd: repo_root.to_owned(),
+    }
+}
+
+/// 打包模式：资源目录下的完整 PyInstaller onedir，cwd 为 exe 同目录。
+pub fn packaged_launch(resource_dir: &Path) -> Launch {
+    let program = resource_dir.join("backend").join("yys-backend.exe");
+    let cwd = program
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| resource_dir.to_owned());
+    Launch {
+        program,
+        args: Vec::new(),
+        cwd,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::TcpListener;
+
+    /// 起一个只应答固定响应的假后端，返回端口。
+    fn fake_backend(status: u16, body: &'static str) -> u16 {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().take(8) {
+                let Ok(mut stream) = stream else { continue };
+                let mut buffer = [0u8; 1024];
+                let _ = stream.read(&mut buffer);
+                let response = format!(
+                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+        port
+    }
+
+    #[test]
+    fn probe_distinguishes_health_protection_and_free_ports() {
+        // 产品契约：AC1/AC2，只有本产品脚本列表算健康，403 视为受保护后端。
+        let healthy = fake_backend(200, r#"[{"script_id":"soul_raid"}]"#);
+        assert_eq!(probe("token", healthy), Probe::Healthy);
+        let protected = fake_backend(403, r#"{"detail":"UI token 无效"}"#);
+        assert_eq!(probe("token", protected), Probe::Protected);
+        let other = fake_backend(200, r#"{"hello":"world"}"#);
+        assert_eq!(probe("token", other), Probe::Occupied);
+        let free = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let free_port = free.local_addr().unwrap().port();
+        drop(free);
+        assert_eq!(probe("token", free_port), Probe::Free);
+    }
+
+    #[test]
+    fn wait_ready_reports_early_exit() {
+        // 产品契约：AC4，后端提前退出不能假装就绪。
+        let free = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = free.local_addr().unwrap().port();
+        drop(free);
+        let mut child = Command::new("cmd")
+            .args(["/C", "exit", "3"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let error = wait_ready(&mut child, "token", port, Duration::from_secs(5)).unwrap_err();
+        assert!(error.contains("退出"), "{error}");
+    }
+
+    #[test]
+    fn launch_resolution_matches_legacy_layout() {
+        // 产品契约：AC3，开发/打包两种 cwd 与旧宿主一致。
+        let dev = dev_launch(Path::new("F:/repo"));
+        assert_eq!(dev.cwd, PathBuf::from("F:/repo"));
+        assert_eq!(
+            dev.args,
+            vec!["-m".to_string(), "ui_backend.main".to_string()]
+        );
+        let packaged = packaged_launch(Path::new("C:/app/resources"));
+        assert_eq!(
+            packaged.program,
+            PathBuf::from("C:/app/resources/backend/yys-backend.exe")
+        );
+        assert_eq!(packaged.cwd, PathBuf::from("C:/app/resources/backend"));
+    }
+
+    #[test]
+    fn token_is_32_bytes_of_hex() {
+        let token = generate_token();
+        assert_eq!(token.len(), 64);
+        assert!(token.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+}

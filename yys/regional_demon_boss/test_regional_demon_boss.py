@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 from unittest.mock import Mock
 
 import cv2
-import numpy as np
 import pytest
 from PIL import Image
 
@@ -89,11 +88,7 @@ def _specs(*, failure: bool = False) -> dict[str, tuple[_TemplateSpec, ...]]:
         "detail_boss": one("detail.png"),
         "challenge": one("detail.png"),
         "preparation": one("preparation.png"),
-        "battle": (
-            _TemplateSpec(str(FIXTURES / "battling_early.png"), ROI),
-            _TemplateSpec(str(FIXTURES / "battling_middle.png"), ROI),
-            _TemplateSpec(str(FIXTURES / "battling_late.png"), ROI),
-        ),
+        "battle": (_TemplateSpec(str(FIXTURES / "battling_early.png"), ROI),),
         "settlement_success": one("result.png"),
         "settlement_failure": one("detail_return.png" if failure else "result.png"),
         "reward": one("reward.png"),

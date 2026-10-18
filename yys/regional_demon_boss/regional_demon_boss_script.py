@@ -84,6 +84,10 @@ class RegionalDemonBossScript(YYSBaseScript):
     # 这些是唯一允许使用的生产模板。地图、目标和详情模板由录制素材生成；
     # 每个 key 只接受显式声明的模板，不做别名猜测或缺失降级。
     _TEMPLATE_SPECS: dict[str, tuple[_TemplateSpec, ...]] = {
+        "loading": (
+            _TemplateSpec("yys/regional_demon_boss/images/loading_footer.png",
+                          (450, 595, 710, 640), 0.90),
+        ),
         "home": (
             _TemplateSpec(
                 "yys/regional_demon_boss/images/home_marker.bmp",
@@ -157,14 +161,6 @@ class RegionalDemonBossScript(YYSBaseScript):
         "battle": (
             _TemplateSpec(
                 "yys/regional_demon_boss/images/battling_early.bmp",
-                (0, 0, 250, 120),
-            ),
-            _TemplateSpec(
-                "yys/regional_demon_boss/images/battling_middle.bmp",
-                (0, 0, 250, 120),
-            ),
-            _TemplateSpec(
-                "yys/regional_demon_boss/images/battling_late.bmp",
                 (0, 0, 250, 120),
             ),
         ),
@@ -551,7 +547,10 @@ class RegionalDemonBossScript(YYSBaseScript):
             if predicate(frame):
                 self._recognized()
                 return frame
-            self._unknown(code)
+            if "loading" in self._templates and self._find_template(frame, "loading") is not None:
+                self._recognized()
+            else:
+                self._unknown(code)
             if time.monotonic() >= self._deadline:
                 self._fail(code, message)
             time.sleep(self.POLL_INTERVAL_SECONDS)

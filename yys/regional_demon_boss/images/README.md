@@ -13,7 +13,7 @@
 | `detail_boss.bmp` | `frames/000012-before.png` | `(550,60,630,175)` | `(520,40,660,200)` |
 | `challenge.bmp` | `frames/000012-before.png` | `(960,430,1136,575)` | `(900,380,1136,620)`；匹配中心加 `(-21,5)` 后点击 `(1027,507)` |
 | `preparation.bmp` | `timeline-025.png` | `(970,430,1136,640)` | `(900,380,1136,640)` |
-| `battling_*.bmp` | `timeline-035/060/095.png` | `(0,0,190,80)` | `(0,0,250,120)` |
+| `battling_early.bmp` | `timeline-035.png` | `(0,0,190,80)` | `(0,0,250,120)`；同一张生产模板已验证覆盖 `timeline-060/095.png` 的中、后段战斗画面 |
 | `result_success.bmp` | `timeline-101.png` | `(420,495,930,640)` | `(350,430,1000,640)` |
 | `reward.bmp` | `frames/000014-after.png` | `(190,115,750,570)` | `(150,80,800,600)` |
 | `settlement_continue.bmp` | `timeline-101.png` | `(430,590,710,640)` | `(350,540,800,640)` |

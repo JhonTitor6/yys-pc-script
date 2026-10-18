@@ -26,6 +26,7 @@ ALLOWED_ORIGINS = [
     "file://",
     "http://127.0.0.1:8000",
     "http://localhost:8000",
+    "http://tauri.localhost",
 ]
 
 
@@ -500,6 +501,11 @@ def create_app(
     @app.websocket("/ws/events")
     async def events_websocket(websocket: WebSocket) -> None:
         """推送近期事件并保持 WebSocket 连接。"""
+        # 浏览器来源必须命中白名单；无 Origin 的本地进程/离线测试仍由 token 把关。
+        origin = websocket.headers.get("origin")
+        if origin is not None and origin not in ALLOWED_ORIGINS:
+            await websocket.close(code=1008)
+            return
         if resolved_token and websocket.query_params.get("token") != resolved_token:
             await websocket.close(code=1008)
             return

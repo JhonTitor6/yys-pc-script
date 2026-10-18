@@ -266,6 +266,49 @@ def test_websocket_requires_token_when_enabled(tmp_path: Path) -> None:
         assert websocket.receive_json()["message"] == "已连接"
 
 
+def test_cors_allows_tauri_origin_only(tmp_path: Path) -> None:
+    """产品契约：AC21，生产 Tauri 来源通过 CORS，未知来源不放行。"""
+    app = create_app(db_path=tmp_path / "ui.db", api_token="secret-token")
+    client = TestClient(app)
+
+    allowed = client.options(
+        "/api/scripts",
+        headers={
+            "Origin": "http://tauri.localhost",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    denied = client.options(
+        "/api/scripts",
+        headers={
+            "Origin": "http://evil.example",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert allowed.headers["access-control-allow-origin"] == "http://tauri.localhost"
+    assert "access-control-allow-origin" not in denied.headers
+
+
+def test_websocket_checks_origin_and_token(tmp_path: Path) -> None:
+    """产品契约：AC21，WebSocket 同时校验来源与 token。"""
+    app = create_app(db_path=tmp_path / "ui.db", api_token="secret-token")
+    client = TestClient(app)
+
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect(
+            "/ws/events?token=secret-token",
+            headers={"origin": "http://evil.example"},
+        ):
+            pass
+
+    with client.websocket_connect(
+        "/ws/events?token=secret-token",
+        headers={"origin": "http://tauri.localhost"},
+    ) as websocket:
+        assert websocket.receive_json()["type"] == "run_snapshot"
+
+
 def test_create_app_marks_unfinished_runs_error_on_startup(tmp_path: Path) -> None:
     db_path = tmp_path / "ui.db"
     first_app = create_app(db_path=db_path)

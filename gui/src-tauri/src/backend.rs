@@ -93,9 +93,28 @@ fn looks_like_scripts(body: &str) -> bool {
     })
 }
 
+/// 受管后端：宿主异常结束时由 Job Object 回收子进程。
+pub struct Managed {
+    child: Child,
+    job: Option<job::Job>,
+}
+
+impl Managed {
+    /// 供就绪轮询检查退出状态。
+    pub fn child(&mut self) -> &mut Child {
+        &mut self.child
+    }
+
+    /// 主动终止本宿主创建的后端。
+    pub fn stop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
 /// 启动受管后端；页面永远拿不到这条启动路径。
-pub fn spawn(launch: &Launch, token: &str, user_data: &Path) -> Result<Child, String> {
-    Command::new(&launch.program)
+pub fn spawn(launch: &Launch, token: &str, user_data: &Path) -> Result<Managed, String> {
+    let child = Command::new(&launch.program)
         .args(&launch.args)
         .current_dir(&launch.cwd)
         .env("YYS_UI_TOKEN", token)
@@ -105,7 +124,124 @@ pub fn spawn(launch: &Launch, token: &str, user_data: &Path) -> Result<Child, St
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|error| format!("启动后端失败：{error}"))
+        .map_err(|error| format!("启动后端失败：{error}"))?;
+    // Job 创建失败不影响正常退出路径，只是少了宿主崩溃时的兜底回收。
+    let job = job::Job::create(&child);
+    Ok(Managed { child, job })
+}
+
+#[cfg(windows)]
+mod job {
+    use std::ffi::c_void;
+    use std::os::windows::io::AsRawHandle;
+    use std::process::Child;
+
+    const KILL_ON_JOB_CLOSE: u32 = 0x2000;
+    const EXTENDED_LIMIT_INFORMATION: u32 = 9;
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct IoCounters {
+        read_operations: u64,
+        write_operations: u64,
+        other_operations: u64,
+        read_bytes: u64,
+        write_bytes: u64,
+        other_bytes: u64,
+    }
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct BasicLimits {
+        per_process_user_time: i64,
+        per_job_user_time: i64,
+        limit_flags: u32,
+        minimum_working_set: usize,
+        maximum_working_set: usize,
+        active_process_limit: u32,
+        affinity: usize,
+        priority_class: u32,
+        scheduling_class: u32,
+    }
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct ExtendedLimits {
+        basic: BasicLimits,
+        io: IoCounters,
+        process_memory_limit: usize,
+        job_memory_limit: usize,
+        peak_process_memory: usize,
+        peak_job_memory: usize,
+    }
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn CreateJobObjectW(attributes: *mut c_void, name: *const u16) -> *mut c_void;
+        fn SetInformationJobObject(
+            job: *mut c_void,
+            class: u32,
+            information: *mut c_void,
+            length: u32,
+        ) -> i32;
+        fn AssignProcessToJobObject(job: *mut c_void, process: *mut c_void) -> i32;
+        fn CloseHandle(handle: *mut c_void) -> i32;
+    }
+
+    /// 只包含本次后端的 Job Object；句柄关闭（含宿主被强杀）时内核终止子进程。
+    pub struct Job(*mut c_void);
+
+    impl Job {
+        pub fn create(child: &Child) -> Option<Self> {
+            unsafe {
+                let job = CreateJobObjectW(std::ptr::null_mut(), std::ptr::null());
+                if job.is_null() {
+                    return None;
+                }
+                let mut limits = ExtendedLimits::default();
+                limits.basic.limit_flags = KILL_ON_JOB_CLOSE;
+                let length = std::mem::size_of::<ExtendedLimits>() as u32;
+                if SetInformationJobObject(
+                    job,
+                    EXTENDED_LIMIT_INFORMATION,
+                    &mut limits as *mut _ as *mut c_void,
+                    length,
+                ) == 0
+                {
+                    CloseHandle(job);
+                    return None;
+                }
+                if AssignProcessToJobObject(job, child.as_raw_handle() as *mut c_void) == 0 {
+                    CloseHandle(job);
+                    return None;
+                }
+                Some(Job(job))
+            }
+        }
+    }
+
+    // 句柄只在宿主进程内使用，跨线程只用于回收。
+    unsafe impl Send for Job {}
+    unsafe impl Sync for Job {}
+
+    impl Drop for Job {
+        fn drop(&mut self) {
+            unsafe {
+                CloseHandle(self.0);
+            }
+        }
+    }
+}
+
+#[cfg(not(windows))]
+mod job {
+    use std::process::Child;
+    pub struct Job;
+    impl Job {
+        pub fn create(_child: &Child) -> Option<Self> {
+            None
+        }
+    }
 }
 
 /// 轮询鉴权健康接口，30 秒上限；后端提前退出立即失败。

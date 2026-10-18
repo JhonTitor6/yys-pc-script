@@ -10,7 +10,6 @@ use serde::Serialize;
 use std::{
     fs,
     path::{Path, PathBuf},
-    process::Child,
     sync::Mutex,
     time::Duration,
 };
@@ -38,7 +37,7 @@ struct StartupPlan {
 struct Desktop {
     user_data: PathBuf,
     bootstrap: Mutex<Bootstrap>,
-    backend: Mutex<Option<Child>>,
+    backend: Mutex<Option<backend::Managed>>,
     plan: StartupPlan,
 }
 
@@ -238,7 +237,18 @@ fn setup_window(app: &tauri::AppHandle, user_data: &Path) -> tauri::Result<Webvi
         .data_directory(user_data.join("WebView2"))
         .on_navigation(|url| policy::trusted_url(url))
         .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-        .on_download(|_, _| false)
+        .on_download(|window, _| {
+            // 拒绝一切下载；烟测借此回报“确实被拦截”，避免只看代码。
+            #[cfg(feature = "smoke-test")]
+            {
+                let root = window.state::<Desktop>().user_data.clone();
+                let _ = fs::write(root.join("download-blocked.txt"), "blocked");
+                let _ = window.emit("download-blocked", true);
+            }
+            #[cfg(not(feature = "smoke-test"))]
+            let _ = window;
+            false
+        })
         .on_page_load(|window, payload| {
             #[cfg(feature = "smoke-test")]
             if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
@@ -347,9 +357,9 @@ fn startup(app: &tauri::AppHandle) -> Result<(), String> {
         Some(launch) => launch,
         None => resolve_launch(app)?,
     };
-    let mut child = backend::spawn(&launch, &token, &desktop.user_data)?;
-    if let Err(error) = backend::wait_ready(&mut child, &token, plan.port, plan.timeout) {
-        backend::stop(&mut child);
+    let mut managed = backend::spawn(&launch, &token, &desktop.user_data)?;
+    if let Err(error) = backend::wait_ready(managed.child(), &token, plan.port, plan.timeout) {
+        managed.stop();
         return Err(error);
     }
     {
@@ -361,7 +371,7 @@ fn startup(app: &tauri::AppHandle) -> Result<(), String> {
             reason: String::new(),
         };
     }
-    *desktop.backend.lock().map_err(|_| "后端句柄不可用")? = Some(child);
+    *desktop.backend.lock().map_err(|_| "后端句柄不可用")? = Some(managed);
 
     let handle = app.clone();
     app.run_on_main_thread(move || {
@@ -456,8 +466,8 @@ fn main() {
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
                 if let Ok(mut guard) = app.state::<Desktop>().backend.lock() {
-                    if let Some(mut child) = guard.take() {
-                        backend::stop(&mut child);
+                    if let Some(mut managed) = guard.take() {
+                        managed.stop();
                     }
                 }
                 if let Some(window) = app.get_webview_window("main") {

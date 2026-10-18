@@ -97,6 +97,10 @@ mock replay, observe-only mode, action limits, or emergency stop.
   not replace `cv2`, `numpy`, or the root `PIL` package in `sys.modules`. Mock only the
   OS-facing leaf dependencies needed by that test; otherwise later replay collection
   silently runs production template matching against `MagicMock` objects.
+- OCR-heavy replay tests may request the session-scoped `cached_test_ocr` fixture. It
+  reuses one real OCR backend and memoizes only exact `(shape, dtype, pixels)` inputs,
+  returning independent result copies; distinct screenshots still run through real OCR.
+  Keep this cache in test infrastructure, not production capture or scene recognition.
 - An image-search rectangle must fully contain the template at every valid match
   position. The right/bottom search boundary cannot cut through the template.
 - Realm-raid automatic group change requires both a victory-count increase since the

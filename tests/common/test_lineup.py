@@ -23,6 +23,14 @@ _REGIONAL_FIXTURES = Path(__file__).resolve().parents[1] / "fixtures/regional_de
 _SKIN_FIXTURES = _FIXTURES / "skins"
 
 
+@pytest.fixture(autouse=True)
+def _reuse_ocr_for_identical_replay_frames(
+    monkeypatch: pytest.MonkeyPatch, cached_test_ocr: object,
+) -> None:
+    """相同回放帧复用 OCR；每种不同真实页面仍执行实际识别。"""
+    monkeypatch.setattr("yys.common.lineup.CommonOcr", lambda: cached_test_ocr)
+
+
 def test_soul_soil_contract_confirmation_requires_gear_success_then_contract_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

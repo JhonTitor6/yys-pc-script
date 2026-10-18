@@ -22,6 +22,14 @@ IMAGES = ROOT / "yys" / "daily_activity_rewards" / "images"
 SIZE = (1136, 640)
 
 
+@pytest.fixture(autouse=True)
+def _reuse_ocr_for_identical_replay_frames(
+    monkeypatch: pytest.MonkeyPatch, cached_test_ocr: object,
+) -> None:
+    """相同回放帧复用 OCR；每种不同真实页面仍执行实际识别。"""
+    monkeypatch.setattr("win_util.controller.CommonOcr", lambda: cached_test_ocr)
+
+
 def _image(path: Path) -> np.ndarray:
     """读取裁切后的脱敏测试帧。"""
     image = cv2.imread(str(path))

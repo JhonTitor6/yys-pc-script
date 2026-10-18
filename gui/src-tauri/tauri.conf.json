@@ -1,0 +1,16 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "阴阳师脚本工作台",
+  "version": "1.0.0",
+  "identifier": "com.yys.script-manager.tauri",
+  "build": { "frontendDist": "../build/tauri-frontend" },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [],
+    "security": {
+      "capabilities": ["main"],
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://127.0.0.1:8000; connect-src ipc: http://ipc.localhost http://127.0.0.1:8000 ws://127.0.0.1:8000; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+    }
+  },
+  "bundle": { "active": false, "icon": ["../icon.ico"] }
+}

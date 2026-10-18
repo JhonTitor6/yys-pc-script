@@ -1,6 +1,7 @@
-const API_BASE = 'http://127.0.0.1:8000';
+let API_BASE = 'http://127.0.0.1:8000';
 const LOG_LIMIT = 500;
-const UI_TOKEN = new URLSearchParams(window.location.search).get('token') || '';
+let UI_TOKEN = new URLSearchParams(window.location.search).get('token') || '';
+let desktopReady = !window.desktopBridge?.bootstrap;
 
 const ACTION_META = {
   pause: { label: '暂停', icon: 'pause', className: 'primary' },
@@ -123,6 +124,7 @@ function authHeaders(headers = {}) {
 }
 
 async function requestJson(path, options = {}) {
+  if (!desktopReady) throw new Error('桌面后端尚未就绪');
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: authHeaders(options.headers || {})
@@ -189,7 +191,7 @@ async function apiPostBinary(path, body) {
 
 function eventsWebSocketUrl() {
   const token = UI_TOKEN ? `?token=${encodeURIComponent(UI_TOKEN)}` : '';
-  return `ws://127.0.0.1:8000/ws/events${token}`;
+  return `${API_BASE.replace(/^http/, 'ws')}/ws/events${token}`;
 }
 
 function escapeHtml(value) {
@@ -1537,6 +1539,13 @@ async function init() {
   setTheme(state.theme);
   bindEvents();
   try {
+    if (window.desktopBridge?.bootstrap) {
+      const bootstrap = await window.desktopBridge.bootstrap();
+      if (!bootstrap.ready) throw new Error(bootstrap.reason || '桌面后端尚未就绪');
+      API_BASE = bootstrap.apiBase;
+      UI_TOKEN = bootstrap.token;
+      desktopReady = true;
+    }
     state.scripts = await apiGet('/api/scripts');
     state.selectedScriptId = state.scripts[0]?.script_id || null;
     populateHistoryScriptFilter();

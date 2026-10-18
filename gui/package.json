@@ -12,12 +12,15 @@
     "build:win": "npm run sync:backend && electron-builder --win",
     "build:nsis": "npm run sync:backend && electron-builder --win nsis",
     "build:portable": "npm run sync:backend && electron-builder --win portable",
-    "build": "npm run sync:backend && electron-builder"
+    "build": "npm run sync:backend && electron-builder",
+    "stage:tauri": "node ../scripts/stage-tauri.cjs",
+    "tauri": "tauri"
   },
   "devDependencies": {
     "electron": "latest",
     "electron-builder": "^25.0.0",
-    "electron-devtools-installer": "^4.0.0"
+    "electron-devtools-installer": "^4.0.0",
+    "@tauri-apps/cli": "2.12.2"
   },
   "author": "YYS Script Manager",
   "license": "MIT",
@@ -37,7 +40,8 @@
       "styles.css",
       "package.json",
       "node_modules/cropperjs/dist/cropper.min.js",
-      "icon.ico"
+      "icon.ico",
+      "desktop-bridge.js"
     ],
     "extraResources": [
       {

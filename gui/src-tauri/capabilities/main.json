@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "仅本地工作台主窗口可以调用有限桌面命令及订阅事件。",
+  "local": true,
+  "windows": ["main"],
+  "permissions": [
+    "allow-desktop-bootstrap", "allow-window-action", "allow-is-maximized",
+    "allow-restore-gui-focus", "allow-open-screenshot-directory",
+    "allow-open-image-resource-directory", "core:event:allow-listen", "core:event:allow-unlisten"
+  ]
+}

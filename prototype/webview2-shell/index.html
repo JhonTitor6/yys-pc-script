@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WebView2 Shell POC</title>
+  <style>
+    body { font: 16px Segoe UI, sans-serif; margin: 32px; color: #1d2733; }
+    button { margin: 4px; padding: 8px 12px; }
+    #status { padding: 12px; background: #eef4f2; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h1>WebView2 宿主原型</h1>
+  <p id="status">正在连接宿主…</p>
+  <button onclick="send('ping')">测试双向消息</button>
+  <button onclick="send('minimize')">最小化</button>
+  <button onclick="send('toggle-maximize')">切换最大化</button>
+  <button onclick="send('close')">关闭</button>
+  <script>
+    const status = document.getElementById('status');
+    function send(message) { window.chrome.webview.postMessage(message); }
+    window.chrome.webview.addEventListener('message', event => {
+      if (event.data === 'ping') {
+        status.textContent = '宿主 → 页面：ping；页面 → 宿主：pong';
+        send('pong');
+      } else if (event.data === 'pong') {
+        status.textContent = '宿主与页面的双向消息正常。';
+      }
+    });
+    send('ready');
+  </script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "读取既有发行资源、数据路径及端口归属契约；迁移不得破坏已有行为。"}
+{"file": ".trellis/tasks/10-18-webview2-shell-migration/phase0.md", "reason": "阶段0真实数据路径、独立数据库快照、临时目录风险和未通过门槛。"}
+{"file": ".trellis/tasks/10-18-webview2-shell-migration/phase0-toolchain.md", "reason": "工具链缺失、已核验精确版本、SDK与NSIS缓存边界。"}
+{"file": ".trellis/tasks/10-18-webview2-shell-migration/install-report.md", "reason": "安装会话的实际操作、工具版本、探针验证、环境影响和边界。"}
+{"file": ".trellis/tasks/10-18-webview2-shell-migration/installation-review.md", "reason": "原会话安装后只读验收及剩余迁移决策；不得误认工具就绪等于产品集成完成。"}

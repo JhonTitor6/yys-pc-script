@@ -1,0 +1,91 @@
+{
+  "id": "webview2-shell-migration",
+  "name": "webview2-shell-migration",
+  "title": "使用 Tauri 2 与 Evergreen WebView2 替换 Electron 桌面壳",
+  "description": "阶段0已通过；阶段1 Tauri宿主和静态页面已按用户要求分发给 GPT-6 Astra/medium 新会话。本会话只检查规划，阶段2及后续不自动启动。",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "JhonTitor6",
+  "assignee": "JhonTitor6",
+  "createdAt": "2026-10-18",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "2026-10-18 用户要求“继续，分发阶段一，使用gpt6 astra 中”。新会话 01a14f09-c404-7681-b02e-402844ddbfe3 承担阶段1代码、必要依赖恢复、编译测试及隔离烟测；原会话仍不开发代码。真实后端集成、数据迁移、发行打包和游戏操作不在本阶段范围，完成后检查stage1-report.md。",
+  "meta": {
+    "current_stage": 1,
+    "phase0_gate": "passed",
+    "phase0_report": "phase0.md",
+    "installation_thread": {
+      "thread_id": "01a14ee9-f61e-7d82-bc25-b5f819aa2bf3",
+      "host_id": "local",
+      "model": "gpt-6-luna",
+      "reasoning_effort": "max",
+      "status": "completed_verified",
+      "report": "install-report.md",
+      "callback_thread_id": "01a14ebb-848c-73e3-8c01-5a3cdd91bb1e",
+      "scope": "仅安装和安装验证；原会话仅检查与规划，不进行产品代码开发",
+      "parent_review": "installation-review.md"
+    },
+    "toolchain_gate": "passed",
+    "parent_scope": "inspection_and_planning_only",
+    "phase0_status": "completed",
+    "development_authorized_in_parent": false,
+    "migration_policy": {
+      "approved": true,
+      "source": "current_portable_latest_consistent_snapshot",
+      "destination": "legacy_user_data/config/ui_workbench.db",
+      "preserve_other_databases": true,
+      "merge_databases": false,
+      "overwrite_existing_target": false,
+      "preserve_electron_profile": true,
+      "first_launch_default_keys": [
+        "yys-gui-theme",
+        "yys-gui-nav-collapsed"
+      ],
+      "repeat_preference_reset": false,
+      "executed": false
+    },
+    "stage1_status": "accepted",
+    "stage1_thread": {
+      "thread_id": "01a14f09-c404-7681-b02e-402844ddbfe3",
+      "host_id": "local",
+      "model": "gpt-6-astra",
+      "reasoning_effort": "medium",
+      "status": "accepted",
+      "report": "stage1-report.md",
+      "scope": "仅implement.md阶段1产品代码与必要验证；阶段2及以后不自动执行",
+      "baseline_head": "d11c01f9730c4fa376da7dfaa1988e2a08f43986"
+    },
+    "stage1_acceptance": {
+      "status": "accepted_with_conditions",
+      "accepted_at": "2026-10-18",
+      "report": "stage1-acceptance.md",
+      "head": "d11c01f9730c4fa376da7dfaa1988e2a08f43986",
+      "fixed_findings": [
+        "window-state 写盘节流",
+        "不可见位置回退到主屏",
+        "导航与新窗口负样本"
+      ],
+      "deferred_findings": [
+        "多 DPI 多屏恢复选择策略（阶段2实机验证）",
+        "图片白名单与后端运行时列表对齐",
+        "下载拒绝与真实 Explorer 启动实机验证"
+      ],
+      "evidence": [
+        "build/tauri-stage1-smoke/20261018-213405-296440",
+        "build/tauri-stage1-smoke/20261018-213416-330702"
+      ]
+    }
+  }
+}

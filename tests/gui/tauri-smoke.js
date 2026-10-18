@@ -37,12 +37,20 @@
     let changes = 0;
     const cleanup = bridge.onWindowState(() => changes++);
     await wait(100);
+    // 最大化/还原带系统动画，用有界轮询代替固定等待。
+    const waitFor = async (predicate, timeout = 2000) => {
+      const started = Date.now();
+      while (Date.now() - started < timeout) {
+        if (await predicate()) return true;
+        await wait(50);
+      }
+      return false;
+    };
     await bridge.windowAction('toggle-maximize');
-    await wait(150);
-    check(await bridge.isMaximized(), '最大化');
+    check(await waitFor(() => bridge.isMaximized()), '最大化');
     await bridge.windowAction('toggle-maximize');
-    await wait(150);
-    check(!(await bridge.isMaximized()) && changes > 0, '恢复窗口和定向状态事件');
+    const restoredMaximized = await waitFor(async () => !(await bridge.isMaximized()));
+    check(restoredMaximized && changes > 0, `恢复窗口和定向状态事件（restored=${restoredMaximized}，events=${changes}）`);
     cleanup();
     const previous = changes;
     await bridge.windowAction('close');
@@ -64,6 +72,19 @@
     await wait(300);
     check(location.href === pageUrl && Boolean(document.getElementById('historyList')), '拒绝外部导航');
     check(!window.open(smokeEndpoint + '/evil', '_blank'), '拒绝新窗口');
+    // 产品契约：AC13，下载必须被宿主拦截，用定向事件回报而非只看代码。
+    let settleDownload;
+    const downloadBlocked = new Promise((resolve) => { settleDownload = resolve; });
+    await window.__TAURI__.event.listen('download-blocked', () => settleDownload(true));
+    setTimeout(() => settleDownload(false), 3000);
+    const downloadLink = document.createElement('a');
+    // 跨源 URL 会先被导航拦截，这里用同源本地资源验证下载处理本身。
+    downloadLink.href = './icon.ico';
+    downloadLink.download = 'blocked.ico';
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    check(await downloadBlocked, '拒绝下载');
+    downloadLink.remove();
     check(!location.search.includes('token'), 'URL 不携带 token');
     await post('/smoke/report', {ok: true, checks});
   } catch (error) {

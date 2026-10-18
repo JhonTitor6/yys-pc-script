@@ -9,6 +9,7 @@ import socket
 import subprocess
 import sys
 import threading
+import time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -100,12 +101,77 @@ def run_blocked(executable: Path, root: Path, repo: Path, port: int) -> None:
         (root / "config.json").unlink(missing_ok=True)
 
 
+def run_crash(executable: Path, root: Path, repo: Path, port: int) -> None:
+    """验证宿主被强杀时 Job Object 会回收后端，不留下占端口的孤儿进程。"""
+    config = {
+        "apiBase": f"http://127.0.0.1:{port}",
+        "launch": {
+            "program": sys.executable,
+            "args": [
+                str(Path(__file__).with_name("fake_backend.py")),
+                "--port",
+                str(port),
+                "--root",
+                str(root),
+            ],
+            "cwd": str(repo),
+        },
+    }
+    (root / "config.json").write_text(json.dumps(config), encoding="utf-8")
+    env = {**os.environ, "YYS_TAURI_SMOKE_ROOT": str(root)}
+    try:
+        with (root / "host.log").open("w", encoding="utf-8") as log:
+            host = subprocess.Popen(
+                [str(executable)],
+                cwd=repo,
+                env=env,
+                stdout=log,
+                stderr=log,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            try:
+                deadline = time.monotonic() + 40
+                pid = 0
+                while time.monotonic() < deadline:
+                    pid_file = root / "backend.pid"
+                    if pid_file.exists():
+                        pid = int(pid_file.read_text(encoding="utf-8"))
+                        break
+                    time.sleep(0.2)
+                assert pid, "宿主未拉起后端"
+                time.sleep(1)
+                host.kill()
+                host.wait(timeout=10)
+                deadline = time.monotonic() + 8
+                while time.monotonic() < deadline and pid_alive(pid):
+                    time.sleep(0.2)
+                assert not pid_alive(pid), f"宿主被强杀后后端仍在运行：{pid}"
+                print(
+                    json.dumps(
+                        {
+                            "root": str(root),
+                            "port": port,
+                            "crash_cleanup": True,
+                            "backend_pid": pid,
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+            finally:
+                if host.poll() is None:
+                    host.kill()
+                    host.wait()
+    finally:
+        (root / "config.json").unlink(missing_ok=True)
+
+
 def main() -> None:
     """为本次烟测分配独立目录与端口，验证宿主真实拉起后端后的完整链路。"""
     parser = argparse.ArgumentParser()
     parser.add_argument("executable", type=Path)
     parser.add_argument("--restore", action="store_true", help="验证旧格式离屏窗口恢复")
     parser.add_argument("--blocked", action="store_true", help="验证端口被占用时的失败路径")
+    parser.add_argument("--crash", action="store_true", help="验证宿主被强杀时回收后端")
     args = parser.parse_args()
     executable = args.executable.resolve()
     if b"YYS_TAURI_SMOKE_ONLY" not in executable.read_bytes():
@@ -124,6 +190,9 @@ def main() -> None:
     image.parent.mkdir(parents=True)
     image.write_bytes(b"BM")
     port = free_loopback_port()
+    if args.crash:
+        run_crash(executable, root, repo, port)
+        return
     if args.blocked:
         run_blocked(executable, root, repo, port)
         return

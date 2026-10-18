@@ -116,6 +116,22 @@
       "build/e2e-history-view.png",
       "build/e2e-screenshot-library.png",
       "build/e2e-release-host2.png"
+    ],
+    "stage3_status": "completed",
+    "stage3_report": "stage3-report.md",
+    "stage3_migration": {
+      "source": "旧 portable 库（迁移时重新只读快照）",
+      "source_sha256": "651c5c9aaaf2e0b38f4c1dee275b583444a030094f6aae208f5b387a07f286d8",
+      "target": "%APPDATA%/yys-script-manager/config/ui_workbench.db",
+      "target_sha256": "8f487d78bfae90650c7aa00bb7d7fe8e03f1bb18d23ffc3a61454a7a4275e7ee",
+      "quick_check": "ok",
+      "runs": 5,
+      "run_logs": 26,
+      "repeat_start": "target-exists 且哈希不变"
+    },
+    "stage3_evidence": [
+      "build/e2e-migrated-history.png",
+      "build/e2e-theme-persisted.png"
     ]
   }
 }

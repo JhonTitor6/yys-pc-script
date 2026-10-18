@@ -19,6 +19,11 @@ from ui_backend.screenshots import MAX_SCREENSHOT_BYTES, ScreenshotError, Screen
 from ui_backend.scripts.registry import ScriptRegistry
 from ui_backend.storage.database import Database
 from ui_backend.storage.repositories import Storage
+from ui_backend.storage.workbench_db import (
+    legacy_source,
+    migrate_legacy_database,
+    resolve_db_path,
+)
 
 
 ALLOWED_ORIGINS = [
@@ -58,7 +63,9 @@ def create_app(
             return JSONResponse({"detail": "UI token 无效"}, status_code=403)
         return await call_next(request)
 
-    database = Database(db_path or Path("config") / "ui_workbench.db")
+    resolved_db_path = resolve_db_path(db_path)
+    migration = migrate_legacy_database(resolved_db_path, legacy_source())
+    database = Database(resolved_db_path)
     database.initialize()
     storage = Storage(database)
     storage.runs.mark_unfinished_as_error("后端重启，未完成运行已终止")
@@ -88,6 +95,8 @@ def create_app(
     app.state.image_resources = image_resources
     app.state.screenshots = screenshots
     app.state.api_token = resolved_token
+    app.state.db_path = resolved_db_path
+    app.state.migration = migration
 
     @app.on_event("startup")
     async def start_scheduler() -> None:

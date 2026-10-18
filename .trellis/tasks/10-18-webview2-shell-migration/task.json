@@ -87,23 +87,35 @@
         "build/tauri-stage1-smoke/20261018-213416-330702"
       ]
     },
-    "stage2_status": "verified",
+    "stage2_status": "completed",
     "stage2_report": "stage2-report.md",
     "stage2_e2e": {
-      "verified_at": "2026-10-18T21:53:00+08:00",
-      "real_backend": "python.exe -m ui_backend.main",
+      "verified_at": "2026-10-18T22:29:00+08:00",
+      "real_backend": "python.exe -m ui_backend.main 与发布版 yys-backend.exe",
       "data_isolation": "副本库停用定时工作流，原库只读并按 SHA-256 校验恢复",
-      "open_items": [
-        "打包映射未构建验证（阶段4）",
-        "异常退出遗留后端需阶段3 Job Object",
-        "下载拒绝仅代码审查",
-        "真实消息框未实机确认"
+      "closed_items": [
+        "打包映射与发布版资源目录",
+        "下载拦截",
+        "宿主崩溃后的后端回收（Job Object）",
+        "原生错误框与退出码",
+        "真实历史页与截图库展示"
+      ],
+      "deferred_to_stage4": [
+        "NSIS 与单文件 portable 产物及体积门槛",
+        "Windows 10 实机与多屏多 DPI 矩阵",
+        "真实数据迁移（阶段3）",
+        "真实 Explorer 打开行为"
       ]
     },
     "stage2_evidence": [
-      "build/tauri-smoke/20261018-214733-385214",
-      "build/tauri-smoke/20261018-214745-943576",
-      "build/tauri-smoke/20261018-214754-931291"
+      "build/tauri-smoke/20261018-220512-676312",
+      "build/tauri-smoke/20261018-220526-130028",
+      "build/tauri-smoke/20261018-220534-710287",
+      "build/tauri-smoke/20261018-220535-473923",
+      "build/e2e-failure-dialog.png",
+      "build/e2e-history-view.png",
+      "build/e2e-screenshot-library.png",
+      "build/e2e-release-host2.png"
     ]
   }
 }

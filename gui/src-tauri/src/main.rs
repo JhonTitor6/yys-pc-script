@@ -2,6 +2,7 @@
 
 mod backend;
 mod policy;
+mod runtime;
 #[cfg(feature = "smoke-test")]
 mod smoke;
 mod window_state;
@@ -316,6 +317,7 @@ fn resolve_launch(app: &tauri::AppHandle) -> Result<backend::Launch, String> {
 
 /// 探测端口、启动受管后端、等待鉴权就绪，全部在后台线程完成。
 fn startup(app: &tauri::AppHandle) -> Result<(), String> {
+    runtime::ensure_available()?;
     let desktop = app.state::<Desktop>();
     let plan = desktop.plan.clone();
     // 烟测旧模式：假后端由测试器预先启动，直接开窗。

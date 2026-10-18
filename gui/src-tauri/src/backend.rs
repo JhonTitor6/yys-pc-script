@@ -105,24 +105,60 @@ impl Managed {
         &mut self.child
     }
 
-    /// 主动终止本宿主创建的后端。
+    /// 主动终止本宿主创建的后端，最多等待 5 秒。
     pub fn stop(&mut self) {
         let _ = self.child.kill();
-        let _ = self.child.wait();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if matches!(self.child.try_wait(), Ok(Some(_))) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        // 仍未退出时交给 Job Object：Managed 释放句柄会终止剩余进程。
+        eprintln!("后端未在 5 秒内退出，交由 Job Object 回收");
     }
+}
+
+/// 后端日志位置；启动失败时可从这里看到具体原因。
+pub fn log_path(user_data: &Path) -> PathBuf {
+    user_data.join("logs").join("backend.log")
 }
 
 /// 启动受管后端；页面永远拿不到这条启动路径。
 pub fn spawn(launch: &Launch, token: &str, user_data: &Path) -> Result<Managed, String> {
+    let log_file = {
+        let path = log_path(user_data);
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .ok()
+    };
+    let (stdout, stderr) = match log_file {
+        Some(file) => (
+            Stdio::from(file.try_clone().map_err(|e| e.to_string())?),
+            Stdio::from(file),
+        ),
+        None => (Stdio::null(), Stdio::null()),
+    };
     let child = Command::new(&launch.program)
         .args(&launch.args)
         .current_dir(&launch.cwd)
         .env("YYS_UI_TOKEN", token)
         .env("YYS_USER_DATA_DIR", user_data)
         .env("PYTHONIOENCODING", "utf-8")
+        // 数据库固定落在永久用户目录，不再依赖 cwd 相对定位。
+        .env(
+            "YYS_WORKBENCH_DB_PATH",
+            user_data.join("config").join("ui_workbench.db"),
+        )
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(stdout)
+        .stderr(stderr)
         .spawn()
         .map_err(|error| format!("启动后端失败：{error}"))?;
     // Job 创建失败不影响正常退出路径，只是少了宿主崩溃时的兜底回收。
@@ -358,6 +394,31 @@ mod tests {
             .unwrap();
         let error = wait_ready(&mut child, "token", port, Duration::from_secs(5)).unwrap_err();
         assert!(error.contains("退出"), "{error}");
+    }
+
+    #[test]
+    fn wait_ready_times_out_when_backend_never_answers() {
+        // 产品契约：AC4，端口上只有不响应的进程时必须超时失败，不能假就绪。
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                drop(stream);
+            }
+        });
+        let mut child = Command::new("cmd")
+            .args(["/C", "ping", "-n", "6", "127.0.0.1"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let started = Instant::now();
+        let error = wait_ready(&mut child, "token", port, Duration::from_millis(800)).unwrap_err();
+        assert!(error.contains("超时"), "{error}");
+        assert!(started.elapsed() < Duration::from_secs(5));
+        let _ = child.kill();
+        let _ = child.wait();
     }
 
     #[test]

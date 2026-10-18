@@ -360,7 +360,10 @@ fn startup(app: &tauri::AppHandle) -> Result<(), String> {
     let mut managed = backend::spawn(&launch, &token, &desktop.user_data)?;
     if let Err(error) = backend::wait_ready(managed.child(), &token, plan.port, plan.timeout) {
         managed.stop();
-        return Err(error);
+        return Err(format!(
+            "{error}（后端日志：{}）",
+            backend::log_path(&desktop.user_data).display()
+        ));
     }
     {
         let mut bootstrap = desktop.bootstrap.lock().map_err(|_| "启动状态不可用")?;

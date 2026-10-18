@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
 import time
 from datetime import datetime
@@ -14,6 +15,31 @@ from starlette.websockets import WebSocketDisconnect
 from ui_backend.app import create_app
 from ui_backend.events.hub import EventHub
 from ui_backend.models import RunRequest, RunSourceType, RunStatus
+from ui_backend.scripts.registry import ScriptRegistry
+
+
+def test_daily_workflow_draft_round_trips_without_automatically_starting_steps(tmp_path: Path) -> None:
+    """产品契约：六步可保存审阅，创建禁用草案不启动真实游戏；预检查由调度器独立验证。"""
+    source = Path(__file__).resolve().parents[2] / "docs/examples/daily-routine-workflow.json"
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    assert payload["enabled"] is False
+    assert payload["trigger_type"] == "manual"
+    app = create_app(db_path=tmp_path / "daily-draft.db")
+    with TestClient(app) as client:
+        response = client.post("/api/workflows", json=payload)
+        assert response.status_code == 200
+        workflow = next(item for item in client.get("/api/workflows").json()
+                        if item["id"] == response.json()["id"])
+        assert [step["script_id"] for step in workflow["steps"]] == [
+            "daily_collect", "realm_foster", "fengmo", "regional_demon_boss",
+            "soul_soil", "daily_activity_rewards",
+        ]
+        assert workflow["steps"][4]["config"] == {
+            "max_battle_count": 10, "lineup_group": "御魂", "lineup_name": "魂土",
+        }
+        ids = {item.script_id for item in ScriptRegistry().list_scripts()}
+        assert all(step["script_id"] in ids for step in workflow["steps"])
+        assert client.get("/api/runs").json() == []
 
 
 class _DummyScript:

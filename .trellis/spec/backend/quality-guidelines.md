@@ -49,6 +49,7 @@ mock replay, observe-only mode, action limits, or emergency stop.
 - 队伍预设点击应用后可能不出现确认框；只有同一张新鲜预设页面同时包含
   “全队正在使用预设御魂和阴阳术”与“替换阴阳师契灵成功”时才可直接成功。
   OCR 搜索区域必须包含完整首字；单条提示、旧提示或离开预设页的提示均不成立。
+- 阵容 OCR 只允许完整、可操作行参与全名唯一匹配。底部被操作栏遮住的“魂王”可能被识别成“魂土”；不能把残缺文字当成重复名称并静默选择首行，真实可见重名仍应失败。
 - 地域鬼王单次脚本只能在真实模板依次确认地图、固定目标详情和挑战按钮后发送一次挑战；
   准备与战斗阶段零输入，首次已布防结算最多计数一次，奖励只清理不计数，返回已核验详情页后
   才能正常结束。入口、目标、未知画面、超时或保险丝失败必须抛业务错误，避免运行管理器把正常
@@ -156,6 +157,9 @@ mock replay, observe-only mode, action limits, or emergency stop.
   window is the foreground window.
 - A first frame with no pixels or standard deviation below `1.0` is invalid. Reject it
   before constructing a video writer or starting the input monitor.
+- A courtyard state variant used by a business script must require both its skin-specific
+  landmark and a shared courtyard marker. Keep each existing template threshold; add a
+  sanitized live fixture when a real skin or camera scale misses the original template.
 - All runtime input must pass through the injected `GameEnvironment`, including scene
   navigation and `ESC`/`ENTER`.
 - Observe-only mode records planned logical actions and sends no input to the delegate.
@@ -631,6 +635,14 @@ The scheduler also owns these invariants:
   timezone handling and invalid-schedule errors.
 - Tests must cover next-run calculation, priority ties, step hydration, and the
   single-slot guarantee.
+- 正常脚本步骤只有明确 success 才算成功；用户 stopped 必须中断后续步骤，不受
+  continue/retry/skip 失败策略覆盖。manual 仍中断；skipped 可推进但不能记全部成功。
+- `run_until_time` 只有本次调度器实际发出的限时停止才按该步骤正常完成；用户提前停止不推进。
+  不通过步骤类型或事后时间推测停止原因；公开 `run_step` 仍返回原运行 ID 或 None。
+- 首步执行前核验生产注册表中全部业务脚本存在且类能导入，同时检查执行器提供 wait 和
+  run_status。wait 未完成、终态缺失或仍 running/paused/queued 时不得启动下一步。
+- 日常六步草案见 `docs/examples/daily-routine-workflow.json`，默认 disabled/manual。
+  未实现步骤不得注册空壳伪造可用；单人魂土配置为 10 次及“御魂／魂土”，与旧组队脚本分开。
 
 ### 5. Failure Evidence
 
@@ -695,6 +707,63 @@ mandatory for implementation:
 - Contract tests must cover the exact action matrix, schema-driven payload keys, the
   three Abyss damage limits' ranges, payload keys, and per-enemy isolation, the
   `applied: false` behavior, and configuration locking until the run reaches a terminal state.
+
+## 场景：独立日常脚本与录制边界（2026-10-17）
+
+### 1. 适用范围
+
+新增日常脚本、共享预设皮肤兼容，以及通过工作流组成一条龙时适用。
+
+### 2. 接口
+
+- `RealmFosterScript(script_name="realm_foster", config=None, env=None).run()`。
+- `FengmoScript(script_name="fengmo", config=None, env=None).run()`；配置键为 `lineup_group`、`lineup_name`，录制默认值分别为“逢魔”“通用”。
+- `GET /api/scripts` 中每个独立流程拥有自己的注册项；动态模块同时登记 `build_backend.spec` 的 `YYS_MODULES`。
+
+### 3. 契约
+
+- 业务步骤保持独立，只由现有工作流串联，不另写一个包揽全部业务的脚本。
+- 寄养在“好友”“跨区”两个列表中共同选择可进入的太鼓，按亮勾玉星级从高到低，同星级保留列表顺序；式神选当前列表左边第一个。不能擅自筛白蛋、等级或固定好友。
+- 六个勾玉槽位不代表六星；录制的太鼓实际四亮两灰。逐槽验证亮／灰模板及连续性；模板不确定时失败。
+- 逢魔独立于狭间暗域。按用户确认，结算、领奖复用 `YYSBaseScript` 通用回调和既有图片／“点击屏幕继续”识别，不再因通用步骤缺少新录制而在集结页人为阻断。业务计数由逢魔本地防重。
+- 集结和战斗持续截图且零输入；通用战斗标记也可能命中集结页，因此已确认的逢魔集结页优先。结算后按返回、重新截图识别 `to_home`、确认庭院的顺序完成，只有最终确认后 `flow_complete=true`。
+- 逢魔倾斜次数小字已证实 OCR 不稳定；当前使用真实 4/4、0/4 模板，不猜未录的中间状态。
+- 共享预设的新面板、边缘高亮及同行应用图标采用真实模板补充，不降低旧阈值；具名确认须完整匹配“即将更换式神…的预设御魂”，按 OCR 行、列排序拼接，仍在本次应用后才接受。
+- 成功提示动画可能叠字；必须等待完整“装备御魂成功”，不能把动画期间近似文字或单条契灵提示当成功。
+- 截图直接通过环境获取，失败不复用旧缓存；有效原始帧同步至 `image_finder.screenshot_cache` 供失败证据使用。
+
+### 4. 验证与错误
+
+| 条件 | 结果 |
+|---|---|
+| 无已确认可用太鼓 | `FOSTER_NO_TAIKO`，不选其他卡 |
+| 名称或星级不确定、候选已改变 | 明确失败，不自动降级 |
+| 选择后只看到确认按钮点击 | 尚未完成，继续核验自己的寄养倒计时 |
+| 逢魔进入集结 | 持续识别并零输入，等待已识别结算 |
+| 重复结算及多层奖励 | 复用通用处理清理，一场战斗只计一次 |
+| 已点返回或 to_home，但庭院未确认 | `flow_complete=false`，不能报告完成 |
+| 截图失败、尺寸比例不符 | 明确失败，不继续使用缓存输入 |
+| 观察或用户停止 | 不发真实输入，不推进后续业务步骤 |
+
+### 5. 样例
+
+- 正确：两个列表扫描后重新核验最佳太鼓，看到本人寄养倒计时再回庭院。
+- 基础：未实机验证的脚本保持实验分类，列明跨区和其他星级样本缺口。
+- 错误：找到首张太鼓立即寄养，或把进入集结当作逢魔完成。
+
+### 6. 回归
+
+`pytest yys/realm_foster yys/fengmo tests/common/test_lineup.py tests/ui_backend/test_script_registry.py`。
+断言覆盖真实模板、四亮两灰、跨列表星级排序、候选复验、观察停止、独立注册、打包清单、具名确认和旧阵容行为。
+
+### 7. 错误与正确示例
+
+```python
+# 错误：屏幕上有六个槽位，就把它当作六星。
+stars = 6
+# 正确：验证每个槽位的亮／灰形态，未知则停止。
+stars = script._star_count(frame)
+```
 
 ## Scenario: Windows Release Packaging Contract
 

@@ -1,0 +1,16 @@
+{
+  "name": "每日一条龙",
+  "group_name": "日常",
+  "enabled": false,
+  "trigger_type": "manual",
+  "trigger_config": {},
+  "failure_policy": "stop",
+  "steps": [
+    {"sort_order": 1, "step_type": "run_script", "script_id": "daily_collect", "config": {}, "condition": {}, "retry_count": 0, "failure_policy": "inherit"},
+    {"sort_order": 2, "step_type": "run_script", "script_id": "realm_foster", "config": {}, "condition": {}, "retry_count": 0, "failure_policy": "inherit"},
+    {"sort_order": 3, "step_type": "run_script", "script_id": "fengmo", "config": {"lineup_group": "逢魔", "lineup_name": "通用"}, "condition": {}, "retry_count": 0, "failure_policy": "inherit"},
+    {"sort_order": 4, "step_type": "run_script", "script_id": "regional_demon_boss", "config": {}, "condition": {}, "retry_count": 0, "failure_policy": "inherit"},
+    {"sort_order": 5, "step_type": "run_script", "script_id": "soul_soil", "config": {"max_battle_count": 10, "lineup_group": "御魂", "lineup_name": "魂土"}, "condition": {}, "retry_count": 0, "failure_policy": "inherit"},
+    {"sort_order": 6, "step_type": "run_script", "script_id": "daily_activity_rewards", "config": {}, "condition": {}, "retry_count": 0, "failure_policy": "inherit"}
+  ]
+}

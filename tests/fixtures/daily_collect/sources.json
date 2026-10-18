@@ -1,0 +1,26 @@
+{
+  "recording_id": "20261018T024140Z-08a314c0",
+  "client_size": [
+    1136,
+    640
+  ],
+  "scenes": {
+    "home_start.png": "事件 1 点击前；账号区域、公告和资源余额已遮盖。",
+    "tasks_ready.png": "事件 2 点击前；助手侧栏与资源余额已遮盖。",
+    "claim_success_popup.png": "事件 3 点击前；账号、签数、奖励卡正文、里程提示及资源余额已遮盖。",
+    "tasks_success.png": "事件 3 点击后；助手侧栏与资源余额已遮盖。",
+    "tasks_completed.png": "事件 4 点击后；助手侧栏与资源余额已遮盖。",
+    "home_end.png": "MP4 约 13.8 秒稳定庭院帧；账号区域、公告和资源余额已遮盖。"
+  },
+  "templates": {
+    "home_entry.png": "原始事件帧裁切框 (684, 354, 730, 401)",
+    "task_title.png": "原始事件帧裁切框 (207, 14, 450, 75)",
+    "collect_button.png": "原始事件帧裁切框 (964, 497, 1115, 635)",
+    "success_popup_title.png": "原始事件帧裁切框 (228, 14, 455, 84)",
+    "success_banner.png": "原始事件帧裁切框 (228, 14, 486, 82)",
+    "completed_stamp.png": "原始事件帧裁切框 (883, 226, 987, 301)",
+    "home_button.png": "原始事件帧裁切框 (77, 10, 128, 60)",
+    "home_lantern.png": "原始事件帧裁切框 (570, 104, 646, 190)",
+    "home_lantern_sakura.png": "2026-10-18 实机当前庭院裁切框 (410, 85, 485, 190)；账号与公告已遮盖"
+  }
+}

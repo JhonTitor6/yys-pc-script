@@ -38,9 +38,21 @@ class SchedulerService:
         _run_step_with_policy 返回：
         - True：步骤成功，继续下一步；
         - False：步骤未成功（error + continue/skip 策略），继续后续步骤；
-        - None：人工介入（manual），中断后续步骤（AC13：等待关联重试）。
+        - None：人工介入或用户停止，中断后续步骤。
         """
         workflow_id = int(workflow["id"])
+        registry = getattr(self._run_manager, "registry", None)
+        for step in workflow["steps"]:
+            if step["step_type"] == WorkflowStepType.WAIT_DURATION.value:
+                continue
+            if not callable(getattr(self._run_manager, "wait", None)):
+                raise RuntimeError("运行管理器缺少等待接口，不能确认步骤完成")
+            if not callable(getattr(self._run_manager, "run_status", None)):
+                raise RuntimeError("运行管理器缺少终态查询接口，不能确认步骤完成")
+            if registry is not None:
+                script_id = str(step.get("script_id") or "")
+                registry.get(script_id)
+                registry.load_class(script_id)
         workflow_success = True
         for step in workflow["steps"]:
             step_outcome = self._run_step_with_policy(workflow_id, workflow, step)
@@ -53,11 +65,16 @@ class SchedulerService:
 
     def run_step(self, workflow_id: int, step: dict[str, Any]) -> int | None:
         """执行单个工作流步骤。"""
+        run_id, _ = self._start_step(workflow_id, step)
+        return run_id
+
+    def _start_step(self, workflow_id: int, step: dict[str, Any]) -> tuple[int | None, bool]:
+        """启动步骤，额外返回是否由本次调度器发出了限时停止。"""
         step_type = str(step["step_type"])
         if step_type == WorkflowStepType.WAIT_DURATION.value:
             condition = step.get("condition", {})
             sleep(float(condition.get("seconds", 0)))
-            return None
+            return None, False
 
         seconds_until_stop: float | None = None
         if step_type == WorkflowStepType.RUN_UNTIL_TIME.value:
@@ -78,17 +95,20 @@ class SchedulerService:
             retry_count=int(step.get("attempt", 0)),
         )
         run_id = self._run_manager.start(request)
+        stopped_by_schedule = False
 
         if seconds_until_stop is not None and seconds_until_stop <= 0:
             self._run_manager.stop(run_id)
+            stopped_by_schedule = True
         elif seconds_until_stop is not None:
             wait = getattr(self._run_manager, "wait", None)
             if callable(wait):
                 finished = wait(run_id, timeout=seconds_until_stop)
                 if not finished:
                     self._run_manager.stop(run_id)
+                    stopped_by_schedule = True
 
-        return run_id
+        return run_id, stopped_by_schedule
 
     def preview_workflow(self, workflow: dict[str, Any]) -> dict[str, Any]:
         """返回工作流的调度预览，不修改业务执行状态。"""
@@ -241,7 +261,7 @@ class SchedulerService:
         workflow_id: int,
         workflow: dict[str, Any],
         step: dict[str, Any],
-    ) -> bool:
+    ) -> bool | None:
         """执行步骤并按策略重试、跳过或停止。"""
         policy = self._normalized_policy(step.get("failure_policy"), workflow.get("failure_policy"))
         max_retries = int(step.get("retry_count", 0) or 0) if policy == "retry" else 0
@@ -250,11 +270,17 @@ class SchedulerService:
             step_attempt = dict(step)
             step_attempt["attempt"] = attempts
             self._publish_step_event(workflow_id, step, "running", None, attempts)
-            run_id = self.run_step(workflow_id=workflow_id, step=step_attempt)
+            run_id, stopped_by_schedule = self._start_step(workflow_id=workflow_id, step=step_attempt)
             wait = getattr(self._run_manager, "wait", None)
-            if run_id is not None and callable(wait):
-                wait(run_id, timeout=None)
+            if run_id is not None:
+                if not callable(wait):
+                    raise RuntimeError("运行管理器缺少等待接口，不能确认步骤完成")
+                if not wait(run_id, timeout=None):
+                    raise RuntimeError(f"运行等待未完成，编排已中断: {run_id}")
                 status = self._run_status(run_id)
+                if status == RunStatus.STOPPED.value and not stopped_by_schedule:
+                    self._publish_step_event(workflow_id, step, "stopped", run_id, attempts)
+                    return None
                 if status == RunStatus.MANUAL.value:
                     # 人工接管（AC13）：原 run 不可变，中断后续步骤；
                     # 关联重试的新 run 独立记录结果，成功后由用户/后续执行推进。
@@ -266,9 +292,16 @@ class SchedulerService:
                         attempts,
                     )
                     return None
-                if status != RunStatus.ERROR.value:
+                if status == RunStatus.SUCCESS.value or (
+                    status == RunStatus.STOPPED.value and stopped_by_schedule
+                ):
                     self._publish_step_event(workflow_id, step, "success", run_id, attempts)
                     return True
+                if status == RunStatus.SKIPPED.value:
+                    self._publish_step_event(workflow_id, step, "skipped", run_id, attempts)
+                    return False
+                if status != RunStatus.ERROR.value:
+                    raise RuntimeError(f"未确认有效运行终态，编排已中断: {run_id}, status={status}")
                 self._publish_step_event(workflow_id, step, "error", run_id, attempts)
                 if attempts < max_retries:
                     attempts += 1

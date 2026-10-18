@@ -18,7 +18,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="单次运行游戏脚本；默认观察模式，不向游戏发送输入",
     )
-    parser.add_argument("script_id", choices=["realm_raid", "regional_demon_boss"], help="要运行的脚本")
+    parser.add_argument("script_id", choices=[
+        "realm_raid", "regional_demon_boss", "daily_collect", "realm_foster",
+        "fengmo", "soul_soil", "daily_activity_rewards",
+    ], help="要运行的脚本")
     parser.add_argument("--execute", action="store_true", help="实际发送输入")
     parser.add_argument("--window-title", default="阴阳师", help="目标窗口标题片段")
     parser.add_argument("--timeout-seconds", type=float, default=180.0)
@@ -27,8 +30,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-battles",
         type=int,
-        default=9,
-        help="结界突破最大战斗次数；地域鬼王固定挑战一次并忽略此参数",
+        default=None,
+        help="结界突破默认9次，单人魂土默认10次；其他脚本忽略此参数",
     )
     parser.add_argument(
         "--skip-quit-three",
@@ -129,26 +132,41 @@ def run_command(args: argparse.Namespace) -> int:
                 args.script_id,
                 env=guarded_env,
                 config={
-                    "max_battle_count": args.max_battles,
+                    "max_battle_count": 9 if args.max_battles is None else args.max_battles,
                     "quit_3_times_config": not args.skip_quit_three,
                 },
             )
-        else:
+        elif args.script_id == "regional_demon_boss":
             from yys.regional_demon_boss.regional_demon_boss_script import RegionalDemonBossScript
 
             # 地域鬼王固定挑战一次，结界突破专属参数不改变此分支。
             script = RegionalDemonBossScript(args.script_id, env=guarded_env, config={})
+        else:
+            from ui_backend.scripts.registry import ScriptRegistry
+
+            config = (
+                {"max_battle_count": 10 if args.max_battles is None else args.max_battles}
+                if args.script_id == "soul_soil" else {}
+            )
+            script_class = ScriptRegistry().load_class(args.script_id)
+            script = script_class(args.script_id, env=guarded_env, config=config)
         script.set_run_guard(guard)
         if not args.execute and args.script_id == "realm_raid":
             # 旧结界突破观察模式不做入口导航；地域鬼王由自身环境状态决定。
             script.entry_scene = None
         monitor.start()
         script.run()
+        guard_state = guard.snapshot()
+        script_state = script.get_state_snapshot()
+        if isinstance(guard_state, dict) and guard_state.get("stop_reason") is not None:
+            raise RuntimeError(f"保险丝已停止，不能报告完成: {guard_state['stop_reason']}")
+        if args.execute and isinstance(script_state, dict) and script_state.get("flow_complete") is False:
+            raise RuntimeError("脚本尚未确认完整结束，不能报告完成")
         summary = {
             "mode": "execute" if args.execute else "observe",
-            "guard": guard.snapshot(),
+            "guard": guard_state,
             "planned_actions": len(guarded_env.action_records),
-            "script": script.get_state_snapshot(),
+            "script": script_state,
             "auto_restart": False,
         }
     except KeyboardInterrupt:
@@ -157,6 +175,9 @@ def run_command(args: argparse.Namespace) -> int:
         exit_code = 130
     except Exception as exc:
         print(f"脚本运行失败: {exc}", file=sys.stderr)
+        print(f"保险丝状态: {guard.snapshot()}", file=sys.stderr)
+        if script is not None:
+            print(f"脚本状态: {script.get_state_snapshot()}", file=sys.stderr)
         exit_code = 1
     finally:
         try:

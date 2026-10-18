@@ -23,6 +23,84 @@ _REGIONAL_FIXTURES = Path(__file__).resolve().parents[1] / "fixtures/regional_de
 _SKIN_FIXTURES = _FIXTURES / "skins"
 
 
+def test_soul_soil_contract_confirmation_requires_gear_success_then_contract_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """产品契约：单人魂土录制先证实装备成功，再确认契灵并证实替换成功。"""
+    root = _FIXTURES.parent / "soul_soil"
+    frames = [Image.open(root / name).convert("RGB") for name in (
+        "shikigami_presets.jpg", "gear_confirmation.png",
+        "contract_confirmation.png", "contract_result.png",
+    )]
+    index = [0]
+    env = MockEnvironment()
+    monkeypatch.setattr(env, "capture_screen", lambda: frames[index[0]])
+    original = env.left_click
+
+    def click(x: int, y: int) -> None:
+        original(x, y)
+        index[0] = min(index[0] + 1, 3)
+
+    monkeypatch.setattr(env, "left_click", click)
+    LineupSwitcher(env).switch("御魂", "魂土")
+    env.action_log.assert_click_count(3)
+    assert index[0] == 3
+
+
+def test_named_confirmation_from_fengmo_recording_keeps_two_click_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """产品契约：逢魔子任务，共享预设新具名确认仍需新鲜确认和成功提示。"""
+    root = Path(__file__).resolve().parents[1] / "fixtures/fengmo"
+    names = ["lineup_preset.png", "lineup_confirm.png", "lineup_success_stable.png"]
+    frames = [Image.open(root / name).convert("RGB") for name in names]
+    index = [0]
+    env = MockEnvironment()
+    monkeypatch.setattr(env, "capture_screen", lambda: frames[index[0]])
+    original = env.left_click
+
+    def click(x: int, y: int) -> None:
+        original(x, y)
+        index[0] = min(index[0] + 1, 2)
+
+    monkeypatch.setattr(env, "left_click", click)
+    switcher = LineupSwitcher(env)
+    switcher.switch("逢魔", "通用")
+    env.action_log.assert_click_count(2)
+    assert index[0] == 2
+
+
+def test_named_confirmation_rejects_truncated_or_unrelated_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """产品契约：新分支不能把缺首尾或其他确认提示当作阵容应用确认。"""
+    switcher = LineupSwitcher(MockEnvironment())
+    frame = np.zeros((640, 1136, 3), dtype=np.uint8)
+    for text in ("即将更换式神", "纺愿缘结神的预设御魂", "即将更换式神的预设御魂", "确定离开吗"):
+        monkeypatch.setattr(switcher, "_labels", lambda *_: [(500, 270, text, 0.99)])
+        assert not switcher._confirmation_dialog(frame)
+
+
+def test_named_skin_highlight_rejects_other_groups() -> None:
+    """产品契约：新皮肤的边缘高亮只标记逢魔，不能把其他分组当成已选。"""
+    root = Path(__file__).resolve().parents[1] / "fixtures/fengmo"
+    image = cv2.resize(cv2.imread(str(root / "lineup_preset.png")), (1136, 640))
+    switcher = LineupSwitcher(MockEnvironment())
+    assert switcher._group_selected(image, (1037, 220))
+    assert all(not switcher._group_selected(image, (1037, y))
+               for y in (96, 158, 283, 345, 407, 469, 530))
+
+
+def test_overlapping_success_animation_does_not_count_as_complete_prompt() -> None:
+    """产品契约：动画期间两条提示叠字不算完整装备成功，等待后续稳定帧。"""
+    root = Path(__file__).resolve().parents[1] / "fixtures/fengmo"
+    switcher = LineupSwitcher(MockEnvironment())
+    unstable = cv2.resize(cv2.imread(str(root / "lineup_success.png")), (1136, 640))
+    stable = cv2.resize(cv2.imread(str(root / "lineup_success_stable.png")), (1136, 640))
+    assert switcher._text_point(unstable, "toast", "装备御魂成功") is None
+    assert switcher._text_point(stable, "toast", "装备御魂成功") is not None
+
+
 def _replay(initial: str = "home") -> SceneReplayEnvironment:
     return SceneReplayEnvironment(str(_FIXTURES), str(_FIXTURES / "fixture.json"), initial)
 
@@ -94,15 +172,64 @@ def test_skin_entry_matching_and_collapsed_menu_recovery(monkeypatch: pytest.Mon
 
 
 def test_verified_home_allows_fixed_menu_button_without_dynamic_background() -> None:
-    """产品契约：参数只放宽已确认庭院的固定菜单按钮，不放宽未知页面。"""
-    menu = Image.open("yys/common/images/lineup/home_menu_expand.png").convert("RGB")
-    frame = Image.new("RGB", (1136, 640))
-    frame.paste(menu, (1047, 451))
-    image = cv2.cvtColor(np.asarray(frame), cv2.COLOR_RGB2BGR)
+    """产品契约：当前庭院底栏展开标记可见时，已确认庭院才返回其位置。"""
+    image = cv2.imread(str(_SKIN_FIXTURES / "home_day_current.png"))
     switcher = LineupSwitcher(MockEnvironment())
 
     assert switcher._home_menu_expand_point(image, home_verified=False) is None
-    assert switcher._home_menu_expand_point(image, home_verified=True) == (1073, 482)
+    assert switcher._home_menu_expand_point(image, home_verified=True) == (1065, 570)
+
+
+def test_verified_home_prefers_real_bottom_scroll_over_unrelated_right_arrow() -> None:
+    """产品契约：底栏滚动控件与兼容展开标记同屏时，优先返回滚动控件。"""
+    image = np.zeros((640, 1136, 3), dtype=np.uint8)
+    scroll = cv2.imread("yys/common/images/lineup/home_menu_scroll_collapsed.png")
+    expand = cv2.imread("yys/common/images/lineup/home_menu_expand.png")
+    scroll_height, scroll_width = scroll.shape[:2]
+    expand_height, expand_width = expand.shape[:2]
+    scroll_left, scroll_top = 1020, 520
+    image[scroll_top:scroll_top + scroll_height,
+          scroll_left:scroll_left + scroll_width] = scroll
+    image[451:451 + expand_height, 1047:1047 + expand_width] = expand
+    switcher = LineupSwitcher(MockEnvironment())
+
+    assert switcher._match(image, "home_menu_expand") is not None
+    assert switcher._match(image, "home_menu_scroll_collapsed") is not None
+    point = switcher._home_menu_expand_point(image, home_verified=True)
+    assert point == (
+        scroll_left + scroll_width // 2,
+        scroll_top + scroll_height // 2,
+    )
+    assert switcher._home_menu_expand_point(image, home_verified=False) is None
+
+
+def test_shikigami_heading_waits_for_preset_control_before_click(monkeypatch: pytest.MonkeyPatch) -> None:
+    """产品契约：实机转场标题先出现时，须重新截图等预设按钮，不能用首帧判缺失。"""
+    env = MockEnvironment()
+    switcher = LineupSwitcher(env)
+    switcher._guard = RunGuard()
+    captures = [0]
+    clicked = [False]
+    image = np.zeros((640, 1136, 3), dtype=np.uint8)
+
+    def read() -> np.ndarray:
+        captures[0] += 1
+        return image
+
+    monkeypatch.setattr(switcher, "_read", read)
+    monkeypatch.setattr(switcher, "_heading", lambda _: True)
+    monkeypatch.setattr(switcher, "_panel", lambda _: clicked[0])
+    monkeypatch.setattr(switcher, "_match", lambda *_: None)
+    monkeypatch.setattr(switcher, "_text_point", lambda *_: (337, 88) if captures[0] >= 2 else None)
+
+    def click(point: tuple[int, int]) -> None:
+        assert captures[0] >= 2
+        assert point == (337, 88)
+        clicked[0] = True
+
+    monkeypatch.setattr(switcher, "_click", click)
+    switcher._open_presets()
+    assert clicked[0]
 
 
 @pytest.mark.parametrize("reward_visible", [True, False])

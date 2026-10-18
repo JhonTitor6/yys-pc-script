@@ -1,0 +1,117 @@
+{
+  "recording": "realm_foster/20261017T133002Z-ef0433d5",
+  "templates": {
+    "home": {
+      "frame": "000001-before.png",
+      "roi": [
+        574,
+        96,
+        638,
+        185
+      ]
+    },
+    "home_menu": {
+      "frame": "000002-before.png",
+      "roi": [
+        473,
+        540,
+        525,
+        624
+      ]
+    },
+    "guild": {
+      "frame": "000003-before.png",
+      "roi": [
+        943,
+        588,
+        1010,
+        634
+      ]
+    },
+    "growth_entry": {
+      "frame": "000006-before.png",
+      "roi": [
+        570,
+        302,
+        605,
+        402
+      ]
+    },
+    "growth": {
+      "frame": "000007-before.png",
+      "roi": [
+        71,
+        22,
+        196,
+        66
+      ]
+    },
+    "foster_open": {
+      "frame": "000007-before.png",
+      "roi": [
+        1046,
+        46,
+        1117,
+        120
+      ]
+    },
+    "friends": {
+      "frame": "000012-before.png",
+      "roi": [
+        651,
+        93,
+        908,
+        130
+      ]
+    },
+    "enter": {
+      "frame": "000012-before.png",
+      "roi": [
+        704,
+        474,
+        864,
+        533
+      ]
+    },
+    "confirm": {
+      "frame": "000014-before.png",
+      "roi": [
+        427,
+        125,
+        703,
+        164
+      ]
+    },
+    "confirm_button": {
+      "frame": "000014-before.png",
+      "roi": [
+        595,
+        456,
+        715,
+        515
+      ]
+    },
+    "active_star": {
+      "frame": "000012-before.png",
+      "roi": [
+        749,
+        289,
+        762,
+        304
+      ]
+    },
+    "inactive_star": {
+      "frame": "000012-before.png",
+      "roi": [
+        801,
+        289,
+        814,
+        304
+      ]
+    }
+  },
+  "limits": [
+    "cross-region contents absent",
+    "taiko in recording is four stars, not six"
+  ]
+}

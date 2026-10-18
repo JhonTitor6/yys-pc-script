@@ -1,0 +1,158 @@
+{
+  "recording": "recordings/fengmo/20261017T133046Z-a4cc53f5.partial",
+  "templates": {
+    "home": {
+      "frame": "000008-before.png",
+      "roi": [
+        795,
+        91,
+        849,
+        185
+      ]
+    },
+    "daily_entry": {
+      "frame": "000008-before.png",
+      "roi": [
+        201,
+        263,
+        253,
+        316
+      ]
+    },
+    "daily_panel": {
+      "frame": "000009-before.png",
+      "roi": [
+        526,
+        54,
+        606,
+        98
+      ]
+    },
+    "entry": {
+      "frame": "000009-before.png",
+      "roi": [
+        321,
+        153,
+        460,
+        204
+      ]
+    },
+    "map": {
+      "frame": "000010-before.png",
+      "roi": [
+        468,
+        3,
+        651,
+        51
+      ]
+    },
+    "explore": {
+      "frame": "000010-before.png",
+      "roi": [
+        984,
+        610,
+        1070,
+        641
+      ]
+    },
+    "claim": {
+      "frame": "000011-before.png",
+      "roi": [
+        1067,
+        182,
+        1120,
+        232
+      ]
+    },
+    "reward": {
+      "frame": "000012-before.png",
+      "roi": [
+        460,
+        142,
+        683,
+        199
+      ]
+    },
+    "search": {
+      "frame": "000013-before.png",
+      "roi": [
+        887,
+        610,
+        934,
+        641
+      ]
+    },
+    "boss": {
+      "frame": "000014-before.png",
+      "roi": [
+        519,
+        238,
+        606,
+        325
+      ]
+    },
+    "detail": {
+      "frame": "000015-before.png",
+      "roi": [
+        100,
+        48,
+        273,
+        96
+      ]
+    },
+    "assemble": {
+      "frame": "000015-before.png",
+      "roi": [
+        924,
+        510,
+        1056,
+        578
+      ]
+    },
+    "lobby_return": {
+      "frame": "last decoded video frame",
+      "roi": [
+        8,
+        8,
+        59,
+        53
+      ]
+    }
+  },
+  "lobby": "last decoded video frame, 75 total",
+  "limits": [
+    "no battle or settlement",
+    "only recorded oboroguruma detail",
+    "recorded lineup group is fengmo and lineup name is general"
+  ],
+  "lineup": {
+    "preset": "frames/000004-before.png",
+    "confirm": "frames/000005-before.png",
+    "success_stable": "video frame 19 at 3 fps",
+    "normalization": [
+      1136,
+      640
+    ]
+  },
+  "counters": {
+    "explore_available": {
+      "frame": "000010-before.png",
+      "roi": [
+        1072,
+        615,
+        1124,
+        641
+      ]
+    },
+    "explore_empty": {
+      "frame": "000011-before.png",
+      "roi": [
+        1072,
+        615,
+        1124,
+        641
+      ]
+    }
+  },
+  "navigation_map_fixture": "original 000010-before.png, retained navigation buttons; broadcast redacted"
+}

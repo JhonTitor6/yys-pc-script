@@ -1,12 +1,35 @@
 from __future__ import annotations
 
 import logging
+import ast
+from pathlib import Path
 
 import pytest
 from pytest import LogCaptureFixture, MonkeyPatch
 
 from ui_backend.models import ScriptCategory
 from ui_backend.scripts.registry import ScriptRegistry
+
+
+def test_registered_scripts_are_in_packaging_module_list() -> None:
+    """产品契约：脚本列表中的动态模块在打包清单中存在，避免开发可用而发行版缺失。"""
+    tree = ast.parse((Path(__file__).resolve().parents[2] / "build_backend.spec").read_text(encoding="utf-8"))
+    modules = next(ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign)
+                   and any(isinstance(target, ast.Name) and target.id == "YYS_MODULES" for target in node.targets))
+    assert {item.module_path for item in ScriptRegistry().list_scripts()} <= set(modules)
+
+
+def test_daily_scripts_are_independent_experimental_definitions() -> None:
+    """产品契约：寄养和逢魔独立运行；未实测和缺录制时保留实验分类。"""
+    registry = ScriptRegistry()
+    assert registry.load_class("realm_foster").__name__ == "RealmFosterScript"
+    assert registry.load_class("fengmo").__name__ == "FengmoScript"
+    for script_id in ("realm_foster", "fengmo", "daily_collect", "soul_soil", "daily_activity_rewards"):
+        assert registry.get(script_id).category == ScriptCategory.EXPERIMENTAL
+    assert registry.get("fengmo").default_config == {"lineup_group": "逢魔", "lineup_name": "通用"}
+    assert registry.get("soul_soil").default_config == {
+        "max_battle_count": 10, "lineup_group": "御魂", "lineup_name": "魂土",
+    }
 
 
 class ScriptWithSchema:
@@ -79,14 +102,14 @@ def test_default_registry_does_not_import_script_modules(
     scripts = ScriptRegistry().list_scripts()
 
     script_ids = {item.script_id for item in scripts}
-    # 所有 10 个 entries 都被尝试 import_module（owner 决策"总尝试反射"）
+    # 所有默认条目都尝试反射；失败时仍保留独立日常脚本。
     assert "yys.soul_raid" in imported_modules
     assert "yys.realm_raid" in imported_modules
     # 即便全部反射失败，registry 仍能 list 全部脚本（走 entries fallback）
-    # Step 5 在 default_registry.py 新增 5 个 entry，默认注册表共 10 个脚本
     assert script_ids == {
         "soul_raid", "realm_raid", "exploration_28", "yuling", "abyss_shadows",
         "loop_challenge", "douji", "fujiwara", "omoikane", "regional_demon_boss",
+        "realm_foster", "fengmo", "daily_collect", "soul_soil", "daily_activity_rewards",
     }
     # fallback 时，soul_raid 仍使用 entry 手写的 max_battle_count=103（无 accept_wq_type）
     soul_raid = next(item for item in scripts if item.script_id == "soul_raid")
@@ -342,13 +365,13 @@ def test_default_registry_reflection_failure_falls_back_to_entries(
         raise_on_import,
     )
 
-    # 即便所有反射都失败，仍能 list 全部 10 个脚本（entries fallback）
-    # Step 5 在 default_registry.py 新增 5 个 entry，包含 regional_demon_boss
+    # 即便反射全部失败，新增日常脚本仍在默认列表中。
     scripts = ScriptRegistry().list_scripts()
     script_ids = {item.script_id for item in scripts}
     assert script_ids == {
         "soul_raid", "realm_raid", "exploration_28", "yuling", "abyss_shadows",
         "loop_challenge", "douji", "fujiwara", "omoikane", "regional_demon_boss",
+        "realm_foster", "fengmo", "daily_collect", "soul_soil", "daily_activity_rewards",
     }
 
     # soul_raid 走 fallback（无 accept_wq_type）

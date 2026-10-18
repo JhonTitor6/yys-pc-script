@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 import time
 from typing import Callable
 
@@ -18,11 +19,13 @@ _SIZE = (1136, 640)
 _REGIONS = {
     "home_entry": (920, 525, 1090, 625),
     "home_entry_night": (920, 525, 1090, 625),
-    "home_menu_expand": (1047, 451, 1099, 514),
+    "home_menu_expand": (1047, 451, 1099, 600),
     "home_menu_collapsed_night": (1047, 451, 1099, 540),
+    "home_menu_scroll_collapsed": (1020, 520, 1136, 640),
     "shikigami": (70, 0, 205, 53),
     "preset": (293, 59, 377, 112),
     "preset_panel": (635, 65, 795, 119),
+    "preset_panel_named": (635, 65, 795, 119),
     "groups": (966, 78, 1107, 560),
     "lineups": (504, 123, 754, 556),
     "dialog": (375, 255, 765, 315),
@@ -66,10 +69,14 @@ class LineupSwitcher:
             "home_entry_night",
             "home_menu_expand",
             "home_menu_collapsed_night",
+            "home_menu_scroll_collapsed",
             "shikigami",
             "shikigami_preset",
             "preset_panel",
+            "preset_panel_named",
+            "group_selected_edge",
             "apply",
+            "apply_named",
         ):
             path = to_project_path(f"yys/common/images/lineup/{name}.png")
             template = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
@@ -132,7 +139,7 @@ class LineupSwitcher:
         image = self._wait_for(
             lambda frame: (
                 self._direct_success(frame)
-                or self._text_point(frame, "dialog", _CONFIRM_TEXT) is not None
+                or self._confirmation_dialog(frame)
             ),
             "未出现预设御魂确认弹窗或完整的直接成功提示，结果不确定，请勿自动重试",
         )
@@ -142,10 +149,21 @@ class LineupSwitcher:
         if confirm is None:
             raise RuntimeError("确认弹窗缺少明确的确定按钮")
         self._click(confirm)
-        self._wait_for(
-            lambda frame: self._panel(frame) and self._text_point(frame, "toast", _SUCCESS_TEXT) is not None,
+        image = self._wait_for(
+            lambda frame: self._text_point(frame, "toast", _SUCCESS_TEXT) is not None
+            and (self._panel(frame) or self._contract_confirmation(frame)),
             "已发送应用确认，但未证实装备御魂成功；结果不确定，请勿自动重试",
         )
+        if self._contract_confirmation(image):
+            confirm = self._text_point(image, "confirm", "确定")
+            if confirm is None:
+                raise RuntimeError("契灵替换弹窗缺少明确的确定按钮")
+            self._click(confirm)
+            self._wait_for(
+                lambda frame: self._panel(frame)
+                and self._text_point(frame, "toast", _DIRECT_CONTRACT_TEXT) is not None,
+                "已确认契灵替换，但未证实替换成功；结果不确定，请勿自动重试",
+            )
 
     def _check(self) -> None:
         if self.checkpoint is not None:
@@ -202,7 +220,7 @@ class LineupSwitcher:
         return left + x + width // 2, top + y + height // 2
 
     def _panel(self, image: np.ndarray) -> bool:
-        return self._heading(image) and self._match(image, "preset_panel") is not None
+        return self._heading(image) and self._match_any(image, ("preset_panel", "preset_panel_named")) is not None
 
     def _heading(self, image: np.ndarray) -> bool:
         return any(
@@ -215,6 +233,7 @@ class LineupSwitcher:
         return [
             (x + left, y + top, text, confidence)
             for x, y, text, confidence in self.ocr.find_all_text_positions(image[top:bottom, left:right], 0.85)
+            if region != "lineups" or 123 <= y + top <= 539
         ]
 
     @staticmethod
@@ -226,6 +245,30 @@ class LineupSwitcher:
 
     def _text_point(self, image: np.ndarray, region: str, text: str) -> tuple[int, int] | None:
         return self._unique(self._labels(image, region), text)
+
+    def _confirmation_dialog(self, image: np.ndarray) -> bool:
+        """兼容全队确认及本次应用后的具名式神确认，必须完整匹配首尾。"""
+        labels = self._labels(image, "dialog")
+        if self._unique(labels, _CONFIRM_TEXT) is not None:
+            return True
+        return re.fullmatch(r"即将更换式神[\u4e00-\u9fff、，,·A-Za-z0-9]{1,120}的预设御魂",
+                            self._dialog_text(labels)) is not None
+
+    def _contract_confirmation(self, image: np.ndarray) -> bool:
+        """只识别录制中的契灵占用确认，不能作为单独的装备成功凭据。"""
+        return re.fullmatch(r"当前契灵已装配于其他阴阳师[，,]是否替换[？?]",
+                            self._dialog_text(self._labels(image, "dialog"))) is not None
+
+    @staticmethod
+    def _dialog_text(labels: list[tuple[int, int, str, float]]) -> str:
+        """按行合并分色文字和换行，保留完整弹窗原文。"""
+        rows: list[list[tuple[int, int, str, float]]] = []
+        for label in sorted(labels, key=lambda item: item[1]):
+            if not rows or label[1] - rows[-1][0][1] > 8:
+                rows.append([])
+            rows[-1].append(label)
+        return "".join(_name(label[2]) for row in rows
+                       for label in sorted(row, key=lambda item: item[0]))
 
     def _match_any(self, image: np.ndarray, names: tuple[str, ...]) -> tuple[int, int] | None:
         """按顺序查找多个模板，返回首个明确命中的位置。"""
@@ -247,16 +290,20 @@ class LineupSwitcher:
 
     def _apply_point(self, image: np.ndarray, name_point: tuple[int, int]) -> tuple[int, int] | None:
         y = name_point[1]
-        if not 139 <= y <= 539:
+        if not 123 <= y <= 539:
             return None
-        return self._match(image, "apply", (858, max(123, y - 21), 907, min(556, y + 22)))
+        roi = (858, max(110, y - 25), 907, min(556, y + 26))
+        return self._match(image, "apply", roi) or self._match(image, "apply_named", roi)
 
-    @staticmethod
-    def _group_selected(image: np.ndarray, point: tuple[int, int]) -> bool:
+    def _group_selected(self, image: np.ndarray, point: tuple[int, int]) -> bool:
         y = point[1]
         hsv = cv2.cvtColor(image[max(78, y - 16):min(560, y + 16), 979:1092], cv2.COLOR_BGR2HSV)
         mask = cv2.inRange(hsv, (15, 100, 150), (40, 255, 255))
-        return bool(mask.size and np.count_nonzero(mask) / mask.size > 0.20)
+        if mask.size and np.count_nonzero(mask) / mask.size > 0.20:
+            return True
+        # 新皮肤仅高亮分组边缘；使用真实边缘模板，不降低旧颜色阈值。
+        return self._match(image, "group_selected_edge",
+                           (966, max(78, y - 28), 986, min(560, y + 28))) is not None
 
     def _selected_group(self, image: np.ndarray, group_name: str) -> bool:
         if not self._panel(image):
@@ -280,6 +327,10 @@ class LineupSwitcher:
         self, image: np.ndarray, *, home_verified: bool,
     ) -> tuple[int, int] | None:
         """严格收起态可展开；调用方已确认庭院时接受固定菜单按钮。"""
+        if home_verified:
+            scroll = self._match(image, "home_menu_scroll_collapsed")
+            if scroll is not None:
+                return scroll
         if self._match(image, "home_menu_collapsed_night") is not None:
             return _HOME_MENU_EXPAND_POINT
         if home_verified:
@@ -315,6 +366,11 @@ class LineupSwitcher:
                     raise RuntimeError("展开菜单后未识别到式神录入口，未重复点击")
             self._click(entry)
             image = self._wait_for(self._heading, "未到达式神录")
+        image = self._wait_for(
+            lambda frame: self._heading(frame)
+            and self._text_point(frame, "preset", "预设") is not None,
+            "式神录中未识别到预设入口",
+        )
         preset = self._text_point(image, "preset", "预设")
         if preset is None:
             raise RuntimeError("式神录中未识别到预设入口")

@@ -18,7 +18,15 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [],
+  "children": [
+    "10-17-daily-collect",
+    "10-17-realm-foster",
+    "10-17-fengmo",
+    "10-17-daily-soul-raid-entry",
+    "10-17-daily-activity-rewards",
+    "10-17-daily-workflow",
+    "09-07-regional-demon-boss"
+  ],
   "parent": null,
   "relatedFiles": [],
   "notes": "",

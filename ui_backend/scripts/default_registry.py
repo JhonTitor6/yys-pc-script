@@ -4,6 +4,42 @@ from typing import Any
 
 DEFAULT_SCRIPT_ENTRIES: list[dict[str, Any]] = [
     {
+        "script_id": "daily_collect", "display_name": "官方一键收菜",
+        "module_path": "yys.daily_collect", "class_name": "DailyCollectScript",
+        "category": "experimental", "description": "识别庭院事务并使用官方一键完成，确认结果后回庭院。",
+        "config_schema": [],
+    },
+    {
+        "script_id": "soul_soil", "display_name": "单人魂土",
+        "module_path": "yys.soul_soil", "class_name": "SoulSoilScript",
+        "category": "experimental", "description": "单人魂土，默认 10 次可配置，使用御魂／魂土阵容。",
+        "config_schema": [],
+    },
+    {
+        "script_id": "daily_activity_rewards", "display_name": "每日活跃度奖励",
+        "module_path": "yys.daily_activity_rewards", "class_name": "DailyActivityRewardsScript",
+        "category": "experimental", "description": "领取当前已满足条件的每日活跃度奖励，验证结果后回庭院。",
+        "config_schema": [],
+    },
+    {
+        "script_id": "fengmo",
+        "display_name": "逢魔",
+        "module_path": "yys.fengmo",
+        "class_name": "FengmoScript",
+        "category": "experimental",
+        "description": "逢魔入口与探索、胧车集结，复用通用结算领奖，按返回、to_home 顺序回庭院；待实机验证。",
+        "config_schema": [],
+    },
+    {
+        "script_id": "realm_foster",
+        "display_name": "结界寄养",
+        "module_path": "yys.realm_foster",
+        "class_name": "RealmFosterScript",
+        "category": "experimental",
+        "description": "扫描好友和跨区太鼓，按星级选择，寄养左边第一个式神；跨区真实画面待验证。",
+        "config_schema": [],
+    },
+    {
         "script_id": "soul_raid",
         "display_name": "御魂",
         "module_path": "yys.soul_raid",

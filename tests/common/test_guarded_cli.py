@@ -239,3 +239,40 @@ def test_script_construction_exception_stops_monitor_without_starting_it(
     assert "脚本运行失败: 构造失败" in capsys.readouterr().err
     monitor.start.assert_not_called()
     monitor.stop.assert_called_once_with()
+
+
+@pytest.mark.parametrize("script_id,battles,expected", [
+    ("daily_collect", 7, {}), ("daily_activity_rewards", 7, {}),
+    ("realm_foster", 7, {}), ("fengmo", 7, {}),
+    ("soul_soil", None, {"max_battle_count": 10}),
+    ("soul_soil", 1, {"max_battle_count": 1}),
+])
+def test_daily_guarded_cli_only_soul_soil_uses_battle_count(
+    monkeypatch: pytest.MonkeyPatch, script_id: str, battles: int | None, expected: dict,
+) -> None:
+    """产品契约：实机接线时参数只影响对应脚本，确认、F12 和前台截图边界保持。"""
+    import ui_backend.scripts.registry as registry_module
+
+    monkeypatch.setattr(run_guarded_script.sys, "stdin", _NonInteractiveInput())
+    monkeypatch.setattr(run_guarded_script.time, "sleep", lambda _: None)
+    env = SimpleNamespace(hwnd=123, activate_window=Mock())
+    wrapped = SimpleNamespace(action_records=[])
+    guard, monitor, script = Mock(), Mock(), Mock()
+    guard.snapshot.return_value = {}
+    script.get_state_snapshot.return_value = {}
+    factory = Mock(return_value=script)
+    registry = Mock()
+    registry.load_class.return_value = factory
+    monkeypatch.setattr(registry_module, "ScriptRegistry", Mock(return_value=registry))
+    monkeypatch.setattr(windows_module, "WindowsEnvironment", Mock(return_value=env))
+    monkeypatch.setattr(guarded_module, "RunGuard", Mock(return_value=guard))
+    monkeypatch.setattr(guarded_module, "GuardedEnvironment", Mock(return_value=wrapped))
+    monkeypatch.setattr(input_module, "WindowsInputMonitor", Mock(return_value=monitor))
+    argv = [script_id, "--execute", "--confirmation-phrase", f"RUN {script_id}"]
+    if battles is not None:
+        argv += ["--max-battles", str(battles)]
+    assert run_guarded_script.main(argv) == 0
+    factory.assert_called_once_with(script_id, env=wrapped, config=expected)
+    env.activate_window.assert_called_once()
+    monitor.start.assert_called_once()
+    monitor.stop.assert_called_once()

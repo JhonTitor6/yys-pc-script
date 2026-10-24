@@ -43,7 +43,12 @@ struct Desktop {
 }
 
 fn authorize(window: &WebviewWindow) -> Result<(), String> {
-    policy::authorize(window.label(), &window.url().map_err(|e| e.to_string())?)
+    let url = window.url().map_err(|e| e.to_string())?;
+    policy::authorize(
+        window.label(),
+        &url,
+        window.app_handle().config().build.dev_url.as_ref(),
+    )
 }
 
 #[tauri::command]
@@ -225,6 +230,8 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
 }
 
 fn setup_window(app: &tauri::AppHandle, user_data: &Path) -> tauri::Result<WebviewWindow> {
+    // 开发模式下 `tauri dev` 用内置静态服务器承载页面，来源由编译期注入的 devUrl 决定。
+    let dev_url = app.config().build.dev_url.clone();
     let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
         .title("阴阳师脚本工作台")
         .inner_size(900.0, 650.0)
@@ -236,7 +243,7 @@ fn setup_window(app: &tauri::AppHandle, user_data: &Path) -> tauri::Result<Webvi
         .visible(false)
         .use_https_scheme(false)
         .data_directory(user_data.join("WebView2"))
-        .on_navigation(|url| policy::trusted_url(url))
+        .on_navigation(move |url| policy::trusted_url(url, dev_url.as_ref()))
         .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
         .on_download(|window, _| {
             // 拒绝一切下载；烟测借此回报“确实被拦截”，避免只看代码。
@@ -359,7 +366,14 @@ fn startup(app: &tauri::AppHandle) -> Result<(), String> {
         Some(launch) => launch,
         None => resolve_launch(app)?,
     };
-    let mut managed = backend::spawn(&launch, &token, &desktop.user_data)?;
+    // 只有 `tauri dev` 的编译配置带 devUrl；生产构建为 None，后端保持严格来源白名单。
+    let dev_origin = app
+        .config()
+        .build
+        .dev_url
+        .as_ref()
+        .map(|url| url.origin().ascii_serialization());
+    let mut managed = backend::spawn(&launch, &token, &desktop.user_data, dev_origin.as_deref())?;
     if let Err(error) = backend::wait_ready(managed.child(), &token, plan.port, plan.timeout) {
         managed.stop();
         return Err(format!(

@@ -14,7 +14,14 @@ pub enum WindowAction {
 }
 
 /// 仅受控首页可以导航或调用宿主。
-pub fn trusted_url(url: &tauri::Url) -> bool {
+///
+/// 生产是 tauri 协议首页；`tauri dev` 由内置静态服务器承载页面，
+/// 通过编译期注入的 `devUrl` 放行同源首页，生产构建没有该配置即为严格白名单。
+pub fn trusted_url(url: &tauri::Url, dev_url: Option<&tauri::Url>) -> bool {
+    is_tauri_index(url) || dev_url.is_some_and(|dev| is_dev_index(dev, url))
+}
+
+fn is_tauri_index(url: &tauri::Url) -> bool {
     url.scheme() == "http"
         && url.host_str() == Some("tauri.localhost")
         && url.port().is_none()
@@ -24,9 +31,24 @@ pub fn trusted_url(url: &tauri::Url) -> bool {
         && url.query().is_none()
 }
 
+/// 开发服务器只放行与 `devUrl` 同源的首页路径。
+fn is_dev_index(dev: &tauri::Url, url: &tauri::Url) -> bool {
+    url.scheme() == dev.scheme()
+        && url.host_str() == dev.host_str()
+        && url.port_or_known_default() == dev.port_or_known_default()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && matches!(url.path(), "/" | "/index.html")
+        && url.query().is_none()
+}
+
 /// 将窗口身份与当前来源同时作为命令边界。
-pub fn authorize(label: &str, url: &tauri::Url) -> Result<(), String> {
-    if label == "main" && trusted_url(url) {
+pub fn authorize(
+    label: &str,
+    url: &tauri::Url,
+    dev_url: Option<&tauri::Url>,
+) -> Result<(), String> {
+    if label == "main" && trusted_url(url, dev_url) {
         Ok(())
     } else {
         Err("拒绝非可信主窗口或来源".into())
@@ -88,8 +110,8 @@ mod tests {
     fn only_trusted_main_and_enum_actions() {
         // 产品契约：AC13/AC14，其他来源、窗口和未知动作都不能调用宿主。
         let good = tauri::Url::parse("http://tauri.localhost/index.html").unwrap();
-        assert!(authorize("main", &good).is_ok());
-        assert!(authorize("other", &good).is_err());
+        assert!(authorize("main", &good, None).is_ok());
+        assert!(authorize("other", &good, None).is_err());
         for url in [
             "https://tauri.localhost/",
             "http://tauri.localhost.evil/",
@@ -99,12 +121,35 @@ mod tests {
             "http://tauri.localhost/other.html",
         ] {
             assert!(
-                authorize("main", &tauri::Url::parse(url).unwrap()).is_err(),
+                authorize("main", &tauri::Url::parse(url).unwrap(), None).is_err(),
                 "{url}"
             );
         }
         assert!(serde_json::from_str::<WindowAction>("\"execute\"").is_err());
         assert!(serde_json::from_str::<WindowAction>("123").is_err());
+    }
+
+    #[test]
+    fn dev_server_origin_is_trusted_only_when_configured() {
+        // 开发契约：`tauri dev` 用内置静态服务器承载页面，只放行配置的同源首页。
+        let dev = tauri::Url::parse("http://127.0.0.1:1430").unwrap();
+        for url in ["http://127.0.0.1:1430/", "http://127.0.0.1:1430/index.html"] {
+            let parsed = tauri::Url::parse(url).unwrap();
+            assert!(trusted_url(&parsed, Some(&dev)), "{url}");
+            assert!(authorize("main", &parsed, Some(&dev)).is_ok(), "{url}");
+        }
+        for url in [
+            "http://127.0.0.1:1431/",
+            "http://127.0.0.1:1430/other.html",
+            "https://127.0.0.1:1430/",
+            "http://127.0.0.1:1430/?token=leak",
+        ] {
+            let parsed = tauri::Url::parse(url).unwrap();
+            assert!(!trusted_url(&parsed, Some(&dev)), "{url}");
+        }
+        // 生产构建没有 devUrl，任何 loopback 来源仍然被拒绝。
+        let loopback = tauri::Url::parse("http://127.0.0.1:1430/").unwrap();
+        assert!(!trusted_url(&loopback, None));
     }
 
     #[test]

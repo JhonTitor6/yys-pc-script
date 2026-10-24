@@ -126,7 +126,14 @@ pub fn log_path(user_data: &Path) -> PathBuf {
 }
 
 /// 启动受管后端；页面永远拿不到这条启动路径。
-pub fn spawn(launch: &Launch, token: &str, user_data: &Path) -> Result<Managed, String> {
+///
+/// `dev_origin` 只由开发构建传入，用于让 `tauri dev` 内置开发服务器来源通过校验。
+pub fn spawn(
+    launch: &Launch,
+    token: &str,
+    user_data: &Path,
+    dev_origin: Option<&str>,
+) -> Result<Managed, String> {
     let log_file = {
         let path = log_path(user_data);
         if let Some(parent) = path.parent() {
@@ -145,7 +152,8 @@ pub fn spawn(launch: &Launch, token: &str, user_data: &Path) -> Result<Managed, 
         ),
         None => (Stdio::null(), Stdio::null()),
     };
-    let child = Command::new(&launch.program)
+    let mut command = Command::new(&launch.program);
+    command
         .args(&launch.args)
         .current_dir(&launch.cwd)
         .env("YYS_UI_TOKEN", token)
@@ -158,7 +166,11 @@ pub fn spawn(launch: &Launch, token: &str, user_data: &Path) -> Result<Managed, 
         )
         .stdin(Stdio::null())
         .stdout(stdout)
-        .stderr(stderr)
+        .stderr(stderr);
+    if let Some(origin) = dev_origin {
+        command.env("YYS_UI_DEV_ORIGIN", origin);
+    }
+    let child = command
         .spawn()
         .map_err(|error| format!("启动后端失败：{error}"))?;
     // Job 创建失败不影响正常退出路径，只是少了宿主崩溃时的兜底回收。

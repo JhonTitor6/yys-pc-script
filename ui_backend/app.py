@@ -35,6 +35,15 @@ ALLOWED_ORIGINS = [
 ]
 
 
+def allowed_origins() -> list[str]:
+    """返回允许的浏览器来源；开发宿主通过环境变量补入 `tauri dev` 内置服务器地址。"""
+    origins = list(ALLOWED_ORIGINS)
+    dev_origin = os.environ.get("YYS_UI_DEV_ORIGIN")
+    if dev_origin and dev_origin not in origins:
+        origins.append(dev_origin)
+    return origins
+
+
 def create_app(
     db_path: Path | str | None = None,
     api_token: str | None = None,
@@ -42,10 +51,11 @@ def create_app(
 ) -> FastAPI:
     """创建桌面工作台 FastAPI 应用。"""
     resolved_token = api_token if api_token is not None else os.environ.get("YYS_UI_TOKEN")
+    origins = allowed_origins()
     app = FastAPI()
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=ALLOWED_ORIGINS,
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -512,7 +522,7 @@ def create_app(
         """推送近期事件并保持 WebSocket 连接。"""
         # 浏览器来源必须命中白名单；无 Origin 的本地进程/离线测试仍由 token 把关。
         origin = websocket.headers.get("origin")
-        if origin is not None and origin not in ALLOWED_ORIGINS:
+        if origin is not None and origin not in origins:
             await websocket.close(code=1008)
             return
         if resolved_token and websocket.query_params.get("token") != resolved_token:

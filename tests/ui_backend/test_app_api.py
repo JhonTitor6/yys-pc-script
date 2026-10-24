@@ -289,6 +289,45 @@ def test_cors_allows_tauri_origin_only(tmp_path: Path) -> None:
     assert allowed.headers["access-control-allow-origin"] == "http://tauri.localhost"
     assert "access-control-allow-origin" not in denied.headers
 
+    # 产品契约 AC21（2026-10-19 用户确认）：HTTP 不额外拒绝未知 Origin，token 仍必需。
+    unknown = client.get("/api/scripts", headers={"Origin": "http://evil.example", "X-YYS-UI-Token": "secret-token"})
+    assert unknown.status_code == 200
+    assert "access-control-allow-origin" not in unknown.headers
+    assert client.get("/api/scripts", headers={"Origin": "http://evil.example"}).status_code == 403
+
+
+def test_cors_allows_dev_server_origin_from_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """开发契约：只放行宿主显式传入的 `tauri dev` 内置服务器来源。"""
+    monkeypatch.setenv("YYS_UI_DEV_ORIGIN", "http://127.0.0.1:1430")
+    app = create_app(db_path=tmp_path / "ui.db", api_token="secret-token")
+    client = TestClient(app)
+
+    allowed = client.options(
+        "/api/scripts",
+        headers={
+            "Origin": "http://127.0.0.1:1430",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    denied = client.options(
+        "/api/scripts",
+        headers={
+            "Origin": "http://127.0.0.1:1431",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert allowed.headers["access-control-allow-origin"] == "http://127.0.0.1:1430"
+    assert "access-control-allow-origin" not in denied.headers
+
+    with client.websocket_connect(
+        "/ws/events?token=secret-token",
+        headers={"origin": "http://127.0.0.1:1430"},
+    ) as websocket:
+        assert websocket.receive_json()["type"] == "run_snapshot"
+
 
 def test_websocket_checks_origin_and_token(tmp_path: Path) -> None:
     """产品契约：AC21，WebSocket 同时校验来源与 token。"""

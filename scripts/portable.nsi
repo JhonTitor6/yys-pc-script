@@ -1,4 +1,4 @@
-﻿; 单文件便携版：自解压到版本化载荷目录后启动宿主，不安装、不写注册表。
+﻿; 单文件便携版：每次独立解压，等待宿主退出后清理，不安装、不写注册表。
 ; 由 scripts/build_portable.ps1 传入 APPDIR / OUTPUTFILE / APP_VERSION / ICON。
 Unicode true
 
@@ -22,22 +22,27 @@ SetCompressor /SOLID lzma
   Icon "${ICON}"
 !endif
 
-; 载荷只落在版本化子目录，永久数据库/截图/profile 都在别处，清理不会碰到用户数据。
-!define RUNTIME_BASE "$LOCALAPPDATA\yys-script-manager\portable-runtime"
-!define RUNTIME_DIR "${RUNTIME_BASE}\${APP_VERSION}"
+; 永久数据由宿主固定写入 APPDATA；这里只使用 NSIS 自动清理的独立临时目录。
+!define RUNTIME_DIR "$PLUGINSDIR\runtime"
 
 Section "运行"
-  IfFileExists "${RUNTIME_DIR}\yys-desktop.exe" check_backend
-  Goto extract
-check_backend:
-  IfFileExists "${RUNTIME_DIR}\backend\yys-backend.exe" launch
-extract:
-  CreateDirectory "${RUNTIME_DIR}"
+  InitPluginsDir
+  ClearErrors
   SetOutPath "${RUNTIME_DIR}"
   File "${APPDIR}\yys-desktop.exe"
   SetOutPath "${RUNTIME_DIR}\backend"
   File /r "${APPDIR}\backend\*"
-launch:
+  IfErrors failed
+  ClearErrors
   ExecWait '"${RUNTIME_DIR}\yys-desktop.exe"' $0
+  IfErrors failed
+  ; 当前工作目录不能被删除，离开载荷目录后再让 NSIS 回收 PLUGINSDIR。
+  SetOutPath "$TEMP"
   SetErrorLevel $0
+  Goto done
+failed:
+  SetOutPath "$TEMP"
+  MessageBox MB_OK|MB_ICONSTOP "便携版解压或启动失败，请检查临时目录空间和文件访问权限。"
+  SetErrorLevel 1
+done:
 SectionEnd

@@ -6,7 +6,7 @@
   pwsh scripts/build_portable.ps1 -ReleaseDir gui\src-tauri\target\release -Version 1.0.0
 
 产物：dist-electron/阴阳师脚本工作台-<版本>-portable.exe
-说明：载荷解压到 %LOCALAPPDATA%\yys-script-manager\portable-runtime\<版本>，
+说明：每次把完整载荷解压到 NSIS 的独立临时目录，等待宿主退出后自动清理；
       永久数据库、截图、图片覆盖、window-state 与 WebView2 profile 都不在该目录。
 #>
 

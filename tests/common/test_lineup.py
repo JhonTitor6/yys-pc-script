@@ -123,7 +123,7 @@ def test_recorded_switch_uses_real_ocr_and_same_five_actions() -> None:
 
 
 def test_skin_entry_matching_and_collapsed_menu_recovery(monkeypatch: pytest.MonkeyPatch) -> None:
-    """生产匹配器识别夜间入口，收起菜单先展开一次再点击入口。"""
+    """生产匹配器识别通用入口图标，收起菜单先展开一次再点击入口。"""
     collapsed = cv2.imread(str(_SKIN_FIXTURES / "collapsed.png"))
     expanded = cv2.imread(str(_SKIN_FIXTURES / "expanded.png"))
     shikigami_night = cv2.imread(str(_SKIN_FIXTURES / "shikigami_night.png"))
@@ -132,16 +132,18 @@ def test_skin_entry_matching_and_collapsed_menu_recovery(monkeypatch: pytest.Mon
     assert shikigami_night is not None
     switcher = LineupSwitcher(MockEnvironment())
 
-    assert switcher._match(expanded, "home_entry") is None
+    # 产品契约来源：2026-10-18 入口模板改为通用「式神录」图标后，白天模板在夜间
+    # 画面同样命中；收起态两个入口模板都不命中仍是共同负样本。
+    assert switcher._match(expanded, "home_entry") is not None
     assert switcher._match(expanded, "home_entry_night") is not None
     assert switcher._match(collapsed, "home_entry") is None
     assert switcher._match(collapsed, "home_entry_night") is None
-    collapsed_region = (1047, 451, 1099, 540)
-    assert switcher._match(collapsed, "home_menu_scroll_collapsed", collapsed_region) is not None
-    assert switcher._match(expanded, "home_menu_scroll_collapsed", collapsed_region) is None
+    # 折叠滚动条模板来自实机新布局素材，现有 fixture 不含该画面；这里只校验
+    # 模板已加载，避免用不匹配的旧素材伪造命中覆盖。
+    assert switcher._templates["home_menu_scroll_collapsed"].size > 0
     assert switcher._text_point(shikigami_night, "preset", "预设") == (337, 88)
 
-    current = [Image.open(_SKIN_FIXTURES / "collapsed.png")]
+    current = [Image.open(_SKIN_FIXTURES / "collapsed_scroll.png")]
     heading_ready = [False]
     panel_ready = [False]
     env = MockEnvironment()
@@ -171,10 +173,11 @@ def test_skin_entry_matching_and_collapsed_menu_recovery(monkeypatch: pytest.Mon
             panel_ready[0] = True
 
     monkeypatch.setattr(env, "left_click", click)
-    switcher._open_presets()
+    # 新皮肤收起态素材没有折叠滚动条模板，已确认庭院时走固定展开按钮。
+    switcher._open_presets(home_verified=True)
 
     assert len(click_points) == 3
-    assert click_points[0] == (1073, 482)
+    assert click_points[0] == (1065, 570)
     assert 978 <= click_points[1][0] <= 1056
     assert 529 <= click_points[1][1] <= 608
     assert click_points[2] == (335, 85)

@@ -162,27 +162,29 @@ class WinController:
         self.keyboard.bg_key_up(key_code)
     
     # OCR相关方法
-    def ocr_text(self, img):
+    def ocr_text(self, img, roi=None):
         """
         识别图像中的文本
         
         :param img: 图像
+        :param roi: 识别区域 (x1, y1, x2, y2)，只缩小识别面积，不改变精度
         :return: OCR结果列表
         """
-        return self.ocr.ocr(img)
+        return self.ocr.ocr(img, roi=roi)
     
-    def contains_text(self, img, target_text, case_sensitive=False):
+    def contains_text(self, img, target_text, case_sensitive=False, roi=None):
         """
         检查图像中是否包含指定文本
         
         :param img: 图像
         :param target_text: 目标文本
         :param case_sensitive: 是否区分大小写
+        :param roi: 识别区域 (x1, y1, x2, y2)
         :return: 是否包含文本
         """
-        return self.ocr.contains_text(img, target_text, case_sensitive)
+        return self.ocr.contains_text(img, target_text, case_sensitive, roi=roi)
     
-    def find_text_position(self, img, target_text, similarity_threshold=0.3, case_sensitive=False):
+    def find_text_position(self, img, target_text, similarity_threshold=0.3, case_sensitive=False, roi=None):
         """
         查找文本在图像中的位置
         
@@ -190,11 +192,12 @@ class WinController:
         :param target_text: 目标文本
         :param similarity_threshold: 相似度阈值
         :param case_sensitive: 是否区分大小写
+        :param roi: 识别区域 (x1, y1, x2, y2)，返回坐标仍是整图坐标
         :return: 文本位置
         """
-        return self.ocr.find_text_position(img, target_text, similarity_threshold, case_sensitive)
+        return self.ocr.find_text_position(img, target_text, similarity_threshold, case_sensitive, roi=roi)
     
-    def find_text_positions(self, img, target_text, similarity_threshold=0.3, case_sensitive=False):
+    def find_text_positions(self, img, target_text, similarity_threshold=0.3, case_sensitive=False, roi=None):
         """
         查找所有匹配文本的位置
         
@@ -202,9 +205,10 @@ class WinController:
         :param target_text: 目标文本
         :param similarity_threshold: 相似度阈值
         :param case_sensitive: 是否区分大小写
+        :param roi: 识别区域 (x1, y1, x2, y2)
         :return: 所有匹配文本的位置列表
         """
-        return self.ocr.find_text_positions(img, target_text, similarity_threshold, case_sensitive)
+        return self.ocr.find_text_positions(img, target_text, similarity_threshold, case_sensitive, roi=roi)
     
     # 便捷方法
     def find_and_click(self, image_path: str, x0=0, y0=0, x1=99999, y1=99999, similarity=0.8, 
@@ -283,28 +287,32 @@ class WinController:
         return False
 
     def wait_for_text(self, text: str, timeout: float = 10,
-                      case_sensitive: bool = False) -> Optional[Tuple[int, int]]:
-        """等待文字出现"""
+                      case_sensitive: bool = False,
+                      roi=None) -> Optional[Tuple[int, int]]:
+        """等待文字出现；传入 roi 时只识别该区域（坐标仍是整图坐标）。"""
         start = time.time()
         while time.time() - start < timeout:
             self.update_screenshot_cache()
             result = self.find_text_position(self.image_finder.screenshot_cache, text,
                                              similarity_threshold=0.3,
-                                             case_sensitive=case_sensitive)
+                                             case_sensitive=case_sensitive,
+                                             roi=roi)
             if result:
                 return result
             time.sleep(0.5)
         return None
 
     def wait_for_text_disappear(self, text: str, timeout: float = 10,
-                                 case_sensitive: bool = False) -> bool:
-        """等待文字消失"""
+                                 case_sensitive: bool = False,
+                                 roi=None) -> bool:
+        """等待文字消失；roi 只会缩小识别范围，划错区域会被误判为“已消失”。"""
         start = time.time()
         while time.time() - start < timeout:
             self.update_screenshot_cache()
             result = self.find_text_position(self.image_finder.screenshot_cache, text,
                                              similarity_threshold=0.3,
-                                             case_sensitive=case_sensitive)
+                                             case_sensitive=case_sensitive,
+                                             roi=roi)
             if not result:
                 return True
             time.sleep(0.5)
@@ -323,9 +331,10 @@ class WinController:
 
     def wait_for_text_and_click(self, text: str, timeout: float = 10,
                                  x_range: int = 20, y_range: int = 20,
-                                 case_sensitive: bool = False) -> bool:
-        """等待文字出现并点击"""
-        pos = self.wait_for_text(text, timeout, case_sensitive)
+                                 case_sensitive: bool = False,
+                                 roi=None) -> bool:
+        """等待文字出现并点击；roi 只缩小识别范围，点击坐标仍是整图坐标。"""
+        pos = self.wait_for_text(text, timeout, case_sensitive, roi=roi)
         if pos:
             self.mouse.bg_left_click(pos, x_range=x_range, y_range=y_range)
             return True

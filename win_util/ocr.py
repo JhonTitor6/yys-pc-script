@@ -22,6 +22,22 @@ from win_util.ocr_config import BackendName, get_ocr_backend_name
 
 DEFAULT_SIMILARITY_THRESHOLD = 0.3
 
+#: 识别区域 (x1, y1, x2, y2)，坐标基于传入的整图。
+Roi = tuple[int, int, int, int]
+
+
+def _crop_roi(img: np.ndarray, roi: Roi | None) -> tuple[np.ndarray, int, int]:
+    """按 ROI 裁剪并返回左上角偏移；越界自动收敛，空区域返回空图。"""
+    if roi is None:
+        return img, 0, 0
+    height, width = img.shape[:2]
+    x1, y1, x2, y2 = (int(value) for value in roi)
+    x1, x2 = max(0, min(x1, width)), max(0, min(x2, width))
+    y1, y2 = max(0, min(y1, height)), max(0, min(y2, height))
+    if x1 >= x2 or y1 >= y2:
+        return img[:0, :0], 0, 0
+    return img[y1:y2, x1:x2], x1, y1
+
 
 class CommonOcr:
     """统一 OCR 入口。
@@ -87,22 +103,32 @@ class CommonOcr:
         else:  # pragma: no cover
             raise ValueError(f"未知 OCR backend: {self._backend_name}")
 
-    def ocr(self, img: np.ndarray | None, **readtext_kwargs) -> list[OcrResult]:
+    def ocr(
+        self,
+        img: np.ndarray | None,
+        roi: Roi | None = None,
+        **readtext_kwargs,
+    ) -> list[OcrResult]:
         """识别图像，返回 [(box, text, conf), ...]（box 坐标为原图坐标系）。
 
-        实现：灰度 → 2× 放大 → backend.readtext → 坐标缩回。
+        实现：按 ROI 裁剪 → 灰度 → 2× 放大 → backend.readtext → 坐标缩回并加回偏移。
         这个放大对御魂小字识别至关重要（即使是 rapidocr 模式也保留）。
+        ROI 只缩小识别面积，不改变放大倍数和模型，因此不影响精度。
         """
         if img is None:
             return []
 
-        h, w = img.shape[:2]
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        cropped, offset_x, offset_y = _crop_roi(img, roi)
+        if cropped.size == 0:
+            return []
+
+        h, w = cropped.shape[:2]
+        gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
         gray_resized = cv2.resize(gray, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
 
         ocr_results = self.backend.readtext(gray_resized, **readtext_kwargs)
 
-        # 缩回原图坐标
+        # 缩回原图坐标；有 ROI 时再加回裁剪偏移，保证调用方拿到整图坐标。
         rh, rw = gray_resized.shape[:2]
         scale_x = rw / float(w)
         scale_y = rh / float(h)
@@ -111,15 +137,21 @@ class CommonOcr:
         for box, text, conf in ocr_results:
             new_box = []
             for (px, py) in box:
-                nx = int(round(px / scale_x))
-                ny = int(round(py / scale_y))
+                nx = int(round(px / scale_x)) + offset_x
+                ny = int(round(py / scale_y)) + offset_y
                 new_box.append([nx, ny])
             scaled_results.append((new_box, text, conf))
 
         return scaled_results
 
-    def contains_text(self, img: np.ndarray | None, target_text, case_sensitive: bool = False) -> bool:
-        ocr_results = self.ocr(img)
+    def contains_text(
+        self,
+        img: np.ndarray | None,
+        target_text,
+        case_sensitive: bool = False,
+        roi: Roi | None = None,
+    ) -> bool:
+        ocr_results = self.ocr(img, roi=roi)
         detected_texts = [text for _, text, _ in ocr_results]
         if not case_sensitive:
             detected_texts = [t.lower() for t in detected_texts]
@@ -137,8 +169,9 @@ class CommonOcr:
         target_text,
         similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
         case_sensitive: bool = False,
+        roi: Roi | None = None,
     ) -> tuple[int, int] | None:
-        ocr_results = self.ocr(img)
+        ocr_results = self.ocr(img, roi=roi)
         compare_target = target_text if case_sensitive else target_text.lower()
         best = None
         best_conf = -1.0
@@ -161,8 +194,9 @@ class CommonOcr:
         target_text,
         similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
         case_sensitive: bool = False,
+        roi: Roi | None = None,
     ) -> list[tuple[int, int, float]]:
-        ocr_results = self.ocr(img)
+        ocr_results = self.ocr(img, roi=roi)
         compare_target = target_text if case_sensitive else target_text.lower()
         positions = []
         for box, text, conf in ocr_results:
@@ -179,8 +213,9 @@ class CommonOcr:
         target_text,
         similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
         case_sensitive: bool = False,
+        roi: Roi | None = None,
     ) -> list[tuple[list[list[int]], str, float]]:
-        ocr_results = self.ocr(img)
+        ocr_results = self.ocr(img, roi=roi)
         compare_target = target_text if case_sensitive else target_text.lower()
         return [
             (box, text, conf)
@@ -193,17 +228,19 @@ class CommonOcr:
         self,
         img: np.ndarray | None,
         similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
+        roi: Roi | None = None,
         **readtext_kwargs,
     ) -> list[str]:
-        ocr_result = self.ocr(img, **readtext_kwargs)
+        ocr_result = self.ocr(img, roi=roi, **readtext_kwargs)
         return [text for _, text, conf in ocr_result if conf >= similarity_threshold]
 
     def find_all_text_positions(
         self,
         img: np.ndarray | None,
         similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
+        roi: Roi | None = None,
     ) -> list[tuple[int, int, str, float]]:
-        ocr_results = self.ocr(img)
+        ocr_results = self.ocr(img, roi=roi)
         positions = []
         for box, text, conf in ocr_results:
             if conf >= similarity_threshold:

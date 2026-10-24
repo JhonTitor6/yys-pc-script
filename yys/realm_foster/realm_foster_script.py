@@ -22,6 +22,11 @@ from yys.common.scenes import Scene, Template
 from yys.common.script_meta import ScriptMeta
 
 
+#: 模板相似度下限与像素差上限，防止遮罩或近似画面被当成命中。
+_MIN_SIMILARITY = 0.92
+_MAX_PIXEL_DIFFERENCE = 22.0
+
+
 class _Stopped(Exception):
     """用户停止或观察完当前一步。"""
 
@@ -251,9 +256,13 @@ class RealmFosterScript(YYSBaseScript):
         previous: tuple[Scene | None, bool] | None = None
         while time.monotonic() < deadline:
             frame = self._read()
+            close = self._match(frame, Template.POPUP_CLOSE)
+            if close is not None and self._close_popup(close):
+                continue
             signature = (self._classify(frame),
                          self._match(frame, Template.RETURN) is not None)
             if signature == previous and (signature[0] is not None or signature[1]):
+                self._reset_popup_attempts()
                 return frame
             previous = signature
             self._stop_threading_event.wait(0.3)
@@ -330,26 +339,36 @@ class RealmFosterScript(YYSBaseScript):
                 current = self._match(frame, alternative)
                 if current is not None:
                     return current
+        point = self._match_template(frame, name)
+        if point is not None:
+            return point
+        # 结界主页模板可能在阈值边缘漏检，模板未命中后才用 OCR 兜底。
         if (name == Template.GROWTH_ENTRY
                 and self._match(frame, Template.RETURN) is not None):
             labels = self._labels(frame, (170, 200, 910, 440))
             points = [(x, y) for x, y, text in labels if text == "式神育成"]
             if len(points) == 1 and any(text in ("结界防守", "结界卡") for _, _, text in labels):
                 return points[0]
-        path = (Path(to_project_path(f"yys/common/images/scene_control/{name}.bmp"))
+        return None
+
+    def _match_template(self, frame: np.ndarray, name: Template) -> tuple[int, int] | None:
+        """模板命中判定；模板图走 ImageFinder 缓存，避免每次匹配重复读盘。"""
+        path = (str(Path(to_project_path(f"yys/common/images/scene_control/{name}.bmp")))
                 if name in (Template.RETURN, Template.TO_HOME)
-                else self._images / f"{name}.png")
-        result = self.image_finder.best_match(frame, str(path))
-        if result.similarity < 0.92:
+                else str(self._images / f"{name}.png"))
+        result = self.image_finder.best_match(frame, path)
+        if result.similarity < _MIN_SIMILARITY:
             self._log_miss(name, result.similarity, result.point)
             return None
-        template = cv2.imread(str(path))
+        template = self.image_finder.read_template(path)
+        if template is None:
+            return None
         h, w = template.shape[:2]
         x, y = result.point
         patch = frame[y - h // 2:y - h // 2 + h, x - w // 2:x - w // 2 + w]
         difference = (float("inf") if patch.shape != template.shape
                       else float(cv2.absdiff(patch, template).mean()))
-        if difference > 22:
+        if difference > _MAX_PIXEL_DIFFERENCE:
             self.logger.debug(
                 f"[FOSTER_MATCH] {name} 相似度={result.similarity:.3f} 但像素差={difference:.1f} "
                 f"超限 候选={result.point}"
@@ -390,6 +409,7 @@ class RealmFosterScript(YYSBaseScript):
             if self._run_guard is not None:
                 self._run_guard.note_iteration(known)
             if known:
+                self._reset_popup_attempts()
                 return frame
             self._stop_threading_event.wait(0.2)
         raise RuntimeError("[FOSTER_TRANSITION] 寄养页面转场未确认，未重复输入")
@@ -407,6 +427,10 @@ class RealmFosterScript(YYSBaseScript):
         self._click(point)
         self._stop_threading_event.wait(0.4)
         return True
+
+    def _reset_popup_attempts(self) -> None:
+        """成功进入目标页后重置弹窗关闭预算，避免同一位置永久失效。"""
+        self.__dict__.setdefault("_popup_close_attempts", {}).clear()
 
     def _labels(
         self, frame: np.ndarray, roi: tuple[int, int, int, int],

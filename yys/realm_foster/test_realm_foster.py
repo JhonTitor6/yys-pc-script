@@ -15,6 +15,7 @@ from PIL import Image
 from win_util.environment.guarded import GuardedEnvironment, RunGuard
 from win_util.image import ImageFinder
 from win_util.ocr import CommonOcr
+from yys.common.scenes import Template
 from yys.realm_foster.realm_foster_script import FosterCandidate, RealmFosterScript, _Stopped
 
 
@@ -225,3 +226,48 @@ def test_wait_closes_unexpected_popup_before_target() -> None:
     runner._click = lambda point: clicks.append(point)
     assert runner._wait(lambda frame: runner._match(frame, "growth") is not None) is target
     assert clicks == [(983, 163)]
+
+
+def test_popup_close_gives_up_after_two_attempts_and_resets() -> None:
+    # 产品契约来源：子任务 FA6——同一位置最多点两次，但成功转场后预算重置，
+    # 避免同一弹窗在后续阶段再次出现时被永久拒绝关闭。
+    runner = script()
+    runner._click = Mock()
+    runner._stop_threading_event = Mock()
+    assert runner._close_popup((100, 100)) is True
+    assert runner._close_popup((100, 100)) is True
+    assert runner._close_popup((100, 100)) is False
+    runner._reset_popup_attempts()
+    assert runner._close_popup((100, 100)) is True
+
+
+def test_wait_resets_popup_attempts_when_target_reached() -> None:
+    # 产品契约来源：子任务 FA6——到达目标页后清空弹窗关闭计数。
+    runner = script()
+    frame = cv2.imread(str(FIXTURES / "growth.png"))
+    runner._read = Mock(return_value=frame)
+    runner._stop_threading_event = Mock()
+    runner.__dict__["_popup_close_attempts"] = {(10, 10): 2}
+    runner._wait(lambda _: True)
+    assert runner.__dict__["_popup_close_attempts"] == {}
+
+
+def test_growth_entry_template_hit_skips_ocr() -> None:
+    # 产品契约来源：子任务 FA1——模板命中时不再跑 OCR，避免等待循环每帧识别。
+    runner = script()
+    frame = cv2.imread(str(FIXTURES / "realm.png"))
+    assert frame is not None
+    runner._labels = Mock(return_value=[])
+    assert runner._match(frame, Template.GROWTH_ENTRY) is not None
+    runner._labels.assert_not_called()
+
+
+def test_growth_entry_uses_ocr_only_after_template_miss() -> None:
+    # 产品契约来源：子任务 FA1——模板在阈值边缘漏检时，才用 OCR 兜底识别结界主页。
+    runner = script()
+    frame = np.zeros((641, 1138, 3), dtype=np.uint8)
+    runner._match_template = Mock(
+        side_effect=lambda current, name: (45, 32) if name == Template.RETURN else None
+    )
+    runner._labels = Mock(return_value=[(500, 300, "式神育成"), (200, 300, "结界防守")])
+    assert runner._match(frame, Template.GROWTH_ENTRY) == (500, 300)

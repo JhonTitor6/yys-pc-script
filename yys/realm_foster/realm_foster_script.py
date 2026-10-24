@@ -25,6 +25,34 @@ from yys.common.script_meta import ScriptMeta
 #: 模板相似度下限与像素差上限，防止遮罩或近似画面被当成命中。
 _MIN_SIMILARITY = 0.92
 _MAX_PIXEL_DIFFERENCE = 22.0
+#: 未命中日志限流：相似度超过该值且变化够大才重复记录。
+_MISS_LOG_SIMILARITY = 0.70
+_MISS_LOG_DELTA = 0.05
+#: 庭院双标记与 OCR 文本识别阈值。
+_HOME_MARKER_SIMILARITY = 0.72
+_OCR_CONFIDENCE = 0.90
+#: 星级槽位：亮勾玉掩码匹配分、灰勾玉像素差上限与勾玉 HSV 范围。
+_STAR_MATCH_SCORE = 0.70
+_STAR_DIFF_LIMIT = 30.0
+_STAR_HSV_LOW = (12, 120, 150)
+_STAR_HSV_HIGH = (40, 255, 255)
+#: 等待与轮询节奏（秒）。
+_TRANSITION_TIMEOUT_SECONDS = 12.0
+_POLL_INTERVAL_SECONDS = 0.2
+_STEP_INTERVAL_SECONDS = 0.3
+_POPUP_CLOSE_INTERVAL_SECONDS = 0.4
+#: 弹窗关闭与逐级返回的尝试上限。
+_MAX_POPUP_CLOSE_ATTEMPTS = 2
+_MAX_RETURN_STEPS = 6
+#: 截图尺寸校验。
+_MIN_CAPTURE_WIDTH = 500
+_CAPTURE_ASPECT_TOLERANCE = 0.03
+#: 寄养面板与槽位 ROI（逻辑坐标）。
+_FOSTER_SLOT_ROI = (1000, 100, 1115, 141)
+_ROW_ROI = (289, 166, 470, 542)
+_TAB_ROI = (190, 85, 399, 142)
+_CARD_TYPE_ROI = (736, 312, 834, 349)
+_GROWTH_ENTRY_OCR_ROI = (170, 200, 910, 440)
 
 
 class _Stopped(Exception):
@@ -53,7 +81,7 @@ class _Tab(StrEnum):
 class FosterCandidate:
     """一个已核验可进入的太鼓候选；同星级保留扫描顺序。"""
 
-    tab: str
+    tab: _Tab
     name: str
     stars: int
 
@@ -252,7 +280,7 @@ class RealmFosterScript(YYSBaseScript):
 
     def _wait_stable(self) -> np.ndarray:
         """连续两次读到同一场景才认为转场稳定，避免对过渡帧重复输入。"""
-        deadline = time.monotonic() + 12
+        deadline = time.monotonic() + _TRANSITION_TIMEOUT_SECONDS
         previous: tuple[Scene | None, bool] | None = None
         while time.monotonic() < deadline:
             frame = self._read()
@@ -265,7 +293,7 @@ class RealmFosterScript(YYSBaseScript):
                 self._reset_popup_attempts()
                 return frame
             previous = signature
-            self._stop_threading_event.wait(0.3)
+            self._stop_threading_event.wait(_STEP_INTERVAL_SECONDS)
         raise RuntimeError("[FOSTER_TRANSITION] 寄养页面转场未确认，未重复输入")
 
     @staticmethod
@@ -297,7 +325,8 @@ class RealmFosterScript(YYSBaseScript):
         self._check()
         image = self._env.capture_screen().convert("RGB")
         self._size = image.size
-        if image.width < 500 or abs(image.width / image.height - self.SIZE[0] / self.SIZE[1]) > 0.03:
+        if (image.width < _MIN_CAPTURE_WIDTH
+                or abs(image.width / image.height - self.SIZE[0] / self.SIZE[1]) > _CAPTURE_ASPECT_TOLERANCE):
             raise RuntimeError("[FOSTER_CAPTURE] 客户区尺寸或比例未校准")
         frame = cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2BGR)
         self.image_finder.screenshot_cache = frame
@@ -331,7 +360,7 @@ class RealmFosterScript(YYSBaseScript):
             marker = self.image_finder.best_match(
                 frame, to_project_path("yys/common/images/scene/home.bmp"),
             )
-            if marker.similarity >= 0.72:
+            if marker.similarity >= _HOME_MARKER_SIMILARITY:
                 return marker.point
         if name == Template.GUILD:
             # 旧版与 2026-10-24 实机新版结界按钮外观不同，逐个尝试已知变体。
@@ -345,7 +374,7 @@ class RealmFosterScript(YYSBaseScript):
         # 结界主页模板可能在阈值边缘漏检，模板未命中后才用 OCR 兜底。
         if (name == Template.GROWTH_ENTRY
                 and self._match(frame, Template.RETURN) is not None):
-            labels = self._labels(frame, (170, 200, 910, 440))
+            labels = self._labels(frame, _GROWTH_ENTRY_OCR_ROI)
             points = [(x, y) for x, y, text in labels if text == "式神育成"]
             if len(points) == 1 and any(text in ("结界防守", "结界卡") for _, _, text in labels):
                 return points[0]
@@ -385,7 +414,8 @@ class RealmFosterScript(YYSBaseScript):
         """限流记录未命中候选，避免等待页面时每轮重复刷屏。"""
         misses: dict[Template, float] = self.__dict__.setdefault("_match_misses", {})
         previous = misses.get(name)
-        if similarity >= 0.70 and (previous is None or abs(previous - similarity) >= 0.05):
+        if (similarity >= _MISS_LOG_SIMILARITY
+                and (previous is None or abs(previous - similarity) >= _MISS_LOG_DELTA)):
             misses[name] = similarity
             self.logger.debug(
                 f"[FOSTER_MATCH] {name} 未命中 相似度={similarity:.3f} 最佳候选={point}"
@@ -399,7 +429,7 @@ class RealmFosterScript(YYSBaseScript):
 
     def _wait(self, predicate: Callable[[np.ndarray], bool]) -> np.ndarray:
         """等待目标页面；出现任何非预期弹窗时先点掉关闭按钮。"""
-        deadline = time.monotonic() + 12
+        deadline = time.monotonic() + _TRANSITION_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
             frame = self._read()
             close = self._match(frame, Template.POPUP_CLOSE)
@@ -411,7 +441,7 @@ class RealmFosterScript(YYSBaseScript):
             if known:
                 self._reset_popup_attempts()
                 return frame
-            self._stop_threading_event.wait(0.2)
+            self._stop_threading_event.wait(_POLL_INTERVAL_SECONDS)
         raise RuntimeError("[FOSTER_TRANSITION] 寄养页面转场未确认，未重复输入")
 
     def _close_popup(self, point: tuple[int, int]) -> bool:
@@ -420,12 +450,12 @@ class RealmFosterScript(YYSBaseScript):
             "_popup_close_attempts", {}
         )
         count = attempts.get(point, 0)
-        if count >= 2:
+        if count >= _MAX_POPUP_CLOSE_ATTEMPTS:
             return False
         attempts[point] = count + 1
         self.logger.info(f"[FOSTER_POPUP] 识别到弹窗关闭按钮={point}，先关闭")
         self._click(point)
-        self._stop_threading_event.wait(0.4)
+        self._stop_threading_event.wait(_POPUP_CLOSE_INTERVAL_SECONDS)
         return True
 
     def _reset_popup_attempts(self) -> None:
@@ -437,7 +467,7 @@ class RealmFosterScript(YYSBaseScript):
     ) -> list[tuple[int, int, str]]:
         x0, y0, x1, y1 = roi
         return [(x + x0, y + y0, "".join(text.split())) for x, y, text, _ in
-                self.ocr.find_all_text_positions(frame[y0:y1, x0:x1], 0.90)]
+                self.ocr.find_all_text_positions(frame[y0:y1, x0:x1], _OCR_CONFIDENCE)]
 
     def _panel(self, frame: np.ndarray) -> bool:
         return self._match(frame, Template.FRIENDS) is not None
@@ -445,17 +475,17 @@ class RealmFosterScript(YYSBaseScript):
     def _rows(self, frame: np.ndarray) -> list[tuple[int, int, str]]:
         if not self._panel(frame):
             raise RuntimeError("[FOSTER_LIST] 好友寄养面板未确认")
-        rows = sorted((item for item in self._labels(frame, (289, 166, 470, 542))
+        rows = sorted((item for item in self._labels(frame, _ROW_ROI)
                        if not item[2].startswith(("[", "【"))), key=lambda item: item[1])
         if not rows or len({name for _, _, name in rows}) != len(rows):
             raise RuntimeError("[FOSTER_NAMES] 好友名称缺失或重名，不能确定目标")
         return rows
 
-    def _switch_tab(self, tab: str) -> None:
+    def _switch_tab(self, tab: _Tab) -> None:
         frame = self._read()
         if not self._panel(frame):
             raise RuntimeError("[FOSTER_LIST] 不能在未知页面切换列表")
-        labels = [item for item in self._labels(frame, (190, 85, 399, 142)) if item[2] == tab]
+        labels = [item for item in self._labels(frame, _TAB_ROI) if item[2] == tab]
         if len(labels) != 1:
             raise RuntimeError(f"[FOSTER_TAB] 无法唯一识别{tab}标签")
         self._click(labels[0][:2])
@@ -467,7 +497,7 @@ class RealmFosterScript(YYSBaseScript):
     def _wheel(self, delta: int) -> None:
         self._check()
         self._env.wheel(*self._point((430, 390)), delta)
-        self._stop_threading_event.wait(0.3)
+        self._stop_threading_event.wait(_STEP_INTERVAL_SECONDS)
 
     def _top(self) -> None:
         previous = None
@@ -494,33 +524,41 @@ class RealmFosterScript(YYSBaseScript):
             edge = cv2.cvtColor(f[max(166, y - 35):min(542, y + 35), 188:197], cv2.COLOR_BGR2HSV)
             return int(cv2.countNonZero(cv2.inRange(edge, (125, 100, 120), (165, 255, 255)))) > 30
         frame = self._wait(selected)
-        labels = self._labels(frame, (736, 312, 834, 349))
+        labels = self._labels(frame, _CARD_TYPE_ROI)
         if not labels:
             raise RuntimeError("[FOSTER_CARD] 卡片类型无法识别")
         if not any(text == "太鼓" for _, _, text in labels):
             return frame, None
         return frame, self._star_count(frame)
 
+    def _star_references(self) -> tuple[tuple[np.ndarray, ...], tuple[np.ndarray, ...]]:
+        """返回亮勾玉掩码与灰勾玉模板；首次调用时计算并缓存。"""
+        references = self.__dict__.get("_star_reference_cache")
+        if references is None:
+            active_masks = tuple(
+                cv2.inRange(cv2.cvtColor(image, cv2.COLOR_BGR2HSV),
+                            _STAR_HSV_LOW, _STAR_HSV_HIGH)
+                for image in (self._stars[0], self._live_stars[0])
+            )
+            references = (active_masks, (self._stars[1], self._live_stars[1]))
+            self._star_reference_cache = references
+        return references
+
     def _star_count(self, frame: np.ndarray) -> int:
         """逐格区分亮勾玉和灰勾玉，拒绝模糊槽位和不连续星级。"""
-        active, inactive = self._stars
-        live_active, live_inactive = self._live_stars
+        active_masks, inactive_templates = self._star_references()
         values: list[bool] = []
         for index in range(6):
             x = 749 + 13 * index
             slot = frame[289:304, x:x + 13]
-            hsv = cv2.cvtColor(slot, cv2.COLOR_BGR2HSV)
-            mask = cv2.inRange(hsv, (12, 120, 150), (40, 255, 255))
-            expected = cv2.inRange(cv2.cvtColor(active, cv2.COLOR_BGR2HSV),
-                                   (12, 120, 150), (40, 255, 255))
-            live_expected = cv2.inRange(cv2.cvtColor(live_active, cv2.COLOR_BGR2HSV),
-                                        (12, 120, 150), (40, 255, 255))
+            mask = cv2.inRange(cv2.cvtColor(slot, cv2.COLOR_BGR2HSV),
+                               _STAR_HSV_LOW, _STAR_HSV_HIGH)
             score = max(float(cv2.matchTemplate(mask, reference, cv2.TM_CCOEFF_NORMED)[0, 0])
-                        for reference in (expected, live_expected))
-            if score >= 0.70:
+                        for reference in active_masks)
+            if score >= _STAR_MATCH_SCORE:
                 values.append(True)
             elif min(float(cv2.absdiff(slot, reference).mean())
-                     for reference in (inactive, live_inactive)) < 30:
+                     for reference in inactive_templates) < _STAR_DIFF_LIMIT:
                 values.append(False)
             else:
                 raise RuntimeError("[FOSTER_STARS] 太鼓星级无法可靠识别")
@@ -529,7 +567,7 @@ class RealmFosterScript(YYSBaseScript):
             raise RuntimeError("[FOSTER_STARS] 太鼓星级槽位不连续")
         return stars
 
-    def _scan(self, tab: str) -> list[FosterCandidate]:
+    def _scan(self, tab: _Tab) -> list[FosterCandidate]:
         self._switch_tab(tab)
         self._top()
         candidates: list[FosterCandidate] = []
@@ -576,12 +614,12 @@ class RealmFosterScript(YYSBaseScript):
         if self._match(frame, Template.GROWTH) is None or self._panel(frame):
             return False
         return any(re.fullmatch(r"\d{2}:\d{2}:\d{2}", text) for _, _, text in
-                   self._labels(frame, (1000, 100, 1115, 141)))
+                   self._labels(frame, _FOSTER_SLOT_ROI))
 
     def _return_home(self) -> None:
         """逐级返回庭院；只点击已识别的返回控件，每次重新分类。"""
         self._stage = "returning_home"
-        for _ in range(6):
+        for _ in range(_MAX_RETURN_STEPS):
             frame = self._read()
             if self._classify(frame) == Scene.HOME:
                 return

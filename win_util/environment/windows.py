@@ -52,6 +52,9 @@ class WindowsEnvironment(GameEnvironment):
         try:
             if win32gui.IsIconic(self._hwnd):
                 win32gui.ShowWindow(self._hwnd, win32con.SW_RESTORE)
+            # 已在前台时不再重复切换，避免 SetForegroundWindow 被系统拒绝导致假失败。
+            if win32gui.GetForegroundWindow() == self._hwnd:
+                return
             foreground_hwnd = win32gui.GetForegroundWindow()
             current_thread_id = win32api.GetCurrentThreadId()
             foreground_thread_id = (

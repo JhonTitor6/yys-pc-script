@@ -172,6 +172,7 @@ def main() -> None:
     parser.add_argument("--restore", action="store_true", help="验证旧格式离屏窗口恢复")
     parser.add_argument("--blocked", action="store_true", help="验证端口被占用时的失败路径")
     parser.add_argument("--crash", action="store_true", help="验证宿主被强杀时回收后端")
+    parser.add_argument("--displays", action="store_true", help="在当前真实显示器间移动隔离窗口并核验 DPI")
     args = parser.parse_args()
     executable = args.executable.resolve()
     if b"YYS_TAURI_SMOKE_ONLY" not in executable.read_bytes():
@@ -179,6 +180,8 @@ def main() -> None:
     repo = Path(__file__).resolve().parents[2]
     root = repo / "build" / "tauri-smoke" / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     root.mkdir(parents=True)
+    if args.displays:
+        (root / "display-matrix-request").touch()
     if args.restore:
         (root / "window-state.json").write_text(
             json.dumps({"width": 900, "height": 650, "x": 99999, "y": 99999}), encoding="utf-8"
@@ -234,6 +237,10 @@ def main() -> None:
         assert not pid_alive(pid), f"假后端未被回收：{pid}"
         assert "WS /ws/events" in requests, requests
         assert "GET /api/scripts" in requests, requests
+        displays = None
+        if args.displays:
+            displays = json.loads((root / "display-matrix.json").read_text(encoding="utf-8"))
+            assert displays["ok"], displays
         print(
             json.dumps(
                 {
@@ -244,6 +251,7 @@ def main() -> None:
                     "native": native,
                     "backend_env": backend_env,
                     "requests": requests,
+                    "displays": displays,
                 },
                 ensure_ascii=False,
                 indent=2,

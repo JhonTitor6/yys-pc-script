@@ -147,6 +147,11 @@ pub fn after_window(app: &tauri::AppHandle, window: &WebviewWindow) -> tauri::Re
                 tray_command(&handle, "stop");
             }
             if root.join("report.json").exists() && root.join("other.json").exists() {
+                if root.join("display-matrix-request").exists() {
+                    let result = check_displays(&handle)
+                        .unwrap_or_else(|error| serde_json::json!({"ok": false, "error": error}));
+                    let _ = fs::write(root.join("display-matrix.json"), result.to_string());
+                }
                 handle.exit(0);
                 return;
             }
@@ -154,6 +159,46 @@ pub fn after_window(app: &tauri::AppHandle, window: &WebviewWindow) -> tauri::Re
         handle.exit(1);
     });
     Ok(())
+}
+
+/// 仅移动本次隔离窗口；读取真实显示器和 DPI，不修改系统显示配置。
+fn check_displays(app: &tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let window = app.get_webview_window("main").ok_or("主窗口不存在")?;
+    let monitors = window.available_monitors().map_err(|e| e.to_string())?;
+    let mut results = Vec::new();
+    for monitor in monitors {
+        let area = monitor.work_area();
+        window
+            .set_position(tauri::PhysicalPosition::new(
+                area.position.x + 20,
+                area.position.y + 20,
+            ))
+            .map_err(|e| e.to_string())?;
+        std::thread::sleep(Duration::from_millis(400));
+        window
+            .set_size(tauri::LogicalSize::new(900.0, 650.0))
+            .map_err(|e| e.to_string())?;
+        std::thread::sleep(Duration::from_millis(400));
+        let scale = window.scale_factor().map_err(|e| e.to_string())?;
+        let size = window
+            .inner_size()
+            .map_err(|e| e.to_string())?
+            .to_logical::<f64>(scale);
+        let position = window.outer_position().map_err(|e| e.to_string())?;
+        let ok = (scale - monitor.scale_factor()).abs() < 0.01
+            && (size.width - 900.0).abs() < 2.0
+            && (size.height - 650.0).abs() < 2.0
+            && position.x >= area.position.x
+            && position.y >= area.position.y
+            && position.x < area.position.x + area.size.width as i32
+            && position.y < area.position.y + area.size.height as i32;
+        results.push(serde_json::json!({"name": monitor.name(), "scale": monitor.scale_factor(),
+            "actual_scale": scale, "work_area": {"x":area.position.x,"y":area.position.y,"width":area.size.width,"height":area.size.height},
+            "actual_position": {"x":position.x,"y":position.y}, "logical_size": {"width":size.width,"height":size.height}, "ok":ok}));
+    }
+    Ok(
+        serde_json::json!({"ok": !results.is_empty() && results.iter().all(|row| row["ok"] == true), "monitors": results}),
+    )
 }
 
 fn inspect_native(window: &WebviewWindow) -> tauri::Result<((f64, f64), bool)> {

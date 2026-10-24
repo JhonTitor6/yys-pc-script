@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import tempfile
+from contextlib import closing
 from pathlib import Path
 
 #: 未配置时保持既有 cwd 相对定位。
@@ -38,7 +40,7 @@ def migrate_legacy_database(target: Path, source: Path | None) -> str:
     """把旧库一致性复制到永久位置；目标已存在时绝不覆盖。
 
     源库只读打开并走 SQLite backup API，避免直接复制 WAL 中的半写状态。
-    迁移先写同目录临时文件，完整性检查通过后再原子替换。
+    迁移先写独立的同目录临时文件，校验后原子发布；并发出现目标时失败。
     """
     if target.exists():
         return MIGRATION_TARGET_EXISTS
@@ -48,20 +50,17 @@ def migrate_legacy_database(target: Path, source: Path | None) -> str:
         raise FileNotFoundError(f"旧库来源不存在：{source}")
 
     target.parent.mkdir(parents=True, exist_ok=True)
-    staging = target.with_name(f"{target.name}.migrating")
-    staging.unlink(missing_ok=True)
-    source_connection = sqlite3.connect(f"file:{source}?mode=ro", uri=True)
-    target_connection = sqlite3.connect(staging)
+    with tempfile.NamedTemporaryFile(dir=target.parent, suffix=".migrating", delete=False) as temp:
+        staging = Path(temp.name)
     try:
-        source_connection.backup(target_connection)
-        check = target_connection.execute("PRAGMA quick_check").fetchone()
-        if not check or check[0] != "ok":
-            raise RuntimeError(f"迁移副本完整性检查失败：{check}")
-    except Exception:
-        staging.unlink(missing_ok=True)
-        raise
+        with closing(sqlite3.connect(f"{source.resolve().as_uri()}?mode=ro", uri=True)) as source_connection:
+            with closing(sqlite3.connect(staging)) as target_connection:
+                source_connection.backup(target_connection)
+                check = target_connection.execute("PRAGMA quick_check").fetchone()
+                if not check or check[0] != "ok":
+                    raise RuntimeError(f"迁移副本完整性检查失败：{check}")
+        # 同卷硬链接原子发布且绝不覆盖；不支持时明确失败，不降级为覆盖。
+        os.link(staging, target)
     finally:
-        target_connection.close()
-        source_connection.close()
-    os.replace(staging, target)
+        staging.unlink(missing_ok=True)
     return MIGRATION_MIGRATED

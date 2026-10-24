@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+from contextlib import closing
+import os
 import sqlite3
 
 import pytest
@@ -23,7 +25,7 @@ from ui_backend.storage.workbench_db import (
 def make_legacy_db(path: Path, marker: str) -> None:
     """构造一个带标记行的旧库。"""
     Database(path).initialize()
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection, connection:
         connection.execute(
             "insert into app_settings (key, value_json) values ('legacy-marker', ?)",
             (f'"{marker}"',),
@@ -32,7 +34,7 @@ def make_legacy_db(path: Path, marker: str) -> None:
 
 def read_marker(path: Path) -> str | None:
     """读取迁移后的标记行。"""
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection:
         row = connection.execute(
             "select value_json from app_settings where key = 'legacy-marker'"
         ).fetchone()
@@ -85,6 +87,43 @@ def test_migration_reports_missing_source_without_creating_empty_db(tmp_path: Pa
 
     assert migrate_legacy_database(target, None) == MIGRATION_SKIPPED
     assert not target.exists()
+
+
+def test_concurrent_migration_never_replaces_winner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """产品契约 AC25：并发迁移使用各自副本，后发布者失败且保留胜者数据。"""
+    source = tmp_path / "legacy.db"
+    newer_source = tmp_path / "newer.db"
+    target = tmp_path / "config/ui.db"
+    make_legacy_db(source, "old")
+    make_legacy_db(newer_source, "new")
+    real_link = os.link
+    staging_paths: list[Path] = []
+
+    def publish_with_racer(staging: Path, destination: Path) -> None:
+        staging_paths.append(staging)
+        if len(staging_paths) == 1:
+            assert migrate_legacy_database(target, newer_source) == MIGRATION_MIGRATED
+        real_link(staging, destination)
+
+    monkeypatch.setattr("ui_backend.storage.workbench_db.os.link", publish_with_racer)
+    with pytest.raises(FileExistsError):
+        migrate_legacy_database(target, source)
+    assert read_marker(target) == '"new"'
+    assert len(set(staging_paths)) == 2
+    assert not list(target.parent.glob("*.migrating"))
+
+
+def test_invalid_migration_source_closes_handles_before_cleanup(tmp_path: Path) -> None:
+    """产品契约 AC25：损坏源库明确失败，不留下空目标或占用的临时副本。"""
+    source = tmp_path / "broken.db"
+    source.write_bytes(b"not-a-sqlite-database")
+    target = tmp_path / "config/ui.db"
+    with pytest.raises(sqlite3.DatabaseError):
+        migrate_legacy_database(target, source)
+    assert not target.exists()
+    assert not list(target.parent.glob("*.migrating"))
 
 
 def test_app_uses_configured_path_and_migrates_once(

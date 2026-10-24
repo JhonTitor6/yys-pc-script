@@ -66,6 +66,8 @@ PyInstaller onedir 不等于一个独立 EXE。bundle.resources 必须保留相�
 
 ### HTTP 与 WebSocket
 
+- 2026-10-19 用户确认：HTTP 不增加未知 Origin 拒绝逻辑，token 仍必需；CORS 继续只返回精确白名单来源。WebSocket 的 Origin/token 双重校验不变。
+
 - HTTP API 地址保持 http://127.0.0.1:8000；请求继续携带 X-YYS-UI-Token。图片预览沿用已有受保护 API 和 token query，错误页或日志不得泄漏 token。
 - WebSocket 保持 ws://127.0.0.1:8000/ws/events，并沿用 token query、快照和事件恢复语义；不把业务事件流重写成 Tauri IPC。
 - 在 HTTP CORS 白名单中精确加入 http://tauri.localhost，验证 OPTIONS 和实际鉴权请求。既有 Electron 回退/开发所需来源按当前契约保留；不扩大为 * 或任意 localhost 端口。
@@ -138,6 +140,8 @@ PyInstaller onedir 不等于一个独立 EXE。bundle.resources 必须保留相�
 - Runtime 未安装且离线时提供单独安装 Microsoft Evergreen Standalone Installer 的说明；该安装器不默认塞入本产品发行包。
 
 ### 单文件 portable
+
+- 2026-10-19 阶段 5 修复：取消复用版本目录缓存，每次使用 NSIS `$PLUGINSDIR/runtime` 独立解出完整载荷；`ExecWait` 等待宿主，离开载荷 cwd 后交给 NSIS 退出清理。同版本修复包不会读取旧载荷；代价是每次启动都需解压。下方版本化缓存描述为原设计，已由本决定替代。
 
 - Tauri 的 Windows 标准安装目标不是 Electron portable。保留既有单文件 portable EXE 验收，另用最小的自解压/启动封装携带 Tauri 主程序和完整 backend 载荷，优先复用 NSIS 工具链；不再捆绑 Electron。
 - 解压、启动、等待和清理必须区分版本化程序载荷与永久用户数据；数据库、截图、覆盖图和 profile 绝不放在会被清理的临时目录。

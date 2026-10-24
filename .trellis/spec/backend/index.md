@@ -19,6 +19,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Error Handling](./error-handling.md) | Error types, handling strategies | To fill |
 | [Quality Guidelines](./quality-guidelines.md) | Game automation, replay, guarded-run, and desktop workbench runtime contracts | Active |
 | [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | To fill |
+| [桌面发行安全契约](./desktop-release-safety.md) | Tauri 数据迁移、日志脱敏、便携载荷与验收边界 | Active |
 
 ---
 

@@ -8,6 +8,8 @@
 
 ## 规划审阅记录
 
+- 2026-10-19：用户授权修复阶段 5 发现的迁移覆盖、便携缓存和日志 token 问题，并重新打包复验；HTTP 未知 Origin 不额外拒绝，保持 token 鉴权和原 CORS 语义，WebSocket 不变。随后用户明确“win10先不验”，本轮延后 Win10 验证，不把延后记为通过。
+
 - 2026-10-18：用户要求“继续，分发阶段一，使用gpt6 astra 中”；阶段 1 已分发至 01a14f09-c404-7681-b02e-402844ddbfe3（GPT-6 Astra / medium），结果记录 stage1-report.md。本会话只检查规划；不自动实施后续阶段。
 
 - 2026-10-18：用户回复“是”，确认当前 portable 业务库迁入永久 userData/config/ui_workbench.db，其他两库保留且不合并；首次 Tauri 启动仅主题和导航折叠恢复默认。阶段 0 的剩余策略门槛通过；本会话仍只检查规划，不执行迁移或开发代码。
@@ -86,7 +88,7 @@
 - AC18：对最终 NSIS 和 portable 文件逐个读取字节数，且都满足 bytes < 100000000；不能用 MiB 估算代替。
 - AC19：回退到 Electron 发布版时，数据库、截图和图片覆盖仍可读取；回退不依赖 WebView2 profile。
 - AC20：正式宿主使用 Tauri 2/Rust，不要求 .NET Framework；前端资源由 Tauri 打包，生产页面实际来源为 http://tauri.localhost，FastAPI 不承担新增 /ui 页面服务。
-- AC21：来自可信 Tauri 页面、携带正确 token 的 API/WS 请求成功；其他来源、缺失或错误 token 被拒绝。CORS 预检和 CSP 允许既有截图、图片和裁剪器正常工作。
+- AC21：携带正确 token 的 HTTP API 请求不因未知 Origin 额外拒绝，未知来源不获得 CORS 允许头；HTTP 缺失或错误 token 被拒绝。WebSocket 同时验证 token 与浏览器 Origin。可信 Tauri 来源的 CORS 预检和 CSP 允许既有截图、图片和裁剪器正常工作。
 - AC22：能力配置仅授权主窗口；自定义命令权限和 IPC 调用方检查均通过负样本验证，前端不获得通用 shell、文件系统或后端进程启动权限。
 - AC23：单文件 portable 在普通用户权限下解出并启动完整后端资源；重启、版本升级和退出清理不丢失数据库或把用户数据留在临时解压目录。
 - AC24：首次导入使用当前 portable 的最新一致性快照，目标为永久 userData/config/ui_workbench.db；原库及安装版/开发版库保持不变，记录来源，不自动合并。

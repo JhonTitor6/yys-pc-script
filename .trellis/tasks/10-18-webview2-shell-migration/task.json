@@ -2,7 +2,7 @@
   "id": "webview2-shell-migration",
   "name": "webview2-shell-migration",
   "title": "使用 Tauri 2 与 Evergreen WebView2 替换 Electron 桌面壳",
-  "description": "阶段0已通过；阶段1 Tauri宿主和静态页面已按用户要求分发给 GPT-6 Astra/medium 新会话。本会话只检查规划，阶段2及后续不自动启动。",
+  "description": "阶段5三项问题已修复并重新打包，本机复验通过；Win10与混合DPI按用户要求延后，整机Runtime缺失等矩阵仍待环境，阶段5部分验证。",
   "status": "in_progress",
   "dev_type": null,
   "scope": null,
@@ -23,7 +23,45 @@
   "relatedFiles": [],
   "notes": "2026-10-18 用户要求“继续，分发阶段一，使用gpt6 astra 中”。新会话 01a14f09-c404-7681-b02e-402844ddbfe3 承担阶段1代码、必要依赖恢复、编译测试及隔离烟测；原会话仍不开发代码。真实后端集成、数据迁移、发行打包和游戏操作不在本阶段范围，完成后检查stage1-report.md。",
   "meta": {
-    "current_stage": 1,
+    "current_stage": 5,
+    "stage5_status": "partially_verified",
+    "stage5_report": "stage5-recheck.md",
+    "stage5_acceptance": {
+      "date": "2026-10-19",
+      "baseline_head": "af92eee",
+      "backend_tests_passed": 129,
+      "rust_tests_passed": 10,
+      "smoke_modes_passed": ["default", "restore", "blocked", "crash"],
+      "findings": [
+        "并发出现的迁移目标库可能被覆盖",
+        "便携缓存忽略同版本新载荷和缺失依赖",
+        "访问日志记录WebSocket鉴权token",
+        "HTTP未知Origin返回200但无CORS允许头，与AC21字面拒绝标准有差异"
+      ],
+      "remaining_matrix": ["Win10 22H2", "真实Runtime缺失与安装", "多屏DPI", "升级回退与实际桌面交互"],
+      "product_code_changed": false,
+      "formal_artifacts_rebuilt": false
+    },
+    "stage5_recheck": {
+      "date": "2026-10-19",
+      "report": "stage5-recheck.md",
+      "fixed_findings": ["F1", "F2", "F3"],
+      "http_unknown_origin": "按用户决定不额外拒绝，保留token鉴权和CORS限制",
+      "backend_tests_passed": 136,
+      "rust_tests_passed": 10,
+      "nsis_bytes": 80340052,
+      "portable_bytes": 80257552,
+      "nsis_install_start_uninstall": "passed",
+      "real_portable_repeat_and_cleanup": "passed",
+      "real_display_matrix": "两屏均100%，窗口移动和逻辑尺寸通过",
+      "runtime_initialization_failure": "空浏览器目录实际初始化失败并回收后端，不等于整机缺失",
+      "deferred_by_user": ["Win10 22H2", "混合DPI"],
+      "unverified": ["整机Runtime缺失和安装矩阵", "物理拔屏", "旧Electron原位升级与实际回退", "完整托盘与裁剪UI矩阵"],
+      "build_manifest": "build/tauri-stage5/rebuild-manifest.json",
+      "product_code_changed": true,
+      "formal_artifacts_rebuilt": true,
+      "committed": false
+    },
     "phase0_gate": "passed",
     "phase0_report": "phase0.md",
     "installation_thread": {
@@ -38,9 +76,9 @@
       "parent_review": "installation-review.md"
     },
     "toolchain_gate": "passed",
-    "parent_scope": "inspection_and_planning_only",
+    "parent_scope": "stage5_fixes_build_and_validation",
     "phase0_status": "completed",
-    "development_authorized_in_parent": false,
+    "development_authorized_in_parent": true,
     "migration_policy": {
       "approved": true,
       "source": "current_portable_latest_consistent_snapshot",
@@ -54,7 +92,7 @@
         "yys-gui-nav-collapsed"
       ],
       "repeat_preference_reset": false,
-      "executed": false
+      "executed": true
     },
     "stage1_status": "accepted",
     "stage1_thread": {

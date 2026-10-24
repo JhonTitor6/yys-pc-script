@@ -10,6 +10,7 @@ import numpy as np
 
 from win_util.image import ImageMatchConfig, to_project_path
 from yys.common.event_script_base import YYSBaseScript, _extract_config_meta, random_sleep
+from yys.common.scenes import Scene
 from yys.common.script_meta import ConfigMeta, ScriptMeta
 
 if TYPE_CHECKING:
@@ -867,7 +868,7 @@ class Main(YYSBaseScript):
         for attempt in range(2):
             self.win_controller.update_screenshot_cache()
             detection = self.scene_manager.detect_current_scene()
-            if detection is not None and detection.scene_name == "home":
+            if detection is not None and detection.scene_name == Scene.HOME:
                 return True
             if attempt == 1 or not self.scene_manager.click_return():
                 self.logger.error("切换阵容后未能安全返回 Home")
@@ -991,22 +992,22 @@ class Main(YYSBaseScript):
             self.logger.info(f"已在狭间暗域区域: {current_scene}")
             return
 
-        if current_scene == "abyss_enemy_selection":
+        if current_scene == Scene.ABYSS_ENEMY_SELECTION:
             self._state = AbyssShadowsState.ENEMY_SELECTION
             self.logger.info("已在狭间暗域敌人选择界面")
             return
 
-        if current_scene == "battling":
+        if current_scene == Scene.BATTLING:
             self.logger.error("当前处于战斗中，请等待战斗安全结束后重试")
             self.stop()
             return
 
-        if current_scene not in {"home", "abyss_selection", None}:
+        if current_scene not in {Scene.HOME, Scene.ABYSS_SELECTION, None}:
             self.logger.error(f"无法从当前场景启动狭间暗域: {current_scene or 'unknown'}")
             self.stop()
             return
 
-        if current_scene in {"home", None}:
+        if current_scene in {Scene.HOME, None}:
             if not self._prepare_default_lineup():
                 self.logger.error("未能切换狭间默认阵容，停止脚本")
                 self.stop()

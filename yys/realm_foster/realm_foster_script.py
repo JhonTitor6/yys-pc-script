@@ -17,49 +17,12 @@ from win_util.environment.guarded import GuardedEnvironment, RunGuard
 from win_util.environment.windows import WindowsEnvironment
 from win_util.image import to_project_path
 from yys.common.event_script_base import YYSBaseScript
+from yys.common.scenes import Scene, Template
 from yys.common.script_meta import ScriptMeta
 
 
 class _Stopped(Exception):
     """用户停止或观察完当前一步。"""
-
-
-class _Template(StrEnum):
-    """生产识别模板名称，避免在条件判断里散落字符串字面量。"""
-
-    HOME = "home"
-    HOME_MENU = "home_menu"
-    HOME_SAKURA_LANTERN = "home_sakura_lantern"
-    GUILD = "guild"
-    GUILD_LIVE = "guild_live"
-    GUILD_V2 = "guild_v2"
-    GUILD_TREE_NOTICE = "guild_tree_notice"
-    GUILD_TREE_CLOSE = "guild_tree_close"
-    GROWTH = "growth"
-    GROWTH_ENTRY = "growth_entry"
-    GROWTH_RETURN = "growth_return"
-    FOSTER_OPEN = "foster_open"
-    FRIENDS = "friends"
-    ENTER = "enter"
-    CONFIRM = "confirm"
-    CONFIRM_BUTTON = "confirm_button"
-    CANCEL_BUTTON = "cancel_button"
-    RETURN = "return"
-    TO_HOME = "to_home"
-    POPUP_CLOSE = "popup_close"
-
-
-class _Scene(StrEnum):
-    """当前画面的稳定分类结果。"""
-
-    CONFIRM = "confirm"
-    PANEL = "panel"
-    FOSTERED = "fostered"
-    GROWTH_OWN = "growth_own"
-    GROWTH_FRIEND = "growth_friend"
-    REALM_OWN = "realm_own"
-    GUILD = "guild"
-    HOME = "home"
 
 
 class _Outcome(StrEnum):
@@ -156,24 +119,24 @@ class RealmFosterScript(YYSBaseScript):
             self._stage, self._outcome = "failed", _Outcome.FAILED
             raise
 
-    def _classify(self, frame: np.ndarray) -> _Scene | None:
+    def _classify(self, frame: np.ndarray) -> Scene | None:
         """识别当前画面；覆盖层优先，无法唯一确认时返回 None。"""
-        if self._match(frame, _Template.CONFIRM) is not None:
-            return _Scene.CONFIRM
+        if self._match(frame, Template.CONFIRM) is not None:
+            return Scene.CONFIRM
         if self._panel(frame):
-            return _Scene.PANEL
-        if self._match(frame, _Template.GROWTH) is not None:
+            return Scene.PANEL
+        if self._match(frame, Template.GROWTH) is not None:
             if self._fostering(frame):
-                return _Scene.FOSTERED
-            return (_Scene.GROWTH_OWN
-                    if self._match(frame, _Template.FOSTER_OPEN) is not None
-                    else _Scene.GROWTH_FRIEND)
-        if self._match(frame, _Template.GROWTH_ENTRY) is not None:
-            return _Scene.REALM_OWN
-        if self._match(frame, _Template.GUILD) is not None:
-            return _Scene.GUILD
-        if self._match(frame, _Template.HOME) is not None:
-            return _Scene.HOME
+                return Scene.FOSTERED
+            return (Scene.GROWTH_OWN
+                    if self._match(frame, Template.FOSTER_OPEN) is not None
+                    else Scene.GROWTH_FRIEND)
+        if self._match(frame, Template.GROWTH_ENTRY) is not None:
+            return Scene.REALM_OWN
+        if self._match(frame, Template.GUILD) is not None:
+            return Scene.GUILD
+        if self._match(frame, Template.HOME) is not None:
+            return Scene.HOME
         return None
 
     def _takeover(self) -> np.ndarray:
@@ -183,35 +146,35 @@ class RealmFosterScript(YYSBaseScript):
             frame = self._read()
             scene = self._classify(frame)
             self.logger.info(f"[FOSTER_TAKEOVER] 场景={scene} 已返回={returns}")
-            if scene in (_Scene.PANEL, _Scene.GROWTH_OWN):
+            if scene in (Scene.PANEL, Scene.GROWTH_OWN):
                 return frame
-            if scene == _Scene.FOSTERED:
+            if scene == Scene.FOSTERED:
                 self._outcome = _Outcome.ALREADY_FOSTERING
                 return frame
-            if scene == _Scene.CONFIRM:
+            if scene == Scene.CONFIRM:
                 self._cancel_confirm(frame)
                 continue
-            if scene == _Scene.HOME:
+            if scene == Scene.HOME:
                 frame = self._open_home_menu(frame)
-                point = self._required(frame, _Template.HOME_MENU)
+                point = self._required(frame, Template.HOME_MENU)
                 self.logger.info(f"[FOSTER_ENTRY] 阴阳寮入口={point}")
                 self._click(point)
                 self._wait_guild()
                 continue
-            if scene == _Scene.GUILD:
-                self._click(self._required(frame, _Template.GUILD))
+            if scene == Scene.GUILD:
+                self._click(self._required(frame, Template.GUILD))
                 frame = self._wait(
-                    lambda f: self._match(f, _Template.GROWTH_ENTRY) is not None
+                    lambda f: self._match(f, Template.GROWTH_ENTRY) is not None
                 )
-                self._click(self._required(frame, _Template.GROWTH_ENTRY))
-                self._wait(lambda f: self._match(f, _Template.GROWTH) is not None)
+                self._click(self._required(frame, Template.GROWTH_ENTRY))
+                self._wait(lambda f: self._match(f, Template.GROWTH) is not None)
                 continue
-            if scene == _Scene.REALM_OWN:
-                self._click(self._required(frame, _Template.GROWTH_ENTRY))
-                self._wait(lambda f: self._match(f, _Template.GROWTH) is not None)
+            if scene == Scene.REALM_OWN:
+                self._click(self._required(frame, Template.GROWTH_ENTRY))
+                self._wait(lambda f: self._match(f, Template.GROWTH) is not None)
                 continue
             # 好友育成页与未分类页面：只沿已识别返回箭头逐级回退，次数有界。
-            point = self._match(frame, _Template.RETURN)
+            point = self._match(frame, Template.RETURN)
             if point is not None and returns < self.MAX_TAKEOVER_RETURNS:
                 returns += 1
                 self.logger.info(
@@ -225,7 +188,7 @@ class RealmFosterScript(YYSBaseScript):
 
     def _open_home_menu(self, frame: np.ndarray) -> np.ndarray:
         """展开庭院菜单；菜单已展开时直接复用当前帧。"""
-        if self._match(frame, _Template.HOME_MENU) is not None:
+        if self._match(frame, Template.HOME_MENU) is not None:
             return frame
         from yys.common.lineup import LineupSwitcher
 
@@ -237,18 +200,18 @@ class RealmFosterScript(YYSBaseScript):
             raise RuntimeError("[FOSTER_ENTRY] 未确认庭院菜单展开按钮")
         self.logger.info(f"[FOSTER_ENTRY] 菜单展开按钮={expand_point}")
         self._click(expand_point)
-        return self._wait(lambda f: self._match(f, _Template.HOME_MENU) is not None)
+        return self._wait(lambda f: self._match(f, Template.HOME_MENU) is not None)
 
     def _cancel_confirm(self, frame: np.ndarray) -> None:
         """按 D1 取消来源不明的确认框；只发送一次，等待弹窗消失。"""
-        point = self._required(frame, _Template.CANCEL_BUTTON)
+        point = self._required(frame, Template.CANCEL_BUTTON)
         self.logger.info(f"[FOSTER_CANCEL] 取消确认框={point}")
         self._click(point)
-        self._wait(lambda f: self._match(f, _Template.CONFIRM) is None)
+        self._wait(lambda f: self._match(f, Template.CONFIRM) is None)
 
     def _open_list(self, frame: np.ndarray) -> np.ndarray:
         """从本人育成页打开寄养面板。"""
-        self._click(self._required(frame, _Template.FOSTER_OPEN))
+        self._click(self._required(frame, Template.FOSTER_OPEN))
         return self._wait(self._panel)
 
     def _foster(self, frame: np.ndarray) -> None:
@@ -260,28 +223,28 @@ class RealmFosterScript(YYSBaseScript):
         candidates = self._scan(_Tab.FRIEND) + self._scan(_Tab.CROSS_REGION)
         self._selected = self.choose(candidates)
         frame = self._revisit(self._selected)
-        self._click(self._required(frame, _Template.ENTER))
+        self._click(self._required(frame, Template.ENTER))
         frame = self._wait(lambda f: not self._panel(f)
-                           and self._match(f, _Template.GROWTH_ENTRY) is not None)
-        self._click(self._required(frame, _Template.GROWTH_ENTRY))
-        frame = self._wait(lambda f: self._match(f, _Template.GROWTH) is not None)
+                           and self._match(f, Template.GROWTH_ENTRY) is not None)
+        self._click(self._required(frame, Template.GROWTH_ENTRY))
+        frame = self._wait(lambda f: self._match(f, Template.GROWTH) is not None)
         # 产品规则是左边第一个，不额外筛选白蛋、等级或固定式神。
         self._click((178, 515))
-        frame = self._wait(lambda f: self._match(f, _Template.CONFIRM) is not None)
+        frame = self._wait(lambda f: self._match(f, Template.CONFIRM) is not None)
         self._stage = "confirming"
-        self._click(self._required(frame, _Template.CONFIRM_BUTTON))
-        self._wait(lambda f: self._match(f, _Template.CONFIRM) is None
+        self._click(self._required(frame, Template.CONFIRM_BUTTON))
+        self._wait(lambda f: self._match(f, Template.CONFIRM) is None
                    and self._fostering(f))
         self._outcome = _Outcome.FOSTERED
 
     def _wait_stable(self) -> np.ndarray:
         """连续两次读到同一场景才认为转场稳定，避免对过渡帧重复输入。"""
         deadline = time.monotonic() + 12
-        previous: tuple[_Scene | None, bool] | None = None
+        previous: tuple[Scene | None, bool] | None = None
         while time.monotonic() < deadline:
             frame = self._read()
             signature = (self._classify(frame),
-                         self._match(frame, _Template.RETURN) is not None)
+                         self._match(frame, Template.RETURN) is not None)
             if signature == previous and (signature[0] is not None or signature[1]):
                 return frame
             previous = signature
@@ -297,12 +260,12 @@ class RealmFosterScript(YYSBaseScript):
 
     def _wait_guild(self) -> np.ndarray:
         """关闭实机已确认的树木升级通知，未知弹窗仍停止。"""
-        frame = self._wait(lambda f: self._match(f, _Template.GUILD) is not None
-                           or self._match(f, _Template.GUILD_TREE_NOTICE) is not None)
-        if self._match(frame, _Template.GUILD_TREE_NOTICE) is not None:
-            self._click(self._required(frame, _Template.GUILD_TREE_CLOSE))
-            frame = self._wait(lambda f: self._match(f, _Template.GUILD_TREE_NOTICE) is None
-                               and self._match(f, _Template.GUILD) is not None)
+        frame = self._wait(lambda f: self._match(f, Template.GUILD) is not None
+                           or self._match(f, Template.GUILD_TREE_NOTICE) is not None)
+        if self._match(frame, Template.GUILD_TREE_NOTICE) is not None:
+            self._click(self._required(frame, Template.GUILD_TREE_CLOSE))
+            frame = self._wait(lambda f: self._match(f, Template.GUILD_TREE_NOTICE) is None
+                               and self._match(f, Template.GUILD) is not None)
         return frame
 
     def _check(self) -> None:
@@ -341,32 +304,32 @@ class RealmFosterScript(YYSBaseScript):
         return (round(point[0] * self._size[0] / self.SIZE[0]),
                 round(point[1] * self._size[1] / self.SIZE[1]))
 
-    def _match(self, frame: np.ndarray, name: _Template) -> tuple[int, int] | None:
-        if name == _Template.RETURN:
-            growth = self._match(frame, _Template.GROWTH_RETURN)
+    def _match(self, frame: np.ndarray, name: Template) -> tuple[int, int] | None:
+        if name == Template.RETURN:
+            growth = self._match(frame, Template.GROWTH_RETURN)
             if growth is not None:
                 return growth
-        if (name == _Template.HOME
-                and self._match(frame, _Template.HOME_SAKURA_LANTERN) is not None):
+        if (name == Template.HOME
+                and self._match(frame, Template.HOME_SAKURA_LANTERN) is not None):
             marker = self.image_finder.best_match(
                 frame, to_project_path("yys/common/images/scene/home.bmp"),
             )
             if marker.similarity >= 0.72:
                 return marker.point
-        if name == _Template.GUILD:
+        if name == Template.GUILD:
             # 旧版与 2026-10-24 实机新版结界按钮外观不同，逐个尝试已知变体。
-            for alternative in (_Template.GUILD_LIVE, _Template.GUILD_V2):
+            for alternative in (Template.GUILD_LIVE, Template.GUILD_V2):
                 current = self._match(frame, alternative)
                 if current is not None:
                     return current
-        if (name == _Template.GROWTH_ENTRY
-                and self._match(frame, _Template.RETURN) is not None):
+        if (name == Template.GROWTH_ENTRY
+                and self._match(frame, Template.RETURN) is not None):
             labels = self._labels(frame, (170, 200, 910, 440))
             points = [(x, y) for x, y, text in labels if text == "式神育成"]
             if len(points) == 1 and any(text in ("结界防守", "结界卡") for _, _, text in labels):
                 return points[0]
         path = (Path(to_project_path(f"yys/common/images/scene_control/{name}.bmp"))
-                if name in (_Template.RETURN, _Template.TO_HOME)
+                if name in (Template.RETURN, Template.TO_HOME)
                 else self._images / f"{name}.png")
         result = self.image_finder.best_match(frame, str(path))
         if result.similarity < 0.92:
@@ -390,10 +353,10 @@ class RealmFosterScript(YYSBaseScript):
         )
         return result.point
 
-    def _log_miss(self, name: _Template, similarity: float,
+    def _log_miss(self, name: Template, similarity: float,
                   point: tuple[int, int]) -> None:
         """限流记录未命中候选，避免等待页面时每轮重复刷屏。"""
-        misses: dict[_Template, float] = self.__dict__.setdefault("_match_misses", {})
+        misses: dict[Template, float] = self.__dict__.setdefault("_match_misses", {})
         previous = misses.get(name)
         if similarity >= 0.70 and (previous is None or abs(previous - similarity) >= 0.05):
             misses[name] = similarity
@@ -401,7 +364,7 @@ class RealmFosterScript(YYSBaseScript):
                 f"[FOSTER_MATCH] {name} 未命中 相似度={similarity:.3f} 最佳候选={point}"
             )
 
-    def _required(self, frame: np.ndarray, name: _Template) -> tuple[int, int]:
+    def _required(self, frame: np.ndarray, name: Template) -> tuple[int, int]:
         point = self._match(frame, name)
         if point is None:
             raise RuntimeError(f"[FOSTER_TARGET] 未确认寄养控件：{name}")
@@ -412,7 +375,7 @@ class RealmFosterScript(YYSBaseScript):
         deadline = time.monotonic() + 12
         while time.monotonic() < deadline:
             frame = self._read()
-            close = self._match(frame, _Template.POPUP_CLOSE)
+            close = self._match(frame, Template.POPUP_CLOSE)
             if close is not None and self._close_popup(close):
                 continue
             known = predicate(frame)
@@ -445,7 +408,7 @@ class RealmFosterScript(YYSBaseScript):
                 self.ocr.find_all_text_positions(frame[y0:y1, x0:x1], 0.90)]
 
     def _panel(self, frame: np.ndarray) -> bool:
-        return self._match(frame, _Template.FRIENDS) is not None
+        return self._match(frame, Template.FRIENDS) is not None
 
     def _rows(self, frame: np.ndarray) -> list[tuple[int, int, str]]:
         if not self._panel(frame):
@@ -553,7 +516,7 @@ class RealmFosterScript(YYSBaseScript):
                     continue
                 seen.add(name)
                 current, stars = self._inspect(name)
-                if stars is not None and self._match(current, _Template.ENTER) is not None:
+                if stars is not None and self._match(current, Template.ENTER) is not None:
                     candidates.append(FosterCandidate(tab, name, stars))
             previous = signature
             self._wheel(-120)
@@ -568,7 +531,7 @@ class RealmFosterScript(YYSBaseScript):
             names = tuple(name for _, _, name in rows)
             if candidate.name in names:
                 frame, stars = self._inspect(candidate.name)
-                if stars != candidate.stars or self._match(frame, _Template.ENTER) is None:
+                if stars != candidate.stars or self._match(frame, Template.ENTER) is None:
                     raise RuntimeError("[FOSTER_CHANGED] 最佳太鼓已改变或不可进入")
                 return frame
             if names == previous:
@@ -578,7 +541,7 @@ class RealmFosterScript(YYSBaseScript):
         raise RuntimeError("[FOSTER_CHANGED] 最佳太鼓好友已不可见")
 
     def _fostering(self, frame: np.ndarray) -> bool:
-        if self._match(frame, _Template.GROWTH) is None or self._panel(frame):
+        if self._match(frame, Template.GROWTH) is None or self._panel(frame):
             return False
         return any(re.fullmatch(r"\d{2}:\d{2}:\d{2}", text) for _, _, text in
                    self._labels(frame, (1000, 100, 1115, 141)))
@@ -588,19 +551,19 @@ class RealmFosterScript(YYSBaseScript):
         self._stage = "returning_home"
         for _ in range(6):
             frame = self._read()
-            if self._classify(frame) == _Scene.HOME:
+            if self._classify(frame) == Scene.HOME:
                 return
-            point = (self._match(frame, _Template.TO_HOME)
-                     or self._match(frame, _Template.RETURN))
+            point = (self._match(frame, Template.TO_HOME)
+                     or self._match(frame, Template.RETURN))
             if point is None:
                 frame = self._wait_stable()
-                if self._classify(frame) == _Scene.HOME:
+                if self._classify(frame) == Scene.HOME:
                     return
-                point = (self._match(frame, _Template.TO_HOME)
-                         or self._match(frame, _Template.RETURN))
+                point = (self._match(frame, Template.TO_HOME)
+                         or self._match(frame, Template.RETURN))
                 if point is None:
                     raise RuntimeError("[FOSTER_RETURN] 未确认可安全返回的页面")
             self._click(point)
             self._wait_stable()
-        if self._classify(self._read()) != _Scene.HOME:
+        if self._classify(self._read()) != Scene.HOME:
             raise RuntimeError("[FOSTER_RETURN] 寄养后未确认回到庭院")

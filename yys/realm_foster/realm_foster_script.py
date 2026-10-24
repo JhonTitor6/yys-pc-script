@@ -17,6 +17,7 @@ from win_util.environment.guarded import GuardedEnvironment, RunGuard
 from win_util.environment.windows import WindowsEnvironment
 from win_util.image import to_project_path
 from yys.common.event_script_base import YYSBaseScript
+from yys.common.scene_classifier import SceneClassifier, SceneRule
 from yys.common.scenes import Scene, Template
 from yys.common.script_meta import ScriptMeta
 
@@ -121,23 +122,30 @@ class RealmFosterScript(YYSBaseScript):
 
     def _classify(self, frame: np.ndarray) -> Scene | None:
         """识别当前画面；覆盖层优先，无法唯一确认时返回 None。"""
-        if self._match(frame, Template.CONFIRM) is not None:
-            return Scene.CONFIRM
-        if self._panel(frame):
-            return Scene.PANEL
-        if self._match(frame, Template.GROWTH) is not None:
-            if self._fostering(frame):
-                return Scene.FOSTERED
-            return (Scene.GROWTH_OWN
-                    if self._match(frame, Template.FOSTER_OPEN) is not None
-                    else Scene.GROWTH_FRIEND)
-        if self._match(frame, Template.GROWTH_ENTRY) is not None:
-            return Scene.REALM_OWN
-        if self._match(frame, Template.GUILD) is not None:
-            return Scene.GUILD
-        if self._match(frame, Template.HOME) is not None:
-            return Scene.HOME
-        return None
+        classifier = self.__dict__.get("_scene_classifier")
+        if classifier is None:
+            classifier = SceneClassifier(
+                lambda current, template: self._match(current, template) is not None,
+                (
+                    SceneRule(Scene.CONFIRM, (Template.CONFIRM,)),
+                    SceneRule(Scene.PANEL, (Template.FRIENDS,)),
+                    SceneRule(Scene.GROWTH_OWN, (Template.GROWTH,),
+                              self._resolve_growth),
+                    SceneRule(Scene.REALM_OWN, (Template.GROWTH_ENTRY,)),
+                    SceneRule(Scene.GUILD, (Template.GUILD,)),
+                    SceneRule(Scene.HOME, (Template.HOME,)),
+                ),
+            )
+            self._scene_classifier = classifier
+        return classifier.classify(frame)
+
+    def _resolve_growth(self, frame: np.ndarray) -> Scene:
+        """同一育成页按业务事实细分：已寄养、本人页或好友页。"""
+        if self._fostering(frame):
+            return Scene.FOSTERED
+        if self._match(frame, Template.FOSTER_OPEN) is not None:
+            return Scene.GROWTH_OWN
+        return Scene.GROWTH_FRIEND
 
     def _takeover(self) -> np.ndarray:
         """从当前画面推进到本人育成页或寄养面板，不假定前序步骤已执行。"""

@@ -2,14 +2,19 @@ import os
 import re
 import time
 from collections import defaultdict, deque
-from typing import Dict, List, Optional, Tuple, Set, TYPE_CHECKING, overload, Any
+from typing import Dict, List, Optional, Tuple, Set, TYPE_CHECKING, Union, overload, Any
 
 from loguru import logger
 
 from win_util.image import to_project_path
+from yys.common.scenes import Scene
 
 if TYPE_CHECKING:
     from win_util.controller import WinController
+
+
+# 场景名优先使用公共 Scene 枚举成员；尚未纳入枚举的业务场景保留字符串。
+SceneRef = Union[Scene, str]
 
 
 class SceneGraphValidationError(Exception):
@@ -32,7 +37,7 @@ class SceneGraphValidationError(Exception):
 class SceneDetectionResult:
     """场景检测结果"""
     
-    def __init__(self, scene_name: str, matched_image: str, position: Tuple[int, int], similarity: float = 0.0):
+    def __init__(self, scene_name: SceneRef, matched_image: str, position: Tuple[int, int], similarity: float = 0.0):
         """
         初始化场景检测结果
         
@@ -77,18 +82,18 @@ class SceneManager:
         self.hwnd = hwnd
         self.win_controller = win_controller
 
-        self.current_scene: Optional[str] = None
+        self.current_scene: Optional[SceneRef] = None
 
         # 场景图存储：{source_scene: {dest_scene: button_image_path}}
-        self.scene_graph: Dict[str, Dict[str, str]] = defaultdict(dict)
+        self.scene_graph: Dict[SceneRef, Dict[SceneRef, str]] = defaultdict(dict)
 
         # 场景图像映射：{scene_name: [image_paths]}
-        self.scene_images: Dict[str, List[str]] = {}
+        self.scene_images: Dict[SceneRef, List[str]] = {}
 
         # 场景跳转按钮映射：{(source, dest): button_image_path}
-        self.scene_transitions: Dict[Tuple[str, str], str] = {}
+        self.scene_transitions: Dict[Tuple[SceneRef, SceneRef], str] = {}
         # 通用跳转按钮：{dest_scene: button_path}
-        self.global_transitions: Dict[str, str] = {}
+        self.global_transitions: Dict[SceneRef, str] = {}
 
     # 旧文件名 → 规范场景名的显式别名表（产品契约：PRD R1）。
     # 文件名推导出的旧节点名只能通过本表归一化，业务脚本不得自行猜测。
@@ -107,33 +112,43 @@ class SceneManager:
         "spirit_guardian",
     })
 
-    def normalize_scene_name(self, name: str) -> str:
+    @staticmethod
+    def _as_scene(name: SceneRef) -> SceneRef:
+        """能对应公共枚举时返回 Scene，未纳入枚举的业务场景保留字符串。"""
+        if isinstance(name, Scene):
+            return name
+        try:
+            return Scene(name)
+        except ValueError:
+            return name
+
+    def normalize_scene_name(self, name: SceneRef) -> SceneRef:
         """将旧场景名归一化为规范名（应用显式别名表）。
 
         实例方法以便测试通过实例属性覆盖别名表；默认表在类级声明。
 
         Args:
-            name: 原始场景名（来自文件名或调用方）。
+            name: 原始场景名（来自文件名或调用方），可以是公共枚举成员。
 
         Returns:
-            规范场景名；无别名时原样返回。
+            规范场景名；能对应公共枚举时返回 Scene，否则保留字符串。
 
         Raises:
             SceneGraphValidationError: 别名表存在循环时抛出，避免无限迭代。
         """
-        seen: Set[str] = set()
-        current = name
+        seen: Set[SceneRef] = set()
+        current: SceneRef = name
         while current in self.SCENE_ALIASES:
             if current in seen:
-                chain = " -> ".join(list(seen) + [current])
+                chain = " -> ".join(str(item) for item in list(seen) + [current])
                 raise SceneGraphValidationError(
                     f"场景别名循环: {chain}"
                 )
             seen.add(current)
             current = self.SCENE_ALIASES[current]
-        return current
+        return self._as_scene(current)
 
-    def register_scene(self, name: str, image_paths: List[str]):
+    def register_scene(self, name: SceneRef, image_paths: List[str]):
         """
         注册场景及其图片（场景名经别名归一化）
 
@@ -147,7 +162,7 @@ class SceneManager:
         self.scene_images[name].extend(image_paths)
         logger.debug(f"注册场景: {name}, 图片: {image_paths}")
 
-    def register_transition(self, from_scene: str, to_scene: str, button_path: str):
+    def register_transition(self, from_scene: SceneRef, to_scene: SceneRef, button_path: str):
         """
         注册场景跳转（端点经别名归一化）
 
@@ -162,7 +177,7 @@ class SceneManager:
         self.scene_graph[from_scene][to_scene] = button_path
         logger.debug(f"注册跳转: {from_scene} -> {to_scene}, 按钮: {button_path}")
 
-    def register_global_transition(self, to_scene: str, button_path: str):
+    def register_global_transition(self, to_scene: SceneRef, button_path: str):
         """
         注册通用跳转按钮（从任意场景都可跳转到目标场景，目标名经别名归一化）
 
@@ -356,7 +371,7 @@ class SceneManager:
         results.sort(key=lambda r: r.similarity, reverse=True)
         return results
     
-    def is_reachable(self, source_scene: str, target_scene: str) -> bool:
+    def is_reachable(self, source_scene: SceneRef, target_scene: SceneRef) -> bool:
         """
         检查两个场景是否可达
         
@@ -388,7 +403,7 @@ class SceneManager:
         
         return False
     
-    def get_shortest_path(self, source_scene: str, target_scene: str) -> Optional[List[Tuple[str, str, str]]]:
+    def get_shortest_path(self, source_scene: SceneRef, target_scene: SceneRef) -> Optional[List[Tuple[SceneRef, SceneRef, str]]]:
         """
         使用BFS计算从源场景到目标场景的最短路径
         
@@ -424,7 +439,7 @@ class SceneManager:
         
         return None  # 不应到达此行，因为前面已检查可达性
     
-    def goto_scene(self, target_scene: str, timeout: int = 30) -> bool:
+    def goto_scene(self, target_scene: SceneRef, timeout: int = 30) -> bool:
         """
         跳转到目标场景
         
@@ -522,10 +537,10 @@ class SceneManager:
         )
         return True
     
-    def get_available_scenes(self) -> Set[str]:
+    def get_available_scenes(self) -> Set[SceneRef]:
         """获取所有可用的场景名称"""
         return set(self.scene_images.keys())
     
-    def get_scene_connections(self, scene: str) -> Dict[str, str]:
+    def get_scene_connections(self, scene: SceneRef) -> Dict[SceneRef, str]:
         """获取指定场景的所有连接（可跳转到的场景及按钮路径）"""
         return dict(self.scene_graph.get(scene, {}))

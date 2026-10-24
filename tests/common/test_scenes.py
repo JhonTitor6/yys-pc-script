@@ -38,3 +38,16 @@ def test_abyss_script_uses_shared_scene_enum() -> None:
     from yys.abyss_shadows import abyss_shadows_script
 
     assert abyss_shadows_script.Scene is Scene
+
+
+def test_scene_manager_normalizes_known_names_to_shared_enum() -> None:
+    # 产品契约：SceneManager 内部优先保存枚举成员，别名仍归一化；
+    # 尚未纳入枚举的业务场景保留字符串，不阻断目录注册。
+    from yys.common.scene_manager import SceneManager
+
+    manager = SceneManager(hwnd=0, win_controller=object())
+    assert manager.normalize_scene_name("battle") is Scene.BATTLING
+    assert manager.normalize_scene_name(Scene.HOME) is Scene.HOME
+    custom = manager.normalize_scene_name("custom_scene")
+    assert custom == "custom_scene"
+    assert not isinstance(custom, Scene)

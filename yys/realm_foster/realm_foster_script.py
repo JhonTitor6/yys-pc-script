@@ -38,6 +38,8 @@ class RealmFosterScript(YYSBaseScript):
     SCRIPT_META = ScriptMeta("结界寄养", "日常", None, {})
     SIZE = (1138, 641)
     MAX_SCROLLS = 40
+    MAX_TAKEOVER_STEPS = 12
+    MAX_TAKEOVER_RETURNS = 3
 
     def __init__(
         self, script_name: str = "realm_foster", config: dict | None = None,
@@ -78,52 +80,17 @@ class RealmFosterScript(YYSBaseScript):
                 "selected_stars": self._selected.stars if self._selected else None}
 
     def run(self) -> None:
-        """完成一次寄养；只有成功或已在寄养并返回庭院才正常结束。"""
+        """完成一次寄养；从任意已识别场景接管，成功或已寄养并回庭院才正常结束。"""
         self.on_run()
         try:
-            frame = self._read()
-            if self._match(frame, "home") is None:
-                raise RuntimeError("[FOSTER_ENTRY] 请从庭院启动寄养")
-            point = self._match(frame, "home_menu")
-            if point is None:
-                expand = self.image_finder.best_match(
-                    frame, "yys/common/images/lineup/home_menu_collapsed_night.png",
-                )
-                if expand.similarity < 0.90:
-                    raise RuntimeError("[FOSTER_ENTRY] 未确认庭院菜单展开按钮")
-                self._click(expand.point)
-                frame = self._wait(lambda f: self._match(f, "home_menu") is not None)
-                point = self._match(frame, "home_menu")
-            if point is None:
-                raise RuntimeError("[FOSTER_ENTRY] 未确认阴阳寮入口")
-            self._click(point)
-            frame = self._wait_guild()
-            self._click(self._required(frame, "guild"))
-            frame = self._wait(lambda f: self._match(f, "growth_entry") is not None)
-            self._click(self._required(frame, "growth_entry"))
-            frame = self._wait(lambda f: self._match(f, "growth") is not None)
-            if self._fostering(frame):
-                self._outcome = "already_fostering"
-            else:
-                self._click(self._required(frame, "foster_open"))
-                self._wait(self._panel)
-                self._stage = "scanning"
-                candidates = self._scan("好友") + self._scan("跨区")
-                self._selected = self.choose(candidates)
-                frame = self._revisit(self._selected)
-                self._click(self._required(frame, "enter"))
-                frame = self._wait(lambda f: not self._panel(f)
-                                   and self._match(f, "growth_entry") is not None)
-                self._click(self._required(frame, "growth_entry"))
-                frame = self._wait(lambda f: self._match(f, "growth") is not None)
-                # 产品规则是左边第一个，不额外筛选白蛋、等级或固定式神。
-                self._click((178, 515))
-                frame = self._wait(lambda f: self._match(f, "confirm") is not None)
-                self._stage = "confirming"
-                self._click(self._required(frame, "confirm_button"))
-                self._wait(lambda f: self._match(f, "confirm") is None
-                           and self._fostering(f))
-                self._outcome = "fostered"
+            frame = self._takeover()
+            if self._outcome == "already_fostering":
+                self._return_home()
+                self._stage = "done"
+                return
+            if not self._panel(frame):
+                frame = self._open_list(frame)
+            self._foster(frame)
             self._return_home()
             self._stage = "done"
         except _Stopped:
@@ -131,6 +98,134 @@ class RealmFosterScript(YYSBaseScript):
         except Exception:
             self._stage, self._outcome = "failed", "failed"
             raise
+
+    def _classify(self, frame: np.ndarray) -> str | None:
+        """识别当前画面；覆盖层优先，无法唯一确认时返回 None。"""
+        if self._match(frame, "confirm") is not None:
+            return "confirm"
+        if self._panel(frame):
+            return "panel"
+        if self._match(frame, "growth") is not None:
+            if self._fostering(frame):
+                return "fostered"
+            return ("growth_own" if self._match(frame, "foster_open") is not None
+                    else "growth_friend")
+        if self._match(frame, "growth_entry") is not None:
+            return "realm_own"
+        if self._match(frame, "guild") is not None:
+            return "guild"
+        if self._match(frame, "home") is not None:
+            return "home"
+        return None
+
+    def _takeover(self) -> np.ndarray:
+        """从当前画面推进到本人育成页或寄养面板，不假定前序步骤已执行。"""
+        returns = 0
+        for _ in range(self.MAX_TAKEOVER_STEPS):
+            frame = self._read()
+            scene = self._classify(frame)
+            self.logger.info(f"[FOSTER_TAKEOVER] 场景={scene} 已返回={returns}")
+            if scene in ("panel", "growth_own"):
+                return frame
+            if scene == "fostered":
+                self._outcome = "already_fostering"
+                return frame
+            if scene == "confirm":
+                self._cancel_confirm(frame)
+                continue
+            if scene == "home":
+                frame = self._open_home_menu(frame)
+                point = self._required(frame, "home_menu")
+                self.logger.info(f"[FOSTER_ENTRY] 阴阳寮入口={point}")
+                self._click(point)
+                self._wait_guild()
+                continue
+            if scene == "guild":
+                self._click(self._required(frame, "guild"))
+                frame = self._wait(lambda f: self._match(f, "growth_entry") is not None)
+                self._click(self._required(frame, "growth_entry"))
+                self._wait(lambda f: self._match(f, "growth") is not None)
+                continue
+            if scene == "realm_own":
+                self._click(self._required(frame, "growth_entry"))
+                self._wait(lambda f: self._match(f, "growth") is not None)
+                continue
+            # 好友育成页与未分类页面：只沿已识别返回箭头逐级回退，次数有界。
+            point = self._match(frame, "return")
+            if point is not None and returns < self.MAX_TAKEOVER_RETURNS:
+                returns += 1
+                self.logger.info(
+                    f"[FOSTER_TAKEOVER] 逐级返回 {returns}/{self.MAX_TAKEOVER_RETURNS}"
+                )
+                self._click(point)
+                self._wait_stable()
+                continue
+            raise RuntimeError(f"[FOSTER_TAKEOVER] 无法从当前画面安全接管：{scene}")
+        raise RuntimeError("[FOSTER_TAKEOVER] 接管步数超出预算")
+
+    def _open_home_menu(self, frame: np.ndarray) -> np.ndarray:
+        """展开庭院菜单；菜单已展开时直接复用当前帧。"""
+        if self._match(frame, "home_menu") is not None:
+            return frame
+        from yys.common.lineup import LineupSwitcher
+
+        self.logger.info("[FOSTER_ENTRY] 未识别到阴阳寮图标，先点菜单展开按钮")
+        expand_point = LineupSwitcher(
+            self._env, ocr=self.ocr,
+        ).home_menu_expand_point(frame, home_verified=True)
+        if expand_point is None:
+            raise RuntimeError("[FOSTER_ENTRY] 未确认庭院菜单展开按钮")
+        self.logger.info(f"[FOSTER_ENTRY] 菜单展开按钮={expand_point}")
+        self._click(expand_point)
+        return self._wait(lambda f: self._match(f, "home_menu") is not None)
+
+    def _cancel_confirm(self, frame: np.ndarray) -> None:
+        """按 D1 取消来源不明的确认框；只发送一次，等待弹窗消失。"""
+        point = self._required(frame, "cancel_button")
+        self.logger.info(f"[FOSTER_CANCEL] 取消确认框={point}")
+        self._click(point)
+        self._wait(lambda f: self._match(f, "confirm") is None)
+
+    def _open_list(self, frame: np.ndarray) -> np.ndarray:
+        """从本人育成页打开寄养面板。"""
+        self._click(self._required(frame, "foster_open"))
+        return self._wait(self._panel)
+
+    def _foster(self, frame: np.ndarray) -> None:
+        """扫描两个列表、复验候选并确认寄养；已寄养时只记录结果。"""
+        if self._fostering(frame):
+            self._outcome = "already_fostering"
+            return
+        self._stage = "scanning"
+        candidates = self._scan("好友") + self._scan("跨区")
+        self._selected = self.choose(candidates)
+        frame = self._revisit(self._selected)
+        self._click(self._required(frame, "enter"))
+        frame = self._wait(lambda f: not self._panel(f)
+                           and self._match(f, "growth_entry") is not None)
+        self._click(self._required(frame, "growth_entry"))
+        frame = self._wait(lambda f: self._match(f, "growth") is not None)
+        # 产品规则是左边第一个，不额外筛选白蛋、等级或固定式神。
+        self._click((178, 515))
+        frame = self._wait(lambda f: self._match(f, "confirm") is not None)
+        self._stage = "confirming"
+        self._click(self._required(frame, "confirm_button"))
+        self._wait(lambda f: self._match(f, "confirm") is None
+                   and self._fostering(f))
+        self._outcome = "fostered"
+
+    def _wait_stable(self) -> np.ndarray:
+        """连续两次读到同一场景才认为转场稳定，避免对过渡帧重复输入。"""
+        deadline = time.monotonic() + 12
+        previous: tuple[str | None, bool] | None = None
+        while time.monotonic() < deadline:
+            frame = self._read()
+            signature = (self._classify(frame), self._match(frame, "return") is not None)
+            if signature == previous and (signature[0] is not None or signature[1]):
+                return frame
+            previous = signature
+            self._stop_threading_event.wait(0.3)
+        raise RuntimeError("[FOSTER_TRANSITION] 寄养页面转场未确认，未重复输入")
 
     @staticmethod
     def choose(candidates: list[FosterCandidate]) -> FosterCandidate:
@@ -168,8 +263,13 @@ class RealmFosterScript(YYSBaseScript):
         return cv2.resize(frame, self.SIZE)
 
     def _click(self, point: tuple[int, int]) -> None:
+        """点击逻辑坐标，并记录实际落点用于复现误点。"""
         self._check()
-        self._env.left_click(*self._point(point))
+        clicked = self._point(point)
+        self.logger.info(
+            f"[FOSTER_CLICK] 阶段={self._stage} 逻辑坐标={point} 实际坐标={clicked}"
+        )
+        self._env.left_click(*clicked)
         if self._run_guard is not None:
             self._run_guard.allow_unknown_for(8)
         if self._env.observe_only:
@@ -204,14 +304,35 @@ class RealmFosterScript(YYSBaseScript):
                 if name in ("return", "to_home") else self._images / f"{name}.png")
         result = self.image_finder.best_match(frame, str(path))
         if result.similarity < 0.92:
+            self._log_miss(name, result.similarity, result.point)
             return None
         template = cv2.imread(str(path))
         h, w = template.shape[:2]
         x, y = result.point
         patch = frame[y - h // 2:y - h // 2 + h, x - w // 2:x - w // 2 + w]
-        if patch.shape != template.shape or float(cv2.absdiff(patch, template).mean()) > 22:
+        difference = (float("inf") if patch.shape != template.shape
+                      else float(cv2.absdiff(patch, template).mean()))
+        if difference > 22:
+            self.logger.debug(
+                f"[FOSTER_MATCH] {name} 相似度={result.similarity:.3f} 但像素差={difference:.1f} "
+                f"超限 候选={result.point}"
+            )
             return None
+        self.logger.debug(
+            f"[FOSTER_MATCH] {name} 命中 相似度={result.similarity:.3f} 坐标={result.point} "
+            f"像素差={difference:.1f}"
+        )
         return result.point
+
+    def _log_miss(self, name: str, similarity: float, point: tuple[int, int]) -> None:
+        """限流记录未命中候选，避免等待页面时每轮重复刷屏。"""
+        misses: dict[str, float] = self.__dict__.setdefault("_match_misses", {})
+        previous = misses.get(name)
+        if similarity >= 0.70 and (previous is None or abs(previous - similarity) >= 0.05):
+            misses[name] = similarity
+            self.logger.debug(
+                f"[FOSTER_MATCH] {name} 未命中 相似度={similarity:.3f} 最佳候选={point}"
+            )
 
     def _required(self, frame: np.ndarray, name: str) -> tuple[int, int]:
         point = self._match(frame, name)
@@ -220,9 +341,13 @@ class RealmFosterScript(YYSBaseScript):
         return point
 
     def _wait(self, predicate: Callable[[np.ndarray], bool]) -> np.ndarray:
+        """等待目标页面；出现任何非预期弹窗时先点掉关闭按钮。"""
         deadline = time.monotonic() + 12
         while time.monotonic() < deadline:
             frame = self._read()
+            close = self._match(frame, "popup_close")
+            if close is not None and self._close_popup(close):
+                continue
             known = predicate(frame)
             if self._run_guard is not None:
                 self._run_guard.note_iteration(known)
@@ -230,6 +355,20 @@ class RealmFosterScript(YYSBaseScript):
                 return frame
             self._stop_threading_event.wait(0.2)
         raise RuntimeError("[FOSTER_TRANSITION] 寄养页面转场未确认，未重复输入")
+
+    def _close_popup(self, point: tuple[int, int]) -> bool:
+        """点掉意外弹窗的关闭按钮；同一位置最多点两次，避免关闭失败时空点。"""
+        attempts: dict[tuple[int, int], int] = self.__dict__.setdefault(
+            "_popup_close_attempts", {}
+        )
+        count = attempts.get(point, 0)
+        if count >= 2:
+            return False
+        attempts[point] = count + 1
+        self.logger.info(f"[FOSTER_POPUP] 识别到弹窗关闭按钮={point}，先关闭")
+        self._click(point)
+        self._stop_threading_event.wait(0.4)
+        return True
 
     def _labels(
         self, frame: np.ndarray, roi: tuple[int, int, int, int],
@@ -378,20 +517,21 @@ class RealmFosterScript(YYSBaseScript):
                    self._labels(frame, (1000, 100, 1115, 141)))
 
     def _return_home(self) -> None:
+        """逐级返回庭院；只点击已识别的返回控件，每次重新分类。"""
         self._stage = "returning_home"
-        for _ in range(4):
-            frame = self._wait(lambda f: any(self._match(f, name) is not None
-                                            for name in ("home", "growth", "growth_entry", "guild")))
-            if self._match(frame, "home") is not None:
+        for _ in range(6):
+            frame = self._read()
+            if self._classify(frame) == "home":
                 return
-            if not any(self._match(frame, name) is not None for name in
-                       ("growth", "growth_entry", "guild")) or self._panel(frame):
-                raise RuntimeError("[FOSTER_RETURN] 未确认可安全返回的页面")
-            state = next(name for name in ("growth", "growth_entry", "guild")
-                         if self._match(frame, name) is not None)
-            self._click(self._match(frame, "to_home") or self._required(frame, "return"))
-            self._wait(lambda f: self._match(f, state) is None and any(
-                self._match(f, name) is not None
-                for name in ("home", "growth", "growth_entry", "guild")))
-        if self._match(self._read(), "home") is None:
+            point = self._match(frame, "to_home") or self._match(frame, "return")
+            if point is None:
+                frame = self._wait_stable()
+                if self._classify(frame) == "home":
+                    return
+                point = self._match(frame, "to_home") or self._match(frame, "return")
+                if point is None:
+                    raise RuntimeError("[FOSTER_RETURN] 未确认可安全返回的页面")
+            self._click(point)
+            self._wait_stable()
+        if self._classify(self._read()) != "home":
             raise RuntimeError("[FOSTER_RETURN] 寄养后未确认回到庭院")

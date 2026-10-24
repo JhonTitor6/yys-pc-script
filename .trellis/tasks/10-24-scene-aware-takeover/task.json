@@ -1,0 +1,28 @@
+{
+  "id": "scene-aware-takeover",
+  "name": "scene-aware-takeover",
+  "title": "游戏脚本从当前场景可靠接管",
+  "description": "规划游戏脚本从当前场景接管、业务中间态恢复与已完成状态识别，以结界寄养为首个试点。",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "JhonTitor6",
+  "assignee": "JhonTitor6",
+  "createdAt": "2026-10-24",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-24-realm-foster-takeover"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

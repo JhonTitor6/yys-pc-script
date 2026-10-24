@@ -108,6 +108,27 @@
         814,
         304
       ]
+    },
+    "confirm_live": {
+      "recording": "realm_foster_takeover/20261024T052129Z-705b77fd",
+      "frame": "000002-before.png",
+      "roi": [
+        380,
+        100,
+        760,
+        520
+      ]
+    },
+    "cancel_button": {
+      "recording": "realm_foster_takeover/20261024T052129Z-705b77fd",
+      "frame": "000002-before.png",
+      "roi": [
+        420,
+        452,
+        535,
+        518
+      ],
+      "production_template": "yys/realm_foster/images/cancel_button.png"
     }
   },
   "limits": [

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 from pathlib import Path
 from unittest.mock import Mock
@@ -32,7 +33,9 @@ def script() -> RealmFosterScript:
                           for name in ("active", "inactive")]
     result._stop_threading_event = threading.Event()
     result._run_guard = None
+    result._stage = "test"
     result.ocr = CommonOcr()
+    result.logger = logging.getLogger("realm_foster")
     result.pause_point = Mock()
     result._size = result.SIZE
     return result
@@ -199,10 +202,26 @@ def test_guild_return_clicks_recognized_arrow_then_confirms_home() -> None:
     runner = script()
     guild = cv2.imread(str(FIXTURES / "guild_live.png"))
     home = cv2.imread(str(FIXTURES / "home.png"))
-    runner._read = Mock(side_effect=[guild, home, home])
+    # 返回后连续两帧确认庭院才算稳定，避免对转场过渡帧重复输入。
+    runner._read = Mock(side_effect=[guild, home, home, home])
     runner._click = Mock()
     runner._env = Mock()
     runner._return_home()
     runner._click.assert_called_once_with(runner._match(guild, "to_home")
                                          or runner._required(guild, "return"))
     runner._env.key_press.assert_not_called()
+
+
+def test_wait_closes_unexpected_popup_before_target() -> None:
+    # 产品契约来源：2026-10-24 实机阴阳寮首页弹出叙勋榜活动窗，只识别通用关闭按钮。
+    runner = script()
+    popup = cv2.imread(str(FIXTURES / "guild.png"))
+    close = cv2.imread(str(runner._images / "popup_close.png"))
+    height, width = close.shape[:2]
+    popup[143:143 + height, 963:963 + width] = close
+    target = cv2.imread(str(FIXTURES / "growth.png"))
+    runner._read = Mock(side_effect=[popup, target])
+    clicks: list[tuple[int, int]] = []
+    runner._click = lambda point: clicks.append(point)
+    assert runner._wait(lambda frame: runner._match(frame, "growth") is not None) is target
+    assert clicks == [(983, 163)]

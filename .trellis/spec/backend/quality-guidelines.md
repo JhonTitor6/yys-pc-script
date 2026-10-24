@@ -868,3 +868,73 @@ $env:YYS_PYTHON = "C:\path\to\package-env\Scripts\python.exe"
 
 The selected environment controls the OpenCV wheel, while the build still validates the
 backend resources and the Electron installer as one release artifact.
+
+## 场景：寄养场景接管与安全回退（2026-10-24）
+
+### 1. 适用范围
+
+修改寄养入口识别、场景分类、确认框取消或返回路径时适用。目标是让脚本从当前游戏画面
+接管，而不是要求用户先回到庭院。
+
+### 2. 接口
+
+- `RealmFosterScript._classify(frame: np.ndarray) -> str | None`
+- `RealmFosterScript._takeover() -> np.ndarray`
+- `RealmFosterScript._cancel_confirm(frame: np.ndarray) -> None`
+- `RealmFosterScript._wait_stable() -> np.ndarray`
+- `LineupSwitcher.home_menu_expand_point(image, *, home_verified) -> tuple[int, int] | None`
+
+### 3. 契约
+
+- `_classify` 按覆盖层优先返回：`confirm`、`panel`、`fostered`、`growth_own`、
+  `growth_friend`、`realm_own`、`guild`、`home`，无法唯一确认时返回 `None`。
+- `growth_own` 必须同时命中 `growth` 与 `foster_open`（右上「可寄养式神 +」）；
+  只命中 `growth` 的是 `growth_friend`，不能用 stage 或上下文猜归属。
+- `fostered` 只由好友结界页右上 (1000, 100, 1115, 141) 区域的倒计时判定；
+  本人育成页没有自己的寄养槽位，不得据此推断已寄养。
+- 好友结界主页没有稳定模板（皮肤差异），分类结果为 `None`；它命中 `return`
+  返回箭头，允许在有界预算内逐级回退。
+- 确认框必须点击识别到的 `cancel_button` 一次，并等待 `confirm` 模板消失；
+  点击后弹窗不会立刻消失，连续帧相同才能判定稳定。
+- 已寄养时只核验右上槽位并回庭院，不发送第二次确认；游戏本身不会拦截重复寄养。
+- `MAX_TAKEOVER_RETURNS = 3`、`MAX_TAKEOVER_STEPS = 12`；未知页面没有返回箭头时
+  零输入失败，不得用固定坐标或连续 ESC 兜底。
+
+### 4. 验证与错误矩阵
+
+| 条件 | 要求结果 |
+|---|---|
+| 从庭院 / 阴阳寮 / 本人结界 / 本人育成页启动 | 推进到本人育成页或寄养面板，不要求回庭院 |
+| 从好友育成页启动且未寄养 | 点识别到的返回箭头逐级回退，回到本人结界后重新扫描 |
+| 启动时已有自己的寄养倒计时 | `outcome=already_fostering`，只返回庭院 |
+| 启动时停在确认框 | 点一次取消，等弹窗消失后重新分类 |
+| 未知页面没有 `return` 箭头 | 抛 `FOSTER_TAKEOVER`，不发送任何输入 |
+| 回退超过 3 次或接管超过 12 步 | 抛 `FOSTER_TAKEOVER`，停止输入 |
+| 取消点击后 `confirm` 仍在 | 继续等待同一弹窗消失，不重复点击确定 |
+
+### 5. Good / Base / Bad
+
+- Good: 从好友育成页启动时，先点返回箭头到好友结界主页，再返回本人结界主页，
+  点「式神育成」进入本人育成页，最后打开寄养面板重新扫描。
+- Good: 已寄养状态只核验右上倒计时并逐级返回庭院。
+- Base: 从庭院启动沿用原导航路径，行为与旧版本一致。
+- Bad: 用「按钮存在」直接判断归属，或把好友育成页当作本人页继续点「+」。
+
+### 6. 回归
+
+- `pytest yys/realm_foster`：场景分类、取消一次、未知页零输入、回退控制流；
+  本地存在 `recordings/realm_foster_takeover` 时额外跑真实关键帧分类。
+- 真实帧用例缺失时自动跳过，不得用合成图替代实机证据。
+- `tests/common/test_lineup.py`：`home_menu_expand_point` 公开方法契约。
+
+### 7. Wrong vs Correct
+
+```python
+# 错误：只认 growth 标题，把好友育成页当本人页
+if self._match(frame, "growth") is not None:
+    self._click(self._required(frame, "foster_open"))
+
+# 正确：归属必须由本人页专属标记证明
+if self._match(frame, "growth") is not None and self._match(frame, "foster_open") is not None:
+    ...
+```

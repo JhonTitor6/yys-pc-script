@@ -484,6 +484,22 @@ class ImageFinder:
         logger.debug(f"匹配成功: {Path(small_img_path).stem} | 位置: ({center_x},{center_y}) | 相似度: {final_score:.4f}")
         return center_x, center_y
 
+    def read_template(self, small_img_path: str) -> Optional[np.ndarray]:
+        """按路径缓存模板图，避免高频匹配重复读盘。
+
+        模板文件在运行期不会变化，缓存只在内存中保留解码后的图像；
+        路径解析与 miss 语义与直接 cv2.imread 保持一致。
+        """
+        path = to_project_path(small_img_path)
+        cache: dict[str, np.ndarray] = self.__dict__.setdefault("_template_cache", {})
+        template = cache.get(path)
+        if template is None:
+            template = cv2.imread(path)
+            if template is None:
+                return None
+            cache[path] = template
+        return template
+
     def best_match(self, screenshot: Optional[Any], small_img_path: str, x0: int = 0, y0: int = 0,
                    x1: int = 99999, y1: int = 99999) -> ImageMatchResult:
         """返回截图中该模板的最佳匹配候选，不设相似度下限（只读，无输入）。
@@ -505,8 +521,7 @@ class ImageFinder:
             return ImageMatchResult(point=(-1, -1), image_path=small_img_path, similarity=0.0)
 
         raw_path = small_img_path
-        small_img_path = to_project_path(small_img_path)
-        small_img = cv2.imread(small_img_path)
+        small_img = self.read_template(small_img_path)
         if small_img is None:
             return ImageMatchResult(point=(-1, -1), image_path=raw_path, similarity=0.0)
 

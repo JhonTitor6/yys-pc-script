@@ -69,3 +69,26 @@ def test_best_match_returns_miss_for_none_screenshot() -> None:
     assert not result.is_found
     assert result.point == (-1, -1)
     assert result.similarity == 0.0
+
+
+def test_best_match_reuses_cached_template(monkeypatch) -> None:
+    """产品契约：同一模板路径重复匹配只读盘一次，等待循环不再重复 IO。"""
+    rng = np.random.default_rng(11)
+    big = rng.integers(0, 255, (80, 80, 3), dtype=np.uint8)
+    small = big[20:40, 20:40].copy()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = _write_image(f"{tmp}/tpl_cached.bmp", small)
+        finder = _make_finder()
+        calls: list[str] = []
+        original = cv2.imread
+
+        def counting_read(target, *args, **kwargs):
+            calls.append(str(target))
+            return original(target, *args, **kwargs)
+
+        monkeypatch.setattr("win_util.image.cv2.imread", counting_read)
+        finder.best_match(big, path)
+        finder.best_match(big, path)
+
+    assert len(calls) == 1

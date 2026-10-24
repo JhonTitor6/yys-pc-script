@@ -26,7 +26,10 @@
 - [x] `realm_foster_script.py`：新增 `_classify` / `_takeover` / `_open_home_menu` / `_cancel_confirm` / `_open_list` / `_foster` / `_wait_stable`，重写 `_return_home`；删除「必须从庭院启动」的限制。
 - [x] 测试：`yys/realm_foster` 38 passed（含本地真实关键帧用例，缺 recordings 时自动跳过）；`ruff check`、`py_compile`、`git diff --check` 通过。
 - [ ] `tests/ui_backend` 回归未运行：沙箱拒绝 pytest 临时目录（23 个 setup 错误，与本次改动无关）。
-- [ ] 实机验证未做：新接管流程尚未在真实游戏窗口跑过。
+- [x] 本人育成页（已寄养）实机通过：`fostered` → `already_fostering` → 返回庭院，零寄养确认。
+- [x] 阴阳寮主页实机通过：`guild` → 结界 → 式神育成 → 已寄养 → 返回庭院。
+- [ ] 确认框取消与回退实机未验。
+- [ ] 新寄养成功终态实机未验（等寄养结束后补录）。
 
 ### 实施顺序核对
 

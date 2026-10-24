@@ -136,8 +136,9 @@ def test_skin_entry_matching_and_collapsed_menu_recovery(monkeypatch: pytest.Mon
     assert switcher._match(expanded, "home_entry_night") is not None
     assert switcher._match(collapsed, "home_entry") is None
     assert switcher._match(collapsed, "home_entry_night") is None
-    assert switcher._match(collapsed, "home_menu_collapsed_night") is not None
-    assert switcher._match(expanded, "home_menu_collapsed_night") is None
+    collapsed_region = (1047, 451, 1099, 540)
+    assert switcher._match(collapsed, "home_menu_scroll_collapsed", collapsed_region) is not None
+    assert switcher._match(expanded, "home_menu_scroll_collapsed", collapsed_region) is None
     assert switcher._text_point(shikigami_night, "preset", "预设") == (337, 88)
 
     current = [Image.open(_SKIN_FIXTURES / "collapsed.png")]
@@ -184,8 +185,8 @@ def test_verified_home_allows_fixed_menu_button_without_dynamic_background() -> 
     image = cv2.imread(str(_SKIN_FIXTURES / "home_day_current.png"))
     switcher = LineupSwitcher(MockEnvironment())
 
-    assert switcher._home_menu_expand_point(image, home_verified=False) is None
-    assert switcher._home_menu_expand_point(image, home_verified=True) == (1065, 570)
+    assert switcher.home_menu_expand_point(image, home_verified=False) is None
+    assert switcher.home_menu_expand_point(image, home_verified=True) == (1065, 570)
 
 
 def test_verified_home_prefers_real_bottom_scroll_over_unrelated_right_arrow() -> None:
@@ -203,12 +204,12 @@ def test_verified_home_prefers_real_bottom_scroll_over_unrelated_right_arrow() -
 
     assert switcher._match(image, "home_menu_expand") is not None
     assert switcher._match(image, "home_menu_scroll_collapsed") is not None
-    point = switcher._home_menu_expand_point(image, home_verified=True)
+    point = switcher.home_menu_expand_point(image, home_verified=True)
     assert point == (
         scroll_left + scroll_width // 2,
         scroll_top + scroll_height // 2,
     )
-    assert switcher._home_menu_expand_point(image, home_verified=False) is None
+    assert switcher.home_menu_expand_point(image, home_verified=False) is None
 
 
 def test_shikigami_heading_waits_for_preset_control_before_click(monkeypatch: pytest.MonkeyPatch) -> None:

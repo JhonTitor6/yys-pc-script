@@ -20,7 +20,6 @@ _REGIONS = {
     "home_entry": (920, 525, 1090, 625),
     "home_entry_night": (920, 525, 1090, 625),
     "home_menu_expand": (1047, 451, 1099, 600),
-    "home_menu_collapsed_night": (1047, 451, 1099, 540),
     "home_menu_scroll_collapsed": (1020, 520, 1136, 640),
     "shikigami": (70, 0, 205, 53),
     "preset": (293, 59, 377, 112),
@@ -68,7 +67,6 @@ class LineupSwitcher:
             "home_entry",
             "home_entry_night",
             "home_menu_expand",
-            "home_menu_collapsed_night",
             "home_menu_scroll_collapsed",
             "shikigami",
             "shikigami_preset",
@@ -323,15 +321,17 @@ class LineupSwitcher:
             time.sleep(0.10)
         raise RuntimeError(failure)
 
-    def _home_menu_expand_point(
+    def home_menu_expand_point(
         self, image: np.ndarray, *, home_verified: bool,
     ) -> tuple[int, int] | None:
-        """严格收起态可展开；调用方已确认庭院时接受固定菜单按钮。"""
+        """返回已确认的折叠或展开按钮位置，不执行点击。"""
         if home_verified:
             scroll = self._match(image, "home_menu_scroll_collapsed")
             if scroll is not None:
                 return scroll
-        if self._match(image, "home_menu_collapsed_night") is not None:
+        elif self._match(
+            image, "home_menu_scroll_collapsed", (1047, 451, 1099, 540),
+        ) is not None:
             return _HOME_MENU_EXPAND_POINT
         if home_verified:
             return self._match(image, "home_menu_expand")
@@ -350,7 +350,7 @@ class LineupSwitcher:
         if not self._heading(image):
             entry = self._match_any(image, _HOME_ENTRY_TEMPLATES)
             if entry is None:
-                expand = self._home_menu_expand_point(
+                expand = self.home_menu_expand_point(
                     image,
                     home_verified=home_verified,
                 )

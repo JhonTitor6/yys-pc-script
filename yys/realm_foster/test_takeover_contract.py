@@ -149,3 +149,12 @@ def test_real_cancel_backtrack_frames_reach_own_growth() -> None:
         if scenes[-1] is None:
             assert runner._match(frame, "return") is not None, relative
     assert scenes == ["confirm", "fostered", None, "realm_own", "growth_own"]
+
+
+def test_current_guild_button_variant_is_recognized() -> None:
+    # 产品契约来源：2026-10-24 实机阴阳寮 UI 更新，旧模板相似度降到 0.80/0.88；
+    # 新版按钮必须被识别，不能靠降低 0.92 阈值或像素差门槛掩盖。
+    runner = script()
+    frame = cv2.imread(str(FIXTURES / "guild_current.png"))
+    assert frame is not None
+    assert runner._match(frame, "guild") is not None

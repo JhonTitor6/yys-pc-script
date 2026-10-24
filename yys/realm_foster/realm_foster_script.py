@@ -292,9 +292,11 @@ class RealmFosterScript(YYSBaseScript):
             if marker.similarity >= 0.72:
                 return marker.point
         if name == "guild":
-            current = self._match(frame, "guild_live")
-            if current is not None:
-                return current
+            # 旧版与 2026-10-24 实机新版结界按钮外观不同，逐个尝试已知变体。
+            for alternative in ("guild_live", "guild_v2"):
+                current = self._match(frame, alternative)
+                if current is not None:
+                    return current
         if name == "growth_entry" and self._match(frame, "return") is not None:
             labels = self._labels(frame, (170, 200, 910, 440))
             points = [(x, y) for x, y, text in labels if text == "式神育成"]

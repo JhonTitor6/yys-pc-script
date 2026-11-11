@@ -9,15 +9,22 @@ from typing import Annotated, Any, Optional, TYPE_CHECKING, TypedDict, get_type_
 
 import cv2
 
-# 仅在本脚本作为 __main__ 进程运行时生效：在父类 from-import 之前修改包级属性，
-# 让 YYSBaseScript 的 BATTLE_END_CLICK_SLEEP 绑定为 3。其他独立脚本进程不受影响。
-import yys.common as _yys_common
 from win_util.image import ImageMatchConfig
-
-_yys_common.BATTLE_END_CLICK_SLEEP = 3
-
-from yys.common.event_script_base import YYSBaseScript, _extract_config_meta, random_sleep  # noqa: E402
-from yys.common.script_meta import ConfigMeta, ScriptMeta  # noqa: E402
+from yys.common import (
+    BATTLE_END_CLICK_RANGE_X,
+    BATTLE_END_CLICK_RANGE_Y,
+    BATTLE_END_SLEEP,
+    BATTLE_VICTORY_SLEEP,
+)
+from yys.common.event_script_base import (
+    BATTLE_END_LOSS_IMAGES,
+    BATTLE_END_OTHER_IMAGES,
+    BATTLE_END_SUCCESS_IMAGES,
+    YYSBaseScript,
+    _extract_config_meta,
+    random_sleep,
+)
+from yys.common.script_meta import ConfigMeta, ScriptMeta
 
 if TYPE_CHECKING:
     from tests.common.environment.base import GameEnvironment
@@ -61,6 +68,14 @@ class RealmRaidStopReason(str, Enum):
     MAX_BATTLE_COUNT = "max_battle_count"
 
 
+class RealmRaidBattleState(Enum):
+    """当前战斗与结算的计数状态。"""
+
+    IDLE = "idle"
+    PENDING_RESULT = "pending_result"
+    SETTLING = "settling"
+
+
 class RealmRaidConfig(TypedDict, total=False):
     """结界突破脚本的可配置字段。"""
     max_battle_count: Annotated[int, ConfigMeta(
@@ -68,9 +83,9 @@ class RealmRaidConfig(TypedDict, total=False):
         min_value=1,
         max_value=99,
         field_type="number",
-        label="最大战斗次数",
+        label="目标胜场",
         group="基础",
-        help="脚本自动停止前执行的最大战斗次数（1-99）",
+        help="达到目标胜场并完成结算后停止（1-99）",
         hot_reloadable=True,
     )]
     quit_3_times_config: Annotated[bool, ConfigMeta(
@@ -87,6 +102,7 @@ class RealmRaidScript(YYSBaseScript):
     """结界突破脚本：循环攻击可攻击的结界。"""
     BATTLE_TRANSITION_GRACE_SECONDS = 12.0
     BATTLE_SETTLEMENT_GRACE_SECONDS = 5.0
+    BATTLE_REWARD_CLICK_SLEEP = 3.0
     # 可攻击但已尝试结界的最多重试次数（点击未生效进入不了挑战时重试）
     MAX_TARGET_RETRY_COUNT = 3
     SCRIPT_META = ScriptMeta(
@@ -146,7 +162,7 @@ class RealmRaidScript(YYSBaseScript):
         self.attackable_barrier_list: list[RealmTarget] = []
         self.round_state = RealmRaidRoundState()
         self.stop_reason: Optional[RealmRaidStopReason] = None
-        self._battle_result_armed = False
+        self._battle_state = RealmRaidBattleState.IDLE
 
         # 注册结界突破特定的图像匹配事件
         self._register_image_match_event(ImageMatchConfig("yys/realm_raid/images/realm_raid_not_enough.bmp", similarity=0.85),
@@ -169,13 +185,20 @@ class RealmRaidScript(YYSBaseScript):
         self._register_image_match_event(ImageMatchConfig("yys/common/images/scene/barrier_breakthrough.bmp"),
                                          self.on_scene_barrier_breakthrough)
 
+    def _register_battle_end_events(self) -> None:
+        """单独处理胜负和共享奖励画面。"""
+        self._register_image_match_event(ImageMatchConfig(BATTLE_END_SUCCESS_IMAGES), self._on_battle_victory)
+        self._register_image_match_event(ImageMatchConfig(BATTLE_END_LOSS_IMAGES), self._on_battle_end)
+        self._register_image_match_event(ImageMatchConfig(BATTLE_END_OTHER_IMAGES), self._on_battle_reward)
+
     def _on_ticket_not_enough(self, _point: tuple[int, int]) -> None:
         """突破券不足时立即停止，避免事件被重复触发。"""
-        self.max_battle_count = self._cur_battle_count
         self._stop_with_reason(RealmRaidStopReason.TICKET_NOT_ENOUGH)
 
     def _on_attackable_barrier(self, _point: tuple[int, int]) -> None:
         """按从左到右、从上到下的顺序选择本轮尚未尝试的目标。"""
+        if not self._prepare_next_battle():
+            return
         # 点击前刷新截图缓存，避免基于陈旧画面定位
         self.win_controller.update_screenshot_cache()
         self.attackable_barrier_list = self.get_all_attackable_barrier()
@@ -263,31 +286,57 @@ class RealmRaidScript(YYSBaseScript):
 
     def _on_attack(self, point: tuple[int, int]) -> None:
         """点击进攻；每个新九宫格只执行一次退三次流程。"""
-        self._battle_result_armed = True
+        if not self._prepare_next_battle():
+            return
         self.bg_left_click(point, x_range=10, y_range=10)
         if not self.quit_3_times_config or self.round_state.quit_three_completed:
+            self._battle_state = RealmRaidBattleState.PENDING_RESULT
             self._allow_battle_transition()
             time.sleep(5)
             return
         if self.quit_3_times():
             self.round_state.quit_three_completed = True
+            self._battle_state = RealmRaidBattleState.PENDING_RESULT
             self._allow_battle_transition()
 
     def _on_battling(self, _point: tuple[int, int]) -> None:
         """确认战斗仍在进行，并为随后的结算动画保留短暂宽限。"""
-        self._battle_result_armed = True
+        if self._battle_state is RealmRaidBattleState.IDLE:
+            self._battle_state = RealmRaidBattleState.PENDING_RESULT
         if self._run_guard is not None:
             self._run_guard.allow_unknown_for(
                 self.BATTLE_SETTLEMENT_GRACE_SECONDS,
             )
 
-    def _should_count_battle_end(self, _point: tuple[int, int]) -> bool:
-        """只把与本轮真实战斗关联的首个结算画面计入次数。"""
-        if not self._battle_result_armed:
-            self.logger.debug("忽略未关联战斗的奖励结算画面")
-            return False
-        self._battle_result_armed = False
-        return True
+    def _on_battle_victory(self, point: tuple[int, int]) -> None:
+        """记录本场胜利并关闭画面。"""
+        self._record_battle_result(victory=True)
+        self.bg_left_click(point)
+        time.sleep(BATTLE_VICTORY_SLEEP)
+
+    def _on_battle_end(self, point: tuple[int, int]) -> None:
+        """记录本场失败并关闭画面。"""
+        self._record_battle_result(victory=False)
+        self._on_battle_reward(point)
+
+    def _on_battle_reward(self, point: tuple[int, int]) -> None:
+        """关闭结算或里程碑奖励。"""
+        time.sleep(BATTLE_END_SLEEP)
+        self.bg_left_click(point, x_range=BATTLE_END_CLICK_RANGE_X, y_range=BATTLE_END_CLICK_RANGE_Y)
+        time.sleep(self.BATTLE_REWARD_CLICK_SLEEP)
+
+    def _record_battle_result(self, *, victory: bool) -> None:
+        """同一场战斗只记录首次胜负结果。"""
+        if self._battle_state is not RealmRaidBattleState.PENDING_RESULT:
+            return
+        self._battle_state = RealmRaidBattleState.SETTLING
+        self._cur_battle_count += 1
+        if victory:
+            self._cur_battle_victory_count += 1
+        self.logger.success(
+            f"战斗完成，累计战斗{self._cur_battle_count}次，"
+            f"胜利{self._cur_battle_victory_count}/{self.max_battle_count}次"
+        )
 
     def _allow_battle_transition(self) -> None:
         """真实运行时容忍进攻后的短暂加载动画。"""
@@ -335,7 +384,17 @@ class RealmRaidScript(YYSBaseScript):
 
     def on_scene_barrier_breakthrough(self, _point: tuple[int, int]) -> None:
         """在结界突破主界面检查是否需要刷新。"""
-        self.refresh_if_no_attackable_barrier()
+        if self._prepare_next_battle():
+            self.refresh_if_no_attackable_barrier()
+
+    def _prepare_next_battle(self) -> bool:
+        """回到九宫格或进攻确认框后结束结算，未达目标时才允许下一场。"""
+        self._battle_state = RealmRaidBattleState.IDLE
+        if self._cur_battle_victory_count < self.max_battle_count:
+            return True
+        if self.stop_reason is None:
+            self._stop_with_reason(RealmRaidStopReason.MAX_BATTLE_COUNT)
+        return False
 
     def refresh_if_no_attackable_barrier(self) -> bool:
         """没有可挑战目标时刷新，并在新目标确认后开始下一轮。"""
@@ -408,6 +467,7 @@ class RealmRaidScript(YYSBaseScript):
         """返回包含九宫格进度和停机原因的状态快照。"""
         snapshot = super().get_state_snapshot()
         snapshot.update({
+            "progress_count": snapshot["victory_count"],
             "round_generation": self.round_state.generation,
             "round_victory_count_at_start": self.round_state.victory_count_at_start,
             "quit_three_completed": self.round_state.quit_three_completed,
@@ -425,16 +485,11 @@ class RealmRaidScript(YYSBaseScript):
         self.attackable_barrier_list = []
         self.round_state = RealmRaidRoundState()
         self.stop_reason = None
-        self._battle_result_armed = False
+        self._battle_state = RealmRaidBattleState.IDLE
 
     def after_iteration(self) -> None:
-        """胜利次数达到目标后停止，失败不推进 RealmRaid 达标条件。"""
+        """保留循环节奏，胜场停机由九宫格或进攻确认事件检查。"""
         random_sleep(0.05, 0.1)
-        if (
-            self._cur_battle_victory_count >= self.max_battle_count
-            and self.stop_reason is None
-        ):
-            self._stop_with_reason(RealmRaidStopReason.MAX_BATTLE_COUNT)
 
 
 if __name__ == '__main__':

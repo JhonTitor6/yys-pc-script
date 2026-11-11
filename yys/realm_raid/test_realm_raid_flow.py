@@ -310,6 +310,7 @@ def test_ticket_not_enough_stops_with_reason(
 
     stop.assert_called_once_with()
     assert script.stop_reason is RealmRaidStopReason.TICKET_NOT_ENOUGH
+    assert script.get_state_snapshot()["max_battle_count"] == 30
 
 
 def test_missing_retry_button_stops_quit_sequence(
@@ -536,26 +537,69 @@ def test_total_battle_count_does_not_stop_before_victory_target(
     """产品契约：失败计入总战斗数，但不得推进 RealmRaid 达标停机。"""
     stop = Mock()
     monkeypatch.setattr(script, "stop", stop)
+    refresh = Mock()
+    monkeypatch.setattr(script, "refresh_if_no_attackable_barrier", refresh)
     script.max_battle_count = 1
     script._cur_battle_count = 1
 
     script.after_iteration()
+    script.on_scene_barrier_breakthrough((200, 100))
 
     stop.assert_not_called()
+    refresh.assert_called_once_with()
     assert script.stop_reason is None
 
 
-def test_victory_target_has_explicit_stop_reason(
+def test_victory_is_counted_once_and_target_waits_for_settlement(
     script: RealmRaidScript,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """产品契约：RealmRaid 胜利次数达到目标后立即停止并记录原因。"""
+    """产品契约：一次胜利只计一场，达标后关闭结算再停机。"""
     stop = Mock()
+    click = Mock()
+    get_targets = Mock()
     monkeypatch.setattr(script, "stop", stop)
+    monkeypatch.setattr(script, "bg_left_click", click)
+    monkeypatch.setattr(script, "get_all_attackable_barrier", get_targets)
     script.max_battle_count = 1
-    script._cur_battle_victory_count = 1
+    script._on_battling((48, 593))
 
+    script._event_manager.trigger_event("yys/images/battle_end.bmp", (427, 174))
+    script.after_iteration()
+    script._on_battling((48, 593))
+    script._event_manager.trigger_event("yys/images/battle_end.bmp", (427, 174))
+    script._event_manager.trigger_event("yys/images/battle_end_1.bmp", (566, 456))
     script.after_iteration()
 
+    snapshot = script.get_state_snapshot()
+    assert snapshot["battle_count"] == snapshot["victory_count"] == snapshot["progress_count"] == 1
+    assert click.call_count == 3
+    stop.assert_not_called()
+
+    script._on_attackable_barrier((500, 300))
+
     stop.assert_called_once_with()
+    get_targets.assert_not_called()
     assert script.stop_reason is RealmRaidStopReason.MAX_BATTLE_COUNT
+
+
+def test_armed_reward_does_not_count_or_consume_the_battle(script: RealmRaidScript) -> None:
+    """产品契约：共享奖励模板不能代替胜负，下一场仍独立计数。"""
+    script.bg_left_click = Mock()
+    script._event_manager.trigger_event("yys/images/battle_end.bmp", (427, 174))
+    assert script.get_state_snapshot()["victory_count"] == 0
+
+    script._on_battling((48, 593))
+    script._event_manager.trigger_event("yys/images/battle_end_1.bmp", (566, 456))
+    assert script.get_state_snapshot()["battle_count"] == 0
+
+    script._event_manager.trigger_event("yys/images/battle_end_loss.bmp", (417, 167))
+    script.refresh_if_no_attackable_barrier = Mock()
+    script.on_scene_barrier_breakthrough((200, 100))
+    script.quit_3_times_config = False
+    script._on_attack((700, 400))
+    script._event_manager.trigger_event("yys/images/battle_end.bmp", (427, 174))
+
+    snapshot = script.get_state_snapshot()
+    assert snapshot["battle_count"] == 2
+    assert snapshot["victory_count"] == snapshot["progress_count"] == 1

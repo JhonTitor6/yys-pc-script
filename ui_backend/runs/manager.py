@@ -675,8 +675,8 @@ class RunManager:
         return state
 
     def _progress_from_state(self, state: dict[str, Any]) -> dict[str, Any]:
-        """从通用脚本状态推导统一进度字段。"""
-        current = state.get("battle_count", state.get("current_battle_count"))
+        """优先使用脚本提供的目标进度，兼容按总战斗数计进度的脚本。"""
+        current = state.get("progress_count", state.get("battle_count", state.get("current_battle_count")))
         total = state.get("max_battle_count")
         if not isinstance(current, (int, float)):
             return {}

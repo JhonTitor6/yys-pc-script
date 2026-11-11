@@ -77,7 +77,7 @@ DEFAULT_SCRIPT_ENTRIES: list[dict[str, Any]] = [
         "config_schema": [
             {
                 "key": "max_battle_count",
-                "label": "最大战斗次数",
+                "label": "目标胜场",
                 "field_type": "number",
                 "default": 9,
                 "min_value": 1,

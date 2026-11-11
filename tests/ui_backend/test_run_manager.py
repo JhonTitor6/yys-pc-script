@@ -84,6 +84,16 @@ def test_run_manager_allows_only_one_active_run(run_manager: RunManager) -> None
     run_manager.stop(first_id)
 
 
+def test_run_progress_uses_script_progress_count_when_present(run_manager: RunManager) -> None:
+    """产品契约：按胜场停机的脚本用胜场显示目标进度。"""
+    state = {"battle_count": 2, "victory_count": 1, "progress_count": 1, "max_battle_count": 2}
+
+    assert run_manager._progress_from_state(state) == {"current": 1, "total": 2, "percent": 50.0}
+
+    del state["progress_count"]
+    assert run_manager._progress_from_state(state) == {"current": 2, "total": 2, "percent": 100.0}
+
+
 def test_run_manager_finishes_and_saves_snapshot(run_manager: RunManager) -> None:
     run_id = run_manager.start(RunRequest(script_id="fake", config={"max_battle_count": 2}))
 

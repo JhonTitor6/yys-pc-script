@@ -361,7 +361,7 @@ class RealmRaidScript(YYSBaseScript):
             self.keyboard.bg_press_key('ESC')
             random_sleep(0.05, 0.2)
             self.keyboard.bg_press_key('ENTER')
-            random_sleep(2, 3)
+            random_sleep(3, 4)
             self.logger.info("准备点击【再次挑战】")
             retry_clicked = self.win_controller.find_and_click(
                 "yys/realm_raid/images/realm_raid_retry.bmp",

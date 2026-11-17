@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable, Mapping
 from importlib import import_module
 from typing import Any, Literal, cast
 
@@ -9,6 +10,24 @@ from ui_backend.scripts.default_registry import DEFAULT_SCRIPT_ENTRIES
 
 FieldType = Literal["number", "text", "select", "boolean"]
 logger = logging.getLogger(__name__)
+
+
+class ScriptConfigError(ValueError):
+    """脚本参数无法通过保存或运行的前置校验。"""
+
+
+def validate_integer_config(schema: Iterable[ConfigField], config: Mapping[str, Any]) -> None:
+    """校验显式要求整数的字段，允许提交部分配置。"""
+    for field in schema:
+        if not field.integer_only or field.key not in config:
+            continue
+        value = config[field.key]
+        if type(value) is not int:
+            raise ScriptConfigError(f"{field.label}必须是整数")
+        if field.min_value is not None and value < field.min_value:
+            raise ScriptConfigError(f"{field.label}不能小于 {field.min_value}")
+        if field.max_value is not None and value > field.max_value:
+            raise ScriptConfigError(f"{field.label}不能大于 {field.max_value}")
 
 
 class ScriptRegistry:
@@ -108,4 +127,5 @@ class ScriptRegistry:
             ),
             unit=cast(str | None, item.get("unit")),
             sensitive=bool(item.get("sensitive", False)),
+            integer_only=bool(item.get("integer_only", False)),
         )

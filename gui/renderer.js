@@ -392,6 +392,10 @@ function validateConfig(config, script) {
         errors[field.key] = '请输入有效数字。';
         continue;
       }
+      if (field.integer_only && !Number.isInteger(value)) {
+        errors[field.key] = '请输入整数。';
+        continue;
+      }
       if (field.min_value !== null && field.min_value !== undefined && value < Number(field.min_value)) {
         errors[field.key] = `不能小于 ${field.min_value}。`;
       } else if (field.max_value !== null && field.max_value !== undefined && value > Number(field.max_value)) {

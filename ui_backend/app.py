@@ -16,7 +16,7 @@ from ui_backend.models import RunRequest, RunSourceType, ScriptDefinition
 from ui_backend.runs.manager import RunManager
 from ui_backend.scheduler.service import SchedulerService
 from ui_backend.screenshots import MAX_SCREENSHOT_BYTES, ScreenshotError, ScreenshotService
-from ui_backend.scripts.registry import ScriptRegistry
+from ui_backend.scripts.registry import ScriptConfigError, ScriptRegistry, validate_integer_config
 from ui_backend.storage.database import Database
 from ui_backend.storage.repositories import Storage
 from ui_backend.storage.workbench_db import (
@@ -53,6 +53,11 @@ def create_app(
     resolved_token = api_token if api_token is not None else os.environ.get("YYS_UI_TOKEN")
     origins = allowed_origins()
     app = FastAPI()
+
+    @app.exception_handler(ScriptConfigError)
+    async def invalid_script_config(_request: Request, exc: ScriptConfigError) -> JSONResponse:
+        return JSONResponse(status_code=422, content={"detail": str(exc)})
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
@@ -239,6 +244,9 @@ def create_app(
         """
         if not isinstance(payload, dict):
             return {"status": "invalid", "applied": False}
+        definition = next((item for item in app.state.registry.list_scripts() if item.script_id == script_id), None)
+        if definition is not None:
+            validate_integer_config(definition.config_schema, payload)
         app.state.storage.script_user_configs.upsert(script_id, dict(payload))
         return {
             "status": "ok",

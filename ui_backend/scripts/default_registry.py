@@ -125,6 +125,15 @@ DEFAULT_SCRIPT_ENTRIES: list[dict[str, Any]] = [
         ],
     },
     {
+        "script_id": "qilingtancha",
+        "display_name": "契灵探查",
+        "module_path": "yys.qilingtancha.qilingtancha_script",
+        "class_name": "QilingTanchaScript",
+        "category": "experimental",
+        "description": "在契灵探查画面启动，达到目标胜场并处理结算后停止。",
+        "config_schema": [],
+    },
+    {
         "script_id": "abyss_shadows",
         "display_name": "狭间暗域",
         "module_path": "yys.abyss_shadows.abyss_shadows_script",
@@ -187,6 +196,15 @@ DEFAULT_SCRIPT_ENTRIES: list[dict[str, Any]] = [
                 "hot_reloadable": False,
             },
         ],
+    },
+    {
+        "script_id": "super_demon_boss",
+        "display_name": "超鬼王",
+        "module_path": "yys.super_demon_boss.super_demon_boss_script",
+        "class_name": "SuperDemonBossScript",
+        "category": "experimental",
+        "description": "在超鬼王活动页启动，自动召唤和挑战，达到战斗场数后停止。",
+        "config_schema": [],
     },
     # ==================== auto-registry Step 5 新增 5 个 entry ====================
     # 5 个事件驱动脚本在 Step 5 迁移到 SCRIPT_META（详见 yys/<script>/<script>_script.py）。

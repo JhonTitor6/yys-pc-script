@@ -138,6 +138,7 @@ YYS_MODULES = [
     "yys.fengmo.fengmo_script",
     "yys.regional_demon_boss",
     "yys.regional_demon_boss.regional_demon_boss_script",
+    "yys.super_demon_boss.super_demon_boss_script",
     "yys.exploration",
     "yys.yuling",
     "yys.douji",

@@ -63,6 +63,22 @@ function testExistingNumberAndBooleanConversionsRemainUnchanged() {
   );
 }
 
+function testOnlyIntegerFieldsRejectFractions() {
+  // 产品契约：战斗场数必须是整数，其余数字参数仍可使用小数。
+  const filename = path.resolve(__dirname, '../../gui/renderer.js');
+  const source = fs.readFileSync(filename, 'utf8');
+  const helpers = source.slice(source.indexOf('function getFieldType'), source.indexOf('function scriptTitle'));
+  const start = source.indexOf('function validateConfig');
+  const validator = source.slice(start, source.indexOf('\nfunction ', start + 1));
+  const validateConfig = vm.runInNewContext(`${helpers}\n${validator}\nvalidateConfig;`, {}, { filename });
+  const field = { key: 'max_battle_count', field_type: 'number', min_value: 1, max_value: 20 };
+  const numeric = { config_schema: [field] };
+  const integer = { config_schema: [{ ...field, integer_only: true }] };
+  assert.strictEqual(validateConfig({ max_battle_count: 1.5 }, integer).max_battle_count, '请输入整数。');
+  assert.strictEqual(validateConfig({ max_battle_count: 1.5 }, numeric).max_battle_count, undefined);
+  assert.strictEqual(validateConfig({ max_battle_count: 2 }, integer).max_battle_count, undefined);
+}
+
 function testImageResourceSettingsContract() {
   // 产品契约：图片管理留在设置页，目录打开通过 Electron IPC，其余操作使用图片资源 API。
   const renderer = fs.readFileSync(path.resolve(__dirname, '../../gui/renderer.js'), 'utf8');
@@ -149,6 +165,7 @@ function testScreenshotCropperContract() {
 testSelectValuesUseSchemaTypes();
 testStringSelectValuesRemainStrings();
 testExistingNumberAndBooleanConversionsRemainUnchanged();
+testOnlyIntegerFieldsRejectFractions();
 testImageResourceSettingsContract();
 testScreenshotCropperContract();
 console.log('renderer config normalization tests passed');

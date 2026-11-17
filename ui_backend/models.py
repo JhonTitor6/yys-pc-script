@@ -128,6 +128,7 @@ class ConfigField:
     description: str = ""
     unit: str | None = None
     sensitive: bool = False
+    integer_only: bool = False
 
 
 @dataclass(frozen=True)

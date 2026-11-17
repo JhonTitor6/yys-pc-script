@@ -18,6 +18,35 @@ from ui_backend.models import RunRequest, RunSourceType, RunStatus
 from ui_backend.scripts.registry import ScriptRegistry
 
 
+@pytest.mark.parametrize(("script_id", "label"), [
+    ("super_demon_boss", "战斗场数"), ("qilingtancha", "目标胜场"),
+])
+def test_integer_script_config_is_rejected_before_save_and_start(
+    tmp_path: Path, script_id: str, label: str,
+) -> None:
+    """产品契约：小数场数不能覆盖存量配置，也不能创建运行记录。"""
+    app = create_app(db_path=tmp_path / "ui.db")
+    url = f"/api/scripts/{script_id}/config"
+    invalid = {"max_battle_count": 1.5}
+    with TestClient(app) as client:
+        assert client.patch(url, json={"max_battle_count": 3}).status_code == 200
+        definition = next(item for item in client.get("/api/scripts").json() if item["script_id"] == script_id)
+        assert definition["config_schema"][0]["integer_only"] is True
+
+        response = client.patch(url, json=invalid)
+        assert response.status_code == 422
+        assert response.json()["detail"] == f"{label}必须是整数"
+        assert app.state.storage.script_user_configs.get(script_id) == {"max_battle_count": 3}
+
+        response = client.post("/api/runs/start", json={"script_id": script_id, "config": invalid})
+        assert response.status_code == 422
+        assert response.json()["detail"] == f"{label}必须是整数"
+
+        app.state.storage.script_user_configs.upsert(script_id, invalid)
+        assert client.post("/api/runs/start", json={"script_id": script_id}).status_code == 422
+        assert client.get("/api/runs").json() == []
+
+
 def test_daily_workflow_draft_round_trips_without_automatically_starting_steps(tmp_path: Path) -> None:
     """产品契约：六步可保存审阅，创建禁用草案不启动真实游戏；预检查由调度器独立验证。"""
     source = Path(__file__).resolve().parents[2] / "docs/examples/daily-routine-workflow.json"

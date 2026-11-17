@@ -109,7 +109,8 @@ def test_default_registry_does_not_import_script_modules(
     assert script_ids == {
         "soul_raid", "realm_raid", "exploration_28", "yuling", "abyss_shadows",
         "loop_challenge", "douji", "fujiwara", "omoikane", "regional_demon_boss",
-        "realm_foster", "fengmo", "daily_collect", "soul_soil", "daily_activity_rewards",
+        "realm_foster", "fengmo", "daily_collect", "soul_soil", "daily_activity_rewards", "qilingtancha",
+        "super_demon_boss",
     }
     # fallback 时，soul_raid 仍使用 entry 手写的 max_battle_count=103（无 accept_wq_type）
     soul_raid = next(item for item in scripts if item.script_id == "soul_raid")
@@ -371,7 +372,8 @@ def test_default_registry_reflection_failure_falls_back_to_entries(
     assert script_ids == {
         "soul_raid", "realm_raid", "exploration_28", "yuling", "abyss_shadows",
         "loop_challenge", "douji", "fujiwara", "omoikane", "regional_demon_boss",
-        "realm_foster", "fengmo", "daily_collect", "soul_soil", "daily_activity_rewards",
+        "realm_foster", "fengmo", "daily_collect", "soul_soil", "daily_activity_rewards", "qilingtancha",
+        "super_demon_boss",
     }
 
     # soul_raid 走 fallback（无 accept_wq_type）

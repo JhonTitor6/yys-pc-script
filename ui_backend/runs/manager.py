@@ -16,7 +16,7 @@ from ui_backend.models import (
     available_actions_for_run,
     available_actions_for_status,
 )
-from ui_backend.scripts.registry import ScriptRegistry
+from ui_backend.scripts.registry import ScriptRegistry, validate_integer_config
 from ui_backend.screenshots import ScreenshotError, ScreenshotService
 from ui_backend.storage.repositories import Storage
 from win_util.environment.windows import WindowsEnvironment
@@ -81,9 +81,11 @@ class RunManager:
             if self._active_run_id is not None:
                 raise RuntimeError("已有脚本正在运行")
 
-            registry_default = self.registry.get(request.script_id).default_config or {}
+            definition = self.registry.get(request.script_id)
+            registry_default = definition.default_config or {}
             user_config = self.storage.script_user_configs.get(request.script_id) or {}
             merged_config = {**registry_default, **user_config, **request.config}
+            validate_integer_config(getattr(definition, "config_schema", ()), merged_config)
 
             run_id = self.storage.runs.create(
                 script_id=request.script_id,

@@ -104,8 +104,9 @@ class SuperDemonBossScript(YYSBaseScript):
         self._image_event_match_configs.remove(_ACTIVITY)
         self._register_battle_end_events()
         self._register_image_match_event(_REWARD, self._on_reward)
-        self._register_image_match_event(_BATTLING, self._disable_ready)
         self._register_image_match_event(_READY, self._on_ready)
+        # 准备页也显示战斗返回图标，先识别准备，返回图标只用于观察。
+        self._register_image_match_event(_BATTLING, lambda _point: None)
 
     def _disable_ready(self, _point: tuple[int, int]) -> None:
         if _READY in self._image_event_match_configs:

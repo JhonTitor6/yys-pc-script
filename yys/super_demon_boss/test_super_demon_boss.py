@@ -109,13 +109,14 @@ def test_battle_count_from_workbench_config(
     env.action_log.assert_click_at(1046, 560, tolerance=0)
     show(clicks, activity, challenge)
     show(clicks)
+    # 实机准备按钮出现前后都可能匹配战斗返回图标。
+    show(clicks, battling)
     if not already_summoned:
         clicks += 1
-        show(clicks, ready)
-        show(clicks, ready)
+        show(clicks, battling, ready)
+        show(clicks, battling, ready)
         env.action_log.assert_click_at(1030, 580, tolerance=0)
     show(clicks, battling)
-    show(clicks, ready)
     assert script.get_state_snapshot()["battle_count"] == 0
 
     settlement = None

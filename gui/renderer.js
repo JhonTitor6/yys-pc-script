@@ -542,7 +542,8 @@ function renderEvidenceList(run) {
       ? `<img src="${API_BASE}/api/runs/${encodeURIComponent(run.id)}/evidence/latest${UI_TOKEN ? `?token=${encodeURIComponent(UI_TOKEN)}` : ''}" alt="运行最新截图">`
       : '';
     const unavailableMessage = error || '截图文件已删除或不可用。';
-    return `<article class="evidence-item"><div><b>${unavailable ? '截图不可用' : '截图证据'}</b><small>${escapeHtml(unavailable ? unavailableMessage : item.created_at || '已记录')}</small></div>${image || `<p>${escapeHtml(unavailable ? unavailableMessage : '已记录证据，但当前没有可预览文件。')}</p>`}</article>`;
+    const recordedAt = item.created_at ? formatDateTime(item.created_at) : '已记录';
+    return `<article class="evidence-item"><div><b>${unavailable ? '截图不可用' : '截图证据'}</b><small>${escapeHtml(unavailable ? unavailableMessage : recordedAt)}</small></div>${image || `<p>${escapeHtml(unavailable ? unavailableMessage : '已记录证据，但当前没有可预览文件。')}</p>`}</article>`;
   }).join('');
 }
 
@@ -711,15 +712,27 @@ function appendLog(event) {
   }
 }
 
+function parseRecordedTimestamp(value) {
+  if (typeof value !== 'string') return NaN;
+  const timestamp = value.trim().replace(' ', 'T');
+  // SQLite CURRENT_TIMESTAMP 存的是 UTC，但没有时区后缀。
+  const withoutOffset = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(timestamp);
+  return Date.parse(withoutOffset ? `${timestamp}Z` : timestamp);
+}
+
 function formatDateTime(value) {
-  if (!value) return '—';
-  return String(value).replace('T', ' ').slice(0, 19);
+  const timestamp = parseRecordedTimestamp(value);
+  if (!Number.isFinite(timestamp)) return '—';
+  const local = new Date(timestamp);
+  const pad = (part) => String(part).padStart(2, '0');
+  const date = [local.getFullYear(), pad(local.getMonth() + 1), pad(local.getDate())].join('-');
+  const time = [local.getHours(), local.getMinutes(), local.getSeconds()].map(pad).join(':');
+  return `${date} ${time}`;
 }
 
 function formatDuration(start, end) {
-  if (!start || !end) return '—';
-  const begin = Date.parse(start);
-  const finish = Date.parse(end);
+  const begin = parseRecordedTimestamp(start);
+  const finish = parseRecordedTimestamp(end);
   if (!Number.isFinite(begin) || !Number.isFinite(finish) || finish < begin) return '—';
   const seconds = Math.floor((finish - begin) / 1000);
   return `${Math.floor(seconds / 60)}分${String(seconds % 60).padStart(2, '0')}秒`;

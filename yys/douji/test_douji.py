@@ -1,16 +1,41 @@
 import cv2
 import numpy as np
 import pytest
+from PIL import Image
 
+from tests.common.environment.mock_environment import MockEnvironment
+from ui_backend.scripts.registry import ScriptRegistry
 from yys.douji.douji_script import DouJi, _find_douji_slot_anchors, _find_douji_slot_point
 
 
 def test_douji_config_exposes_target_slot() -> None:
-    fields = {field["key"]: field for field in DouJi.get_config_schema()}
+    """产品契约：工作台默认不标记，仍可选择任一己方槽位。"""
+    definition = ScriptRegistry().get("douji")
+    field = next(field for field in definition.config_schema if field.key == "target_slot")
 
-    assert fields["target_slot"]["default"] == 2
-    assert fields["target_slot"]["min_value"] == 1
-    assert fields["target_slot"]["max_value"] == 5
+    assert definition.default_config["target_slot"] == field.default == ""
+    assert field.field_type == "select"
+    assert field.options[0] == {"value": "", "label": "不标记"}
+    assert [option["value"] for option in field.options[1:]] == [1, 2, 3, 4, 5]
+
+
+@pytest.mark.parametrize("config", [None, {"target_slot": ""}, {"target_slot": None}])
+def test_douji_empty_target_only_switches_to_auto_battle(
+    config: dict[str, object] | None, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """产品契约：空槽位照常切换自动战斗，跳过标记识别和点击。"""
+    env = MockEnvironment()
+    monkeypatch.setattr(env, "capture_screen", lambda: Image.new("RGB", (1136, 640)))
+    monkeypatch.setattr("yys.douji.douji_script.random_sleep", lambda *_: None)
+    script = DouJi(env=env, config=config)
+    monkeypatch.setattr(script, "_try_click_douji_target", lambda **_: pytest.fail("空槽位不应定位"))
+    clicks: list[tuple[int, int]] = []
+    monkeypatch.setattr(script, "bg_left_click", clicks.append)
+
+    script._on_change_to_auto_battle((100, 200))
+
+    assert clicks == [(100, 200)]
+    assert not script._douji_target_pending
 
 
 def _build_battle_frame(bar_positions: list[tuple[int, int]]) -> np.ndarray:
@@ -142,6 +167,7 @@ def test_douji_victory_counts_once_per_battle(monkeypatch: pytest.MonkeyPatch) -
     assert logs == [(1, 1)]
 
     script._try_click_douji_target = lambda *, refresh: True
+    script.target_slot = 2
     monkeypatch.setattr(douji_script, "random_sleep", lambda *_: None)
     script._on_change_to_auto_battle((300, 400))
     script._on_battle_end((200, 300))

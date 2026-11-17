@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import Annotated, Any, Optional, TYPE_CHECKING, TypedDict, get_type_hints
+from typing import Annotated, Any, Literal, Optional, TYPE_CHECKING, TypedDict, get_type_hints
 
 import cv2
 import numpy as np
@@ -164,14 +164,15 @@ class DouJiConfig(TypedDict, total=False):
         help="脚本自动停止前执行的最大战斗次数（1-999）",
         hot_reloadable=True,
     )]
-    target_slot: Annotated[int, ConfigMeta(
-        default=2,
-        min_value=1,
-        max_value=5,
-        field_type="number",
+    target_slot: Annotated[int | Literal[""] | None, ConfigMeta(
+        default="",
+        options=[{"value": "", "label": "不标记"}] + [
+            {"value": slot, "label": f"左 {slot}"} for slot in range(1, 6)
+        ],
+        field_type="select",
         label="己方目标槽位",
         group="战斗",
-        help="斗技中从左到右选择己方第几个式神（1-5）",
+        help="只在选择己方槽位时标记式神。",
         hot_reloadable=True,
     )]
 
@@ -184,7 +185,7 @@ class DouJi(YYSBaseScript):
         display_name="斗技",
         category="日常",
         config_schema=DouJiConfig,
-        default_config={"max_battle_count": 169, "target_slot": 4},
+        default_config={"max_battle_count": 169, "target_slot": ""},
     )
 
     @classmethod
@@ -303,6 +304,8 @@ class DouJi(YYSBaseScript):
         self._douji_result_counted = False
         self.bg_left_click(point)
         random_sleep(3, 4)
+        if self.target_slot in ("", None):
+            return
         for _ in range(5):
             if self._try_click_douji_target(refresh=True):
                 return
